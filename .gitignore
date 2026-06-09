@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Env
+.env
+
+# Modelos y datasets pesados
+models/**/*.pt
+models/**/*.pth
+models/**/*.safetensors
+models/**/*.bin
+models/**/blobs/
+models/**/snapshots/
+models/**/refs/
+data/raw/
+data/datasets/
+
+# Corridas experimentales
+runs/*
+!runs/.gitkeep
+
+# Previews generadas
+*.preview.jpg
+*.annotated.jpg
+
+# OS/IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Build
+*.egg-info/
+dist/
+build/

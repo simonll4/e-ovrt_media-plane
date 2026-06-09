@@ -1,0 +1,41 @@
+run:
+  id: null
+  scenario: DBE
+  name: dbe_mock_cr01_cr02
+  description: "Corrida de prueba minimalista (mock) para el plano de medios"
+  seed: 42
+
+source:
+  type: image_folder
+  path: data/samples/images
+  extensions: [".jpg", ".jpeg", ".png"]
+
+sampling:
+  mode: all
+  every_n: 1
+  target_fps: null
+  max_units: null
+
+model:
+  name: mock
+  device: cpu
+
+prompts:
+  file: configs/prompts/cr01_cr02_v1.yaml
+  active_ids: ["person", "helmet", "vest"]
+
+postprocess:
+  min_confidence: 0.25
+  min_box_area_px: 100.0
+  normalize_boxes: true
+
+outputs:
+  run_dir: runs
+  save_detections_jsonl: true
+  save_metrics_jsonl: true
+  save_errors_jsonl: true
+  save_previews: true
+  preview_max: 20
+
+logging:
+  level: INFO
