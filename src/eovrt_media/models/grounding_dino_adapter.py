@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import warnings
 from pathlib import Path
 
 import torch
@@ -13,6 +14,28 @@ from eovrt_media.contracts.detection import RawDetection
 from eovrt_media.models.base import BaseDetectorAdapter
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_label(detected: str, prompts: list[str]) -> str:
+    """Mapea un span parcial de GDINO al prompt original más cercano.
+
+    GDINO hace matching de sub-spans del texto de entrada, por lo que puede
+    devolver "visibility safety" en lugar del prompt completo "high visibility
+    safety vest". Esta función busca el prompt cuyas palabras tienen mayor
+    solapamiento con el span detectado.
+    """
+    detected_lower = detected.lower()
+    for p in prompts:
+        if p.lower() == detected_lower:
+            return p
+    for p in prompts:
+        if detected_lower in p.lower():
+            return p
+    for p in prompts:
+        if p.lower() in detected_lower:
+            return p
+    detected_words = set(detected_lower.split())
+    return max(prompts, key=lambda p: len(detected_words & set(p.lower().split())))
 
 
 class GroundingDinoHFAdapter(BaseDetectorAdapter):
@@ -75,27 +98,29 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
         with torch.no_grad():
             outputs = self.model(**inputs)
 
-        results = self.processor.post_process_grounded_object_detection(
-            outputs,
-            inputs.input_ids,
-            threshold=self.box_threshold,
-            text_threshold=self.text_threshold,
-            target_sizes=[list(image.size[::-1])],  # [height, width]
-        )[0]
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
+            results = self.processor.post_process_grounded_object_detection(
+                outputs,
+                inputs.input_ids,
+                threshold=self.box_threshold,
+                text_threshold=self.text_threshold,
+                target_sizes=[list(image.size[::-1])],  # [height, width]
+            )[0]
 
         detections = []
         boxes = results["boxes"].cpu().tolist()
         scores = results["scores"].cpu().tolist()
-        labels = results.get("labels", results.get("text", []))
+        # text_labels is the stable key (labels will return int ids in transformers >=4.51)
+        raw_labels = results.get("text_labels", results.get("labels", []))
+        if hasattr(raw_labels, "tolist"):
+            raw_labels = raw_labels.tolist()
 
-        # labels puede ser lista de strings o necesitar procesamiento
-        if hasattr(labels, "tolist"):
-            labels = labels.tolist()
-
-        for box, score, label in zip(boxes, scores, labels):
+        for box, score, label in zip(boxes, scores, raw_labels):
+            normalized = _normalize_label(str(label).strip(), prompts)
             detections.append(
                 RawDetection(
-                    label=str(label).strip(),
+                    label=normalized,
                     score=float(score),
                     box_xyxy=[float(c) for c in box],
                 )

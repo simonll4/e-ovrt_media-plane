@@ -1,0 +1,14 @@
+# Catálogo de modelos — Grounding DINO base (pesos originales IDEA-Research)
+family: grounding-dino
+variant: gdino-base
+lineage: original
+description: "Grounding DINO base (888 MB). Mejor detección EPP (helmet + vest) a costo de 5-7x latencia vs YOLOE (G-E2)."
+source: https://huggingface.co/IDEA-Research/grounding-dino-base
+license: Apache-2.0
+
+adapter: grounding_dino
+model_id: IDEA-Research/grounding-dino-base
+local_dir: models/grounding-dino/original/grounding-dino-base
+device: cpu
+box_threshold: 0.30
+text_threshold: 0.25

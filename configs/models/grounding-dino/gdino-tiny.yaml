@@ -1,0 +1,14 @@
+# Catálogo de modelos — Grounding DINO tiny (pesos originales IDEA-Research)
+family: grounding-dino
+variant: gdino-tiny
+lineage: original
+description: "Grounding DINO tiny. Open-vocabulary con frases compuestas; el más liviano de la familia (G-E1)."
+source: https://huggingface.co/IDEA-Research/grounding-dino-tiny
+license: Apache-2.0
+
+adapter: grounding_dino
+model_id: IDEA-Research/grounding-dino-tiny
+local_dir: models/grounding-dino/original/grounding-dino-tiny
+device: cpu
+box_threshold: 0.35
+text_threshold: 0.25

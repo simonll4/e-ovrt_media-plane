@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import shutil
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -14,6 +16,23 @@ from eovrt_media.sinks.jsonl_sink import JSONLSink, SummarySink
 
 if TYPE_CHECKING:
     from eovrt_media.runtime.run_context import RunContext
+
+
+def _get_code_version() -> str | None:
+    """Obtiene el commit hash corto del código, si el repo git está disponible."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=Path(__file__).resolve().parent,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
 
 
 class RunArtifactWriter:
@@ -115,10 +134,17 @@ class RunArtifactWriter:
             units_processed=self.context.units_processed,
             units_failed=self.context.units_failed,
             total_detections=self.context.total_detections,
+            detections_by_label=dict(
+                sorted(self.context.detections_by_label.items(), key=lambda kv: -kv[1])
+            ),
+            detections_by_prompt_id=dict(
+                sorted(self.context.detections_by_prompt_id.items(), key=lambda kv: -kv[1])
+            ),
             avg_latency_ms=round(avg_lat, 2),
             p50_latency_ms=round(p50_lat, 2),
             p95_latency_ms=round(p95_lat, 2),
             fps_effective=round(fps_eff, 2),
+            gpu_memory_peak_mb=round(self.context.gpu_memory_peak_mb, 2),
             device=self.context.config.model.device,
             duration_seconds=round(dur, 2),
             started_at=self.context.started_at.isoformat(),
@@ -127,6 +153,33 @@ class RunArtifactWriter:
 
         summary_sink = SummarySink(self.run_dir / "summary.json")
         summary_sink.write(summary)
+
+    def write_manifest(self) -> None:
+        """Guarda run_manifest.json con metadatos de trazabilidad de la corrida.
+
+        Llamar al final de la corrida para que la lista de archivos esté completa.
+        """
+        manifest = {
+            "run_id": self.context.run_id,
+            "started_at": self.context.started_at.isoformat(),
+            "finished_at": (
+                self.context.finished_at.isoformat() if self.context.finished_at else None
+            ),
+            "code_version": _get_code_version(),
+            "output_dir": str(self.run_dir),
+            "config_file": (
+                str(self.context.config.config_path)
+                if self.context.config.config_path
+                else None
+            ),
+            "generated_files": sorted(
+                p.name + ("/" if p.is_dir() else "")
+                for p in self.run_dir.iterdir()
+                if p.name != "run_manifest.json"
+            ),
+        }
+        with open(self.run_dir / "run_manifest.json", "w", encoding="utf-8") as f:
+            json.dump(manifest, f, indent=2, ensure_ascii=False)
 
     def close(self) -> None:
         """Cierra todos los archivos abiertos por los sinks."""

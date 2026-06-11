@@ -1,0 +1,17 @@
+# Catálogo de modelos — MM-Grounding-DINO tiny (OpenMMLab, pesos originales)
+# Re-entrenamiento abierto de Grounding DINO por OpenMMLab (MMDetection) sobre
+# Objects365v1 + GoldG + V3Det. Compatible con el adapter grounding_dino vía
+# transformers (model_type mm-grounding-dino, soportado desde transformers 4.50).
+family: mm-grounding-dino
+variant: mm-gdino-tiny
+lineage: original
+description: "MM-Grounding-DINO tiny (Swin-T, O365v1+GoldG+V3Det). Mejor zero-shot que GDINO tiny original según MMDetection."
+source: https://huggingface.co/openmmlab-community/mm_grounding_dino_tiny_o365v1_goldg_v3det
+license: Apache-2.0
+
+adapter: grounding_dino
+model_id: openmmlab-community/mm_grounding_dino_tiny_o365v1_goldg_v3det
+local_dir: models/mm-grounding-dino/original/mm_grounding_dino_tiny_o365v1_goldg_v3det
+device: cpu
+box_threshold: 0.30
+text_threshold: 0.25

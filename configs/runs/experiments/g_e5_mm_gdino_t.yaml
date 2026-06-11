@@ -1,0 +1,19 @@
+# G-E5 — MM-Grounding-DINO tiny en GPU, mismos prompts v1 que G-E1/G-E2
+run:
+  scenario: DBE
+  name: g_e5_mm_gdino_t
+  description: "G-E5: MM-Grounding-DINO tiny en GPU — ¿el re-entrenamiento de OpenMMLab mejora EPP vs GDINO tiny?"
+
+source:
+  ref: dataset_v1
+
+model:
+  ref: mm-grounding-dino/mm-gdino-tiny
+  device: cuda
+
+prompts:
+  ref: cr01_cr02_v1
+  active_ids: [person, helmet, vest]
+
+outputs:
+  preview_max: 37

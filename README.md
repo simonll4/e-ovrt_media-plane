@@ -37,7 +37,7 @@ make run-gdino
 make run-yoloe
 
 # Con CLI directamente
-eovrt-media run --config configs/dbe_grounding_dino_cr01_cr02.yaml
+eovrt-media run --config configs/runs/gdino.yaml
 ```
 
 ### Ver resultados
@@ -61,18 +61,27 @@ make test
 
 ```
 src/eovrt_media/        # Paquete principal
-├── cli.py              # CLI con Typer
-├── config.py           # Carga y validación de configuración
-├── contracts.py        # Contratos Pydantic (VisualUnit, Detection, etc.)
-├── sources.py          # Fuentes de datos (ImageFolderSource)
-├── pipeline.py         # Orquestación del pipeline DBE
-├── sinks.py            # Escritura de resultados (JSONL, JSON)
-├── metrics.py          # Métricas de latencia
-├── visualize.py        # Previews anotadas
-└── adapters/           # Adaptadores de modelo
-    ├── base.py         # Interfaz común BaseDetectorAdapter
-    ├── grounding_dino_hf.py
-    └── yoloe_ultralytics.py
+├── cli.py              # CLI con Typer (run, validate-config, inspect-run, compare-runs, download-models)
+├── config/             # Esquemas Pydantic + loader con resolución de refs a catálogos
+├── contracts/          # Contratos Pydantic (VisualUnit, Detection, eventos)
+├── sources/            # Fuentes de datos (ImageFolderSource, VideoFileSource)
+├── models/             # Adaptadores de modelo (mock, grounding_dino, yoloe)
+├── preprocessing/      # Normalización de unidades visuales
+├── postprocessing/     # Filtros y normalización de detecciones
+├── runtime/            # Orquestación del pipeline y contexto de corrida
+├── metrics/            # Timers y agregación de métricas (p95/p99, FPS)
+├── sinks/              # Persistencia de artefactos en runs/<run_id>/
+└── visualize.py        # Previews anotadas
+
+configs/                # Catálogos + run configs (ver configs/README.md)
+├── models/             # Catálogo de modelos: un YAML por variante de pesos
+├── datasets/           # Catálogo de fuentes de datos
+├── prompts/            # Catálogo de prompt sets versionados
+└── runs/               # Configs ejecutables que componen los catálogos
+
+models/                 # Pesos por familia y linaje (ver models/README.md)
+├── yoloe/{original,finetuned}/
+└── grounding-dino/{original,finetuned}/
 ```
 
 ---

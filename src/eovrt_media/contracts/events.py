@@ -133,10 +133,13 @@ class RunSummary(BaseModel):
     units_processed: int
     units_failed: int
     total_detections: int = 0
+    detections_by_label: dict[str, int] = Field(default_factory=dict)
+    detections_by_prompt_id: dict[str, int] = Field(default_factory=dict)
     avg_latency_ms: float = 0.0
     p50_latency_ms: float = 0.0
     p95_latency_ms: float = 0.0
     fps_effective: float = 0.0
+    gpu_memory_peak_mb: float = 0.0
     device: str | None = None
     duration_seconds: float = 0.0
     started_at: str

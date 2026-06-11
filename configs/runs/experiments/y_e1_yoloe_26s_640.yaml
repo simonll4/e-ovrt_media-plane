@@ -1,0 +1,16 @@
+# Y-E1 — YOLOE-26s @ 640px en GPU, prompts v1 (baseline arquitectura YOLOE)
+run:
+  scenario: DBE
+  name: y_e1_yoloe_26s_640
+  description: "Y-E1: baseline YOLOE-26s @ 640px en GPU con prompts v1"
+
+source:
+  ref: dataset_v1
+
+model:
+  ref: yoloe/yoloe-26s
+  device: cuda
+
+prompts:
+  ref: cr01_cr02_v1
+  active_ids: [person, helmet, vest]

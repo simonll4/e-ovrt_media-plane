@@ -1,0 +1,15 @@
+# Corrida de muestra con Grounding DINO tiny en CPU
+run:
+  scenario: DBE
+  name: dbe_grounding_dino_cr01_cr02
+  description: "Corrida experimental con Grounding DINO para CR-01 y CR-02"
+
+source:
+  ref: dataset_v1
+
+model:
+  ref: grounding-dino/gdino-tiny
+
+prompts:
+  ref: cr01_cr02_v1
+  active_ids: [person, helmet, vest]

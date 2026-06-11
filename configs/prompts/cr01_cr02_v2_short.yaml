@@ -1,0 +1,23 @@
+prompt_set:
+  id: cr01_cr02_v2_short
+  description: >
+    Versión 2 — etiquetas cortas para YOLOE/CLIP.
+    "helmet" y "vest" activan mejor el encoder de texto que las frases compuestas
+    de v1 ("safety helmet", "high visibility safety vest").
+    Derivado del diagnóstico P-E1 sobre dataset_v1 (2026-06-10).
+  language: en
+  items:
+    - id: person
+      text: "person"
+      role: entity
+      enabled_by_default: true
+
+    - id: helmet
+      text: "helmet"
+      role: ppe
+      enabled_by_default: true
+
+    - id: vest
+      text: "vest"
+      role: ppe
+      enabled_by_default: true

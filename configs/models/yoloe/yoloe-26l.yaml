@@ -1,0 +1,14 @@
+# Catálogo de modelos — YOLOE 26l (pesos originales Ultralytics)
+family: yoloe
+variant: yoloe-26l
+lineage: original
+description: "YOLOE large segmentation (39.3M params). Precisión alta manteniendo posible realtime (Y-E3/Y-E4 @ 960px)."
+source: https://github.com/ultralytics/assets/releases/download/v8.4.0/yoloe-26l-seg.pt
+license: AGPL-3.0
+
+adapter: yoloe
+weights: models/yoloe/original/yoloe-26l-seg.pt
+device: cpu
+confidence_threshold: 0.25
+iou_threshold: 0.50
+image_size: 640

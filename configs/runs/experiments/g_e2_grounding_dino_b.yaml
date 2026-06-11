@@ -1,0 +1,19 @@
+# G-E2 — Grounding DINO base en GPU, baseline semántico (mismos prompts v1 que Y-E1)
+run:
+  scenario: DBE
+  name: g_e2_grounding_dino_b
+  description: "G-E2: Grounding DINO base en GPU, mismos prompts v1 que Y-E1"
+
+source:
+  ref: dataset_v1
+
+model:
+  ref: grounding-dino/gdino-base
+  device: cuda
+
+prompts:
+  ref: cr01_cr02_v1
+  active_ids: [person, helmet, vest]
+
+outputs:
+  preview_max: 37

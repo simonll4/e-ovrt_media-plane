@@ -1,0 +1,14 @@
+# Catálogo de modelos — YOLOE 26x (pesos originales Ultralytics)
+family: yoloe
+variant: yoloe-26x
+lineage: original
+description: "YOLOE xlarge segmentation (85.4M params). Techo de precisión local si entra en VRAM (Y-E5)."
+source: https://github.com/ultralytics/assets/releases/download/v8.4.0/yoloe-26x-seg.pt
+license: AGPL-3.0
+
+adapter: yoloe
+weights: models/yoloe/original/yoloe-26x-seg.pt
+device: cpu
+confidence_threshold: 0.25
+iou_threshold: 0.50
+image_size: 640

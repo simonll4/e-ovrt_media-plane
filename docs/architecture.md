@@ -56,7 +56,7 @@ Cada modelo OVD (Grounding DINO, YOLOE, etc.) tiene su propia API. Los adaptador
 - **Streaming real / MediaMTX**.
 - **Edge Node / despliegue**.
 - **MOT formal / tracking multi-objeto**.
-- **Fine-tuning / entrenamiento**.
+- **Fine-tuning / entrenamiento** (los checkpoints finetuneados se entrenan fuera de este repo; acá solo se catalogan como pesos en `models/<familia>/finetuned/` con su entrada en `configs/models/`).
 - **Zonas o reglas espaciales**.
 
 Estos componentes se implementarán en repositorios o módulos separados que consumirán la evidencia perceptiva normalizada generada por el plano de medios.

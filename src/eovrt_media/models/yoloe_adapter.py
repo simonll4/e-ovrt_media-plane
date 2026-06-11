@@ -22,11 +22,13 @@ class YOLOEUltralyticsAdapter(BaseDetectorAdapter):
         device: str = "cpu",
         confidence_threshold: float = 0.25,
         iou_threshold: float = 0.50,
+        image_size: int | list[int] | None = None,
     ) -> None:
         self.weights = weights
         self.device = device
         self.confidence_threshold = confidence_threshold
         self.iou_threshold = iou_threshold
+        self.image_size = image_size
         self.model = None
         self._prompts_set: list[str] | None = None
 
@@ -64,13 +66,17 @@ class YOLOEUltralyticsAdapter(BaseDetectorAdapter):
         # YOLOE acepta tanto paths como PIL images
         source = str(image) if isinstance(image, Path) else image
 
-        results = self.model.predict(
-            source=source,
-            conf=self.confidence_threshold,
-            iou=self.iou_threshold,
-            device=self.device,
-            verbose=False,
-        )
+        predict_kwargs = {
+            "source": source,
+            "conf": self.confidence_threshold,
+            "iou": self.iou_threshold,
+            "device": self.device,
+            "verbose": False,
+        }
+        if self.image_size is not None:
+            predict_kwargs["imgsz"] = self.image_size
+
+        results = self.model.predict(**predict_kwargs)
 
         if not results:
             return []

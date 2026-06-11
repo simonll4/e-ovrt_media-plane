@@ -1,0 +1,15 @@
+# Smoke test del pipeline con detector mock (sin pesos)
+run:
+  scenario: DBE
+  name: dbe_mock_cr01_cr02
+  description: "Corrida de prueba minimalista (mock) para el plano de medios"
+
+source:
+  ref: dataset_v1
+
+model:
+  ref: mock
+
+prompts:
+  ref: cr01_cr02_v1
+  active_ids: [person, helmet, vest]

@@ -1,0 +1,5 @@
+# Catálogo de datasets — video local de muestra
+description: "Video local de prueba para el source video_file (colocar en data/samples/videos/)."
+
+type: video_file
+path: data/samples/videos/sample.mp4

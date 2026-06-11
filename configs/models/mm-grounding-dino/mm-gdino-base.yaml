@@ -1,0 +1,15 @@
+# Catálogo de modelos — MM-Grounding-DINO base "all" (OpenMMLab, pesos originales)
+# Variante Swin-B entrenada con la mezcla completa de datasets de MMDetection.
+family: mm-grounding-dino
+variant: mm-gdino-base
+lineage: original
+description: "MM-Grounding-DINO base (Swin-B, mezcla 'all' de datasets). Punto medio precisión/costo de la familia MM."
+source: https://huggingface.co/openmmlab-community/mm_grounding_dino_base_all
+license: Apache-2.0
+
+adapter: grounding_dino
+model_id: openmmlab-community/mm_grounding_dino_base_all
+local_dir: models/mm-grounding-dino/original/mm_grounding_dino_base_all
+device: cpu
+box_threshold: 0.30
+text_threshold: 0.25

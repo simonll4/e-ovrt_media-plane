@@ -1,0 +1,21 @@
+# G-E7 — MM-Grounding-DINO large "all" en GPU, mismos prompts v1.
+# Si no entra en VRAM (RTX 4060, 8 GB), correr con device: cpu o descartar según
+# los criterios de descarte temprano de la matriz.
+run:
+  scenario: DBE
+  name: g_e7_mm_gdino_l
+  description: "G-E7: MM-Grounding-DINO large (mezcla 'all') en GPU, prompts v1 — techo de precisión GDINO local"
+
+source:
+  ref: dataset_v1
+
+model:
+  ref: mm-grounding-dino/mm-gdino-large
+  device: cuda
+
+prompts:
+  ref: cr01_cr02_v1
+  active_ids: [person, helmet, vest]
+
+outputs:
+  preview_max: 37

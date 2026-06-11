@@ -11,6 +11,7 @@ venv/
 .env
 
 # Modelos y datasets pesados
+mobileclip*.ts
 models/**/*.pt
 models/**/*.pth
 models/**/*.safetensors
@@ -20,6 +21,16 @@ models/**/snapshots/
 models/**/refs/
 data/raw/
 data/datasets/
+
+# Datasets de muestra: las imágenes/videos no se versionan,
+# sí los README y manifiestos de selección
+data/samples/images/MOCS/
+data/samples/images/**/*.jpg
+data/samples/images/**/*.jpeg
+data/samples/images/**/*.png
+data/samples/videos/**/*.mp4
+data/samples/videos/**/*.avi
+data/samples/videos/**/*.mov
 
 # Corridas experimentales
 runs/*

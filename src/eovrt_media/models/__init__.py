@@ -47,6 +47,7 @@ def create_adapter(model_config: ModelSection) -> BaseDetectorAdapter:
             device=model_config.device,
             confidence_threshold=model_config.confidence_threshold,
             iou_threshold=model_config.iou_threshold,
+            image_size=model_config.image_size,
         )
 
     else:

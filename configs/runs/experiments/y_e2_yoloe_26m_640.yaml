@@ -1,0 +1,20 @@
+# Y-E2 — YOLOE-26m @ 640px en GPU. Balance velocidad/precisión.
+# Prompts v2 cortos: el Sprint 1 (P-E1) mostró que YOLOE no activa con frases compuestas.
+run:
+  scenario: DBE
+  name: y_e2_yoloe_26m_640
+  description: "Y-E2: YOLOE-26m @ 640px en GPU, vocabulario corto v2 — ¿el modelo medium recupera vest?"
+
+source:
+  ref: dataset_v1
+
+model:
+  ref: yoloe/yoloe-26m
+  device: cuda
+
+prompts:
+  ref: cr01_cr02_v2_short
+  active_ids: [person, helmet, vest]
+
+outputs:
+  preview_max: 37

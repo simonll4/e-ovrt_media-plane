@@ -97,7 +97,14 @@ class RunSection(BaseModel):
 
 
 class SourceSection(BaseModel):
-    """Sección 'source' de la configuración."""
+    """Sección 'source' de la configuración.
+
+    Puede definirse inline (type + path) o por referencia al catálogo de
+    datasets: ``ref: <nombre>`` resuelve ``configs/datasets/<nombre>.yaml``.
+    """
+
+    ref: str | None = None
+    description: str | None = None
 
     type: str = "image_folder"
     path: str
@@ -114,7 +121,20 @@ class SamplingConfig(BaseModel):
 
 
 class ModelSection(BaseModel):
-    """Sección 'model' de la configuración."""
+    """Sección 'model' de la configuración.
+
+    Puede definirse inline o por referencia al catálogo de modelos:
+    ``ref: <familia>/<variante>`` resuelve ``configs/models/<familia>/<variante>.yaml``.
+    Los campos declarados en la run config pisan los del catálogo.
+    """
+
+    ref: str | None = None
+    family: str | None = None
+    variant: str | None = None
+    lineage: str | None = None  # original | finetuned
+    description: str | None = None
+    source: str | None = None  # URL de descarga del checkpoint
+    license: str | None = None
 
     name: str | None = None
     adapter: str | None = None
@@ -144,10 +164,21 @@ class ModelSection(BaseModel):
 
 
 class PromptsSection(BaseModel):
-    """Sección 'prompts' de la configuración."""
+    """Sección 'prompts' de la configuración.
 
-    file: str
+    Acepta ``ref: <nombre>`` (resuelve ``configs/prompts/<nombre>.yaml``)
+    o una ruta explícita en ``file``.
+    """
+
+    ref: str | None = None
+    file: str | None = None
     active_ids: list[str] | None = None
+
+    @model_validator(mode="after")
+    def require_ref_or_file(self) -> PromptsSection:
+        if self.ref is None and self.file is None:
+            raise ValueError("La sección 'prompts' requiere 'ref' o 'file'")
+        return self
 
 
 class PostprocessConfig(BaseModel):

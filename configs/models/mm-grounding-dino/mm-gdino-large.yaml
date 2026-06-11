@@ -1,0 +1,16 @@
+# Catálogo de modelos — MM-Grounding-DINO large "all" (OpenMMLab, pesos originales)
+# Variante Swin-L insignia de la familia (22k descargas en HF Hub). Verificar
+# que entre en VRAM local (RTX 4060, 8 GB) antes de correr en cuda.
+family: mm-grounding-dino
+variant: mm-gdino-large
+lineage: original
+description: "MM-Grounding-DINO large (Swin-L, mezcla 'all'). Techo de precisión de la familia GDINO con pesos públicos."
+source: https://huggingface.co/openmmlab-community/mm_grounding_dino_large_all
+license: Apache-2.0
+
+adapter: grounding_dino
+model_id: openmmlab-community/mm_grounding_dino_large_all
+local_dir: models/mm-grounding-dino/original/mm_grounding_dino_large_all
+device: cpu
+box_threshold: 0.30
+text_threshold: 0.25

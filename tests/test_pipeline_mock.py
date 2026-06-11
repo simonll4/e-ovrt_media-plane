@@ -34,7 +34,7 @@ class TestPipelineMock:
         _create_test_images(images_dir, count=3)
 
         # Cargar un config real y modificar para usar mock
-        config = load_run_config(CONFIGS_DIR / "dbe_cr01_cr02_grounding_dino.yaml")
+        config = load_run_config(CONFIGS_DIR / "runs" / "gdino.yaml")
 
         # Override para testing
         config.model.adapter = "mock"

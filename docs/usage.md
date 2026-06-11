@@ -31,28 +31,41 @@ O usar el script de bootstrap:
 make download-models
 ```
 
-Esto descarga:
-1. **Grounding DINO tiny** desde Hugging Face → `models/grounding-dino/grounding-dino-tiny/`
-2. **YOLOE small** desde Ultralytics → `models/yoloe/yoloe-26s-seg.pt`
+Esto descarga la matriz completa de pesos originales:
+1. **Grounding DINO tiny y base** desde Hugging Face → `models/grounding-dino/original/`
+2. **MM-Grounding-DINO tiny/base/large** (OpenMMLab) desde Hugging Face → `models/mm-grounding-dino/original/`
+3. **YOLOE-26 s/m/l/x** desde Ultralytics release assets → `models/yoloe/original/`
 
-## Dónde poner imágenes
+La fuente oficial y licencia de cada checkpoint están documentadas en la tabla
+de `models/README.md` y en el campo `source` de cada entrada de `configs/models/`.
 
-Colocar imágenes de prueba en:
+Los pesos se organizan por familia y linaje (`original/` vs `finetuned/<tag>/`);
+cada peso tiene su entrada en el catálogo `configs/models/` (ver `models/README.md`).
 
-```
-data/samples/images/
-```
+## Dónde poner imágenes y videos
 
-Formatos soportados: `.jpg`, `.jpeg`, `.png`.
+Colocar imágenes de prueba en `data/samples/images/` (`.jpg`, `.jpeg`, `.png`) y videos en `data/samples/videos/`. Ver los README de cada carpeta para las recomendaciones de curado del mini-dataset.
 
 Para datasets pesados, usar `data/raw/` o `data/datasets/` (ignorados por Git).
 
 ## Ejecutar pipeline
 
+Las run configs viven en `configs/runs/` y componen los catálogos de
+`configs/models/`, `configs/datasets/` y `configs/prompts/` por referencia
+(ver `configs/README.md` para la anatomía completa y cómo armar una nueva).
+
+### Con detector mock (validación sin modelos reales)
+
+```bash
+eovrt-media run --config configs/runs/mock.yaml
+# o
+make run-mock
+```
+
 ### Con Grounding DINO
 
 ```bash
-eovrt-media run --config configs/dbe_grounding_dino_cr01_cr02.yaml
+eovrt-media run --config configs/runs/gdino.yaml
 # o
 make run-gdino
 ```
@@ -60,14 +73,26 @@ make run-gdino
 ### Con YOLOE
 
 ```bash
-eovrt-media run --config configs/dbe_yoloe_cr01_cr02.yaml
+eovrt-media run --config configs/runs/yoloe.yaml
 # o
 make run-yoloe
 ```
 
-### Con detector mock (para testing)
+### Sobre video local
 
-Cambiar `model.adapter` a `mock` en el YAML de configuración.
+```bash
+eovrt-media run --config configs/runs/yoloe_video.yaml
+```
+
+Espera `data/samples/videos/sample.mp4`; el muestreo de frames se controla con `sampling.every_n` / `target_fps` / `max_units`.
+
+### Corridas experimentales
+
+Las configs de la matriz experimental viven en `configs/runs/experiments/` (ver `docs/experimentos/`):
+
+```bash
+eovrt-media run --config configs/runs/experiments/y_e1_yoloe_26s_640.yaml
+```
 
 ## Leer resultados
 
@@ -75,12 +100,17 @@ Cada corrida genera un directorio en `runs/`:
 
 ```
 runs/<run_id>/
-├── effective_config.yaml    # Configuración usada
-├── detections.jsonl         # Una línea JSON por imagen procesada
-├── metrics.jsonl            # Métricas por imagen
+├── run_config.yaml          # Copia de la configuración original
+├── effective_config.yaml    # Configuración efectiva (defaults resueltos)
+├── run_manifest.json        # Metadatos: run_id, fechas, commit del código, archivos
+├── detections.jsonl         # Una línea JSON por unidad procesada
+├── metrics.jsonl            # Métricas por unidad
+├── errors.jsonl             # Errores recuperables
 ├── summary.json             # Resumen de la corrida
 └── previews/                # Imágenes anotadas con bounding boxes
 ```
+
+`summary.json` incluye, además de latencias (avg/p50/p95) y FPS efectivo, el desglose `detections_by_label` / `detections_by_prompt_id` y `gpu_memory_peak_mb` (VRAM máxima observada en la corrida).
 
 ### Ver resumen
 
@@ -99,6 +129,17 @@ head -5 runs/<run_id>/detections.jsonl
 ```bash
 eovrt-media inspect-run runs/<run_id>
 ```
+
+### Comparar corridas
+
+```bash
+eovrt-media compare-runs runs/                      # todas las corridas bajo runs/
+eovrt-media compare-runs runs/<run_a> runs/<run_b>  # corridas específicas
+# o
+make compare-runs
+```
+
+Imprime una tabla comparativa (modelo, device, unidades, detecciones, latencias, FPS, VRAM pico) y el desglose de detecciones por label de cada corrida.
 
 ## Linting y tests
 

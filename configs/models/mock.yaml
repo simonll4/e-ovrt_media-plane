@@ -1,0 +1,8 @@
+# Catálogo de modelos — detector mock (sin pesos, para tests e integración)
+family: mock
+variant: mock
+lineage: original
+description: "Detector sintético sin pesos; valida el pipeline de punta a punta."
+
+adapter: mock
+device: cpu

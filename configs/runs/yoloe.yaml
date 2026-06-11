@@ -1,0 +1,15 @@
+# Corrida de muestra con YOLOE-26s en CPU
+run:
+  scenario: DBE
+  name: dbe_yoloe_cr01_cr02
+  description: "Corrida experimental con YOLOE para CR-01 y CR-02"
+
+source:
+  ref: dataset_v1
+
+model:
+  ref: yoloe/yoloe-26s
+
+prompts:
+  ref: cr01_cr02_v1
+  active_ids: [person, helmet, vest]

@@ -32,6 +32,19 @@ class RunContext:
         self.units_failed = 0
         self.total_detections = 0
         self.errors_count = 0
+        self.detections_by_label: dict[str, int] = {}
+        self.detections_by_prompt_id: dict[str, int] = {}
+        self.gpu_memory_peak_mb = 0.0
+
+    def record_detections(self, detections) -> None:
+        """Acumula conteos de detecciones por label y por prompt_id."""
+        for det in detections:
+            label = det.label or "unknown"
+            self.detections_by_label[label] = self.detections_by_label.get(label, 0) + 1
+            prompt_id = det.prompt_id or "unmatched"
+            self.detections_by_prompt_id[prompt_id] = (
+                self.detections_by_prompt_id.get(prompt_id, 0) + 1
+            )
 
     def finish(self) -> None:
         """Finaliza la corrida registrando el timestamp de fin."""

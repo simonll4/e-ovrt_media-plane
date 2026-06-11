@@ -11,7 +11,12 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 from eovrt_media.models import create_adapter
 from eovrt_media.config import RunConfig
 from eovrt_media.contracts import DetectionEvent, MetricSample, ErrorEvent
-from eovrt_media.metrics import LatencyTracker, get_gpu_memory_allocated_mb
+from eovrt_media.metrics import (
+    LatencyTracker,
+    get_gpu_memory_allocated_mb,
+    get_gpu_memory_peak_mb,
+    reset_gpu_peak_memory,
+)
 from eovrt_media.sources import ImageFolderSource, VideoFileSource, BaseSource
 from eovrt_media.preprocessing import load_image
 from eovrt_media.postprocessing import DetectionNormalizer
@@ -91,6 +96,9 @@ def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
     adapter = create_adapter(config.model)
     console.print(f"[dim]  Modelo/Adaptador: {config.model.name or config.model.adapter}[/dim]")
     console.print(f"[dim]  Dispositivo: {config.model.device}[/dim]\n")
+
+    # Reset del pico de VRAM para que refleje solo esta corrida (incluida la carga del modelo)
+    reset_gpu_peak_memory()
 
     with console.status("[bold cyan]Cargando modelo..."):
         adapter.load()
@@ -277,6 +285,7 @@ def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
                     timer.end_write()
                     run_context.units_processed += 1
                     run_context.total_detections += len(detections)
+                    run_context.record_detections(detections)
 
                 except Exception as e:
                     logger.error(f"Error escribiendo outputs de unidad {unit.unit_id}: {e}")
@@ -300,9 +309,11 @@ def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
         # Cerrar/descargar adaptador
         adapter.close()
 
-    # Finalizar contexto y guardar resumen
+    # Finalizar contexto y guardar resumen + manifiesto
+    run_context.gpu_memory_peak_mb = get_gpu_memory_peak_mb()
     run_context.finish()
     artifact_writer.write_summary(tracker)
+    artifact_writer.write_manifest()
 
     # Imprimir métricas finales por pantalla
     console.print("\n[bold green]✓ Corrida completada[/bold green]")
@@ -310,8 +321,18 @@ def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
     if run_context.units_failed > 0:
         console.print(f"  [red]Fallos/Errores: {run_context.units_failed}[/red]")
     console.print(f"  Detecciones totales: {run_context.total_detections}")
+    if run_context.detections_by_label:
+        by_label = ", ".join(
+            f"{label}: {count}"
+            for label, count in sorted(
+                run_context.detections_by_label.items(), key=lambda kv: -kv[1]
+            )
+        )
+        console.print(f"  Detecciones por label: {by_label}")
     console.print(f"  Latencia promedio: {tracker.avg_latency_ms():.1f} ms")
     console.print(f"  Latencia p95: {tracker.p95_latency_ms():.1f} ms")
+    if run_context.gpu_memory_peak_mb > 0:
+        console.print(f"  VRAM pico: {run_context.gpu_memory_peak_mb:.0f} MB")
     console.print(f"\n  [dim]Resultados guardados en: {run_context.run_dir}[/dim]\n")
 
     return run_context.run_id

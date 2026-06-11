@@ -9,8 +9,8 @@ from eovrt_media.config import load_prompts_file, load_run_config, PromptsFile
 
 CONFIGS_DIR = Path(__file__).parent.parent / "configs"
 PROMPTS_PATH = CONFIGS_DIR / "prompts" / "cr01_cr02_v1.yaml"
-GDINO_CONFIG = CONFIGS_DIR / "dbe_cr01_cr02_grounding_dino.yaml"
-YOLOE_CONFIG = CONFIGS_DIR / "dbe_cr01_cr02_yoloe.yaml"
+GDINO_CONFIG = CONFIGS_DIR / "runs" / "gdino.yaml"
+YOLOE_CONFIG = CONFIGS_DIR / "runs" / "yoloe.yaml"
 
 
 class TestPromptsFile:
@@ -60,7 +60,7 @@ class TestRunConfig:
         config = load_run_config(YOLOE_CONFIG)
         assert config.run.scenario == "DBE"
         assert config.model.adapter in ("yoloe", "yoloe_ultralytics")
-        assert config.model.weights == "models/yoloe/yoloe-26s-seg.pt"
+        assert config.model.weights == "models/yoloe/original/yoloe-26s-seg.pt"
 
     def test_prompts_loaded(self):
         config = load_run_config(GDINO_CONFIG)
