@@ -4,6 +4,13 @@
 
 El plano de medios es el componente de E-OVRT-VDP responsable de la **percepción visual**. Su función es transformar fuentes visuales (imágenes, video) en **evidencia perceptiva normalizada**: detecciones con bounding boxes, labels y confianza.
 
+## Estado operativo
+
+El camino implementado es **DBE en un host**: fuente pulleable, productor en un
+hilo, consumidor en el hilo principal y `TransportAdapter` con backend `memory`.
+Las combinaciones EBE, IPC y red están declaradas y bloqueadas explícitamente.
+Ver [implementation-status.md](implementation-status.md) para la matriz completa.
+
 ## Qué entra y qué sale
 
 ### Entrada
@@ -15,23 +22,30 @@ El plano de medios es el componente de E-OVRT-VDP responsable de la **percepció
 - **`detections.jsonl`**: un evento por unidad visual procesada, con todas las detecciones normalizadas.
 - **`summary.json`**: resumen de la corrida (latencia, conteos, errores).
 - **`metrics.jsonl`**: métricas por unidad visual.
-- **`previews/`**: imágenes anotadas con bounding boxes.
+- **`previews/`**: directorio reservado para imágenes anotadas; el renderizado desde el
+  nuevo payload normalizado sigue pendiente.
 - **`effective_config.yaml`**: configuración efectiva utilizada.
+- **`run_provenance.json`**: identidad del dataset y fingerprint de la fuente.
+- **`run_manifest.json`**: versión de código y lista de artefactos generados.
 
 ## Flujo del pipeline
 
 ```
 RunConfig YAML
     ↓
-Source (ImageFolderSource)
+BaseSource (ImageFolderSource | VideoFileSource)
     ↓
-VisualUnit (imagen + metadata)
+VisualUnit
     ↓
-ModelAdapter.predict(image, prompts)
+Productor: RateGate → normalize_spatial → NormalizedUnit → TransportAdapter.offer()
+                                                   │
+                              memory: deterministic | bounded_freshness
+                                                   │
+Consumidor: TransportAdapter.request() → ModelAdapter.forward() → RawDetection
     ↓
-RawDetection → Detection normalizado
+DetectionNormalizer (reproyección con ResizeTransform) → Detection
     ↓
-Sinks (JSONL, Summary, Previews)
+Sinks: detections.jsonl, metrics.jsonl, summary.json, provenance y errores
 ```
 
 ## Por qué DBE primero
@@ -46,6 +60,7 @@ El escenario **Dataset-Based Evaluation (DBE)** usa archivos locales. Esto permi
 
 Cada modelo OVD (Grounding DINO, YOLOE, etc.) tiene su propia API. Los adaptadores:
 - Implementan una interfaz común (`BaseDetectorAdapter`).
+- Declaran `ModelInputSpec` y reciben `NormalizedUnit` mediante `forward()`.
 - Aíslan las dependencias de cada framework.
 - Permiten intercambiar modelos desde configuración YAML.
 
@@ -53,8 +68,8 @@ Cada modelo OVD (Grounding DINO, YOLOE, etc.) tiene su propia API. Los adaptador
 
 - **Plano de control**: patrones de riesgo (CR-01, CR-02), alertas, persistencia de episodios, motor de estados.
 - **UI / Dashboard**.
-- **Streaming real / MediaMTX**.
-- **Edge Node / despliegue**.
+- **Fuente viva / streaming real / MediaMTX** (la interfaz `LiveSource` está declarada).
+- **Edge Node, IPC y despliegue distribuido** (interfaces declaradas, sin backend).
 - **MOT formal / tracking multi-objeto**.
 - **Fine-tuning / entrenamiento** (los checkpoints finetuneados se entrenan fuera de este repo; acá solo se catalogan como pesos en `models/<familia>/finetuned/` con su entrada en `configs/models/`).
 - **Zonas o reglas espaciales**.

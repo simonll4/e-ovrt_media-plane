@@ -8,9 +8,9 @@ Recomendaciones:
 
 - Para un smoke test, usar un montaje corto (45-60 s) con los cuatro casos:
   casco+chaleco, sin casco, sin chaleco y sin ambos.
-- Para evaluacion, mantener clips separados y cubrir la matriz definida en
-  `docs/relevamiento/2026-06-11-datasets-video-construccion.md`.
-- El muestreo se controla en `sampling.every_n` / `sampling.target_fps` / `sampling.max_units`.
+- Para evaluación, mantener clips separados y documentar las condiciones de cada fuente.
+- El stride se controla con `rate_control.stride` y el límite de unidades con
+  `run.max_units`; `sampling` no es una sección válida.
 - Congelar y documentar origen, licencia, fecha de descarga y SHA-256.
 - Los videos de terceros no se versionan en git. Guardarlos bajo
   `data/raw/video_benchmark_v1/` y versionar solo el manifiesto.
@@ -30,7 +30,7 @@ El manifiesto debe incluir, como minimo:
 | `license` | Licencia aplicable al descargar |
 | `downloaded_at` | Fecha de descarga |
 | `sha256` | Hash del archivo original |
-| `scenario` | `V01` a `V08` segun el relevamiento |
+| `scenario` | Etiqueta libre y estable del escenario de captura |
 | `helmet_state` | `present`, `absent`, `mixed` o `unknown` |
 | `vest_state` | `present`, `absent`, `mixed` o `unknown` |
 | `notes` | Visibilidad, maquinaria, oclusiones y otras dificultades |

@@ -13,15 +13,14 @@ configs/
 ├── datasets/    # catálogo de fuentes: imágenes o video
 ├── prompts/     # catálogo de prompt sets versionados
 └── runs/        # configs ejecutables (componen los catálogos de arriba)
-    └── experiments/   # matriz experimental (ver docs/experimentos/)
 ```
 
 ## Anatomía de una run config
 
 ```yaml
 run:
-  name: p_e1b_yoloe_short_15
-  description: "..."
+  scenario: DBE
+  name: dbe_mock
 
 source:
   ref: dataset_v1              # → configs/datasets/dataset_v1.yaml
@@ -32,7 +31,7 @@ model:
   confidence_threshold: 0.15
 
 prompts:
-  ref: cr01_cr02_v2_short      # → configs/prompts/cr01_cr02_v2_short.yaml
+  ref: cr01_cr02_v1            # → configs/prompts/cr01_cr02_v1.yaml
   active_ids: [person, helmet, vest]
 
 postprocess:                   # secciones opcionales: defaults razonables
@@ -49,6 +48,35 @@ Reglas de resolución:
 - El formato inline completo (sin refs) sigue siendo válido; la config
   efectiva resuelta queda registrada en el manifest de cada run.
 
+## Configuración de despliegue
+
+```yaml
+run:
+  scenario: DBE
+  max_units: null
+
+rate_control:
+  policy: deterministic     # deterministic | bounded_freshness
+  stride: 1                 # solo deterministic
+  max_queue_size: 8         # solo deterministic
+
+transport:
+  backend: memory           # memory implementado; ipc/network declarados
+  payload_format: uint8_rgb # uint8_rgb/fp32 implementados; fp16 declarado
+
+topology:
+  mode: single_host         # single_host implementado; two_node declarado
+```
+
+Los defaults se derivan antes de validar: una fuente `pulleable` usa
+`deterministic`, una `live` usa `bounded_freshness`; `single_host` usa `memory`
+y `two_node` usa `network`.
+
+Los valores declarados pero no disponibles (`live`, `ipc`, `network`, `two_node`,
+`fp16`) fallan de forma explícita al cargar la config. Las entradas de `datasets/`
+incluyen `dataset_id`, `view`, `split`, `vocabulary` y `kind`; esos campos se
+persisten en `run_provenance.json`.
+
 ## Catálogos
 
 **`models/<familia>/<variante>.yaml`** — describe un peso concreto: `family`,
@@ -62,7 +90,7 @@ Convención de nombre para finetunes: `<variante>-ft-<tag>.yaml`.
 
 **`prompts/<nombre>.yaml`** — un `prompt_set` versionado con `id`, `items`
 (id, texto, aliases, rol). Versionar cambios de vocabulario como un set nuevo
-(`*_v2_short`), nunca editar uno ya usado por experimentos.
+(`*_v2`), nunca editar un set ya usado por una corrida registrada.
 
 ## Validar y ejecutar
 

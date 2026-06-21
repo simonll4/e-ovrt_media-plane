@@ -7,12 +7,13 @@ El despliegue del plano de medios se define sobre dos dimensiones ortogonales:
 - **Escenario**: DBE (fuente visual = dataset / archivos) o EBE (fuente visual = cámara / stream RTSP)
 - **Topología**: un solo host o dos nodos distribuidos
 
-Estas dimensiones son independientes. Cualquier combinación es válida:
+Estas dimensiones son independientes. Conceptualmente todas las combinaciones son
+válidas; su disponibilidad en este build es distinta:
 
 | | Un host | Dos nodos |
 |---|---|---|
-| **DBE** | válido — escenario principal | válido — comparación controlada |
-| **EBE** | válido | de valor experimental incierto (*) |
+| **DBE** | **implementado** — escenario principal | declarado — falta backend `network` |
+| **EBE** | declarado — falta fuente `live` | declarado — faltan fuente viva y red |
 
 (*) EBE ya implica alta complejidad de montaje (cámara real, entorno controlado, stream en vivo). Agregar la topología distribuida encima puede no aportar valor experimental suficiente para justificarlo dentro del alcance académico del proyecto. La combinación más informativa para comparar el impacto de la distribución es **DBE un host vs DBE dos nodos**, porque el escenario está completamente controlado y los resultados son reproducibles. EBE distribuido queda como combinación posible pero de prioridad baja.
 
@@ -302,11 +303,19 @@ Protocolo de transporte a definir al implementar (candidatos: ZeroMQ, gRPC). La 
 
 ---
 
-## Estado
+## Estado de implementación
 
-- **Un host — DBE**: a implementar primero. Escenario principal, menor complejidad, base de todos los experimentos. Default `deterministic` (cero descarte, reproducible).
-- **Un host — EBE**: segundo paso. Mismo código, fuente viva, default `bounded_freshness`.
-- **Dos nodos — DBE**: comparación controlada del impacto de la distribución. Implementar una vez estabilizado el pipeline en un host.
-- **Dos nodos — EBE**: prioridad baja. El valor experimental adicional puede no justificar la complejidad de montaje dentro del alcance académico. Evaluar en su momento.
+- **Un host — DBE**: implementado. El productor y consumidor se desacoplan con
+  `TransportAdapter(memory)`; `deterministic` aplica backpressure y `RateGate` mantiene
+  reproducibilidad con stride fijo.
+- **Un host — EBE**: la política `bounded_freshness`, el head-drop y la configuración
+  `source.kind=live` ya existen. Falta `LiveSource` para cámara/RTSP y timestamps de captura
+  que hagan significativa la métrica de frescura.
+- **Dos nodos — DBE**: contratos REQUEST/RESPONSE/HEARTBEAT, `NetworkTransportAdapter` y
+  gating de `topology.mode=two_node` existen; falta implementar serialización, red y reconexión.
+- **Dos nodos — EBE**: combina los pendientes de fuente viva y red; mantiene prioridad baja.
 
-La política de rate control (`deterministic` / `bounded_freshness`) y la política de payload (`payload_format`) son configurables vía YAML, consistente con el diseño config-driven del resto de la plataforma. Para caracterizar el sistema experimentalmente conviene ejecutar ambas políticas de rate control sobre el mismo escenario y medir capacidad, latencia y uso de memoria.
+`ipc`, `network`, `two_node` y `payload_format=fp16` no hacen fallback silencioso: el loader
+o el factory fallan explícitamente. La política de rate control y el formato de payload siguen
+siendo configurables mediante YAML. El detalle operativo y los límites conocidos viven en
+[implementation-status.md](../implementation-status.md).

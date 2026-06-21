@@ -62,6 +62,10 @@ eovrt-media run --config configs/runs/mock.yaml
 make run-mock
 ```
 
+La config `mock.yaml` usa el catálogo `dataset_v1`, cuya ruta es
+`data/samples/images/dataset_v1`. Cree o monte ese directorio con imágenes válidas antes
+de ejecutar la corrida. Si la fuente no existe, el CLI falla al inicio con `FileNotFoundError`.
+
 ### Con Grounding DINO
 
 ```bash
@@ -84,15 +88,9 @@ make run-yoloe
 eovrt-media run --config configs/runs/yoloe_video.yaml
 ```
 
-Espera `data/samples/videos/sample.mp4`; el muestreo de frames se controla con `sampling.every_n` / `target_fps` / `max_units`.
-
-### Corridas experimentales
-
-Las configs de la matriz experimental viven en `configs/runs/experiments/` (ver `docs/experimentos/`):
-
-```bash
-eovrt-media run --config configs/runs/experiments/y_e1_yoloe_26s_640.yaml
-```
+Espera `data/samples/videos/sample.mp4`; el stride se controla con
+`rate_control.stride` y el límite de unidades con `run.max_units`. La sección `sampling`
+ya no es válida y el loader informa cómo migrarla.
 
 ## Leer resultados
 
@@ -106,11 +104,17 @@ runs/<run_id>/
 ├── detections.jsonl         # Una línea JSON por unidad procesada
 ├── metrics.jsonl            # Métricas por unidad
 ├── errors.jsonl             # Errores recuperables
-├── summary.json             # Resumen de la corrida
-└── previews/                # Imágenes anotadas con bounding boxes
+├── summary.json             # Resumen v2 y descriptor de despliegue
+├── run_provenance.json      # Dataset, vocabulario y fingerprint de la fuente
+└── previews/                # Directorio reservado para previews
 ```
 
-`summary.json` incluye, además de latencias (avg/p50/p95) y FPS efectivo, el desglose `detections_by_label` / `detections_by_prompt_id` y `gpu_memory_peak_mb` (VRAM máxima observada en la corrida).
+`summary.json` incluye latencias avg/p50/p95/p99, FPS efectivo, descartes, espera de
+backpressure, `run_descriptor`, desglose por label/prompt y VRAM máxima. `metrics.jsonl`
+usa `media.metric.v2` e incluye latencia de normalización.
+
+El directorio `previews/` se crea si está habilitado en outputs; el renderizado de previews
+desde el nuevo payload normalizado sigue pendiente.
 
 ### Ver resumen
 

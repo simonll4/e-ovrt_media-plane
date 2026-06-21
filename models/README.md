@@ -48,8 +48,6 @@ en el campo `source` de cada entrada de `configs/models/`):
 
 Documentación de referencia: [Ultralytics YOLOE](https://docs.ultralytics.com/models/yoloe/)
 y [Transformers Grounding DINO](https://huggingface.co/docs/transformers/model_doc/grounding-dino).
-Ver `docs/contexto/referencias-modelos.md` para el detalle completo de fuentes
-verificadas.
 
 **Sobre MM-Grounding-DINO**: son re-entrenamientos abiertos de la arquitectura
 Grounding DINO publicados por OpenMMLab (proyecto
@@ -65,12 +63,6 @@ Usan el mismo adapter `grounding_dino` (transformers >= 4.50, model_type
 de Grounding DINO para EPP/PPE en HF Hub (búsquedas "grounding dino ppe/safety/
 helmet" sin resultados verificables). Si aparecen, catalogarlos bajo
 `finetuned/<tag>/` previa verificación de licencia y calidad.
-
-**No descargados (fuera del alcance local)**: Grounding DINO 1.5 Edge y
-1.5/1.6 Pro (corridas G-E3/G-E4 de la matriz) se distribuyen únicamente vía
-API de DeepDataSpace ([IDEA-Research/Grounding-DINO-1.5-API](https://github.com/IDEA-Research/Grounding-DINO-1.5-API));
-no hay pesos públicos descargables, quedan como referencia experimental
-opcional según `docs/contexto/referencias-modelos.md`.
 
 Las variantes prompt-free de YOLOE (`yoloe-26*-seg-pf.pt`) existen en la misma
 fuente de Ultralytics pero no se descargan: el proyecto prioriza evaluación
