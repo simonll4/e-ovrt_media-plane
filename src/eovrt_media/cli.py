@@ -37,6 +37,35 @@ def run(
     run_pipeline(run_config, console=console)
 
 
+@app.command(name="run-producer")
+def run_producer(
+    config: Path = typer.Option(
+        ..., "--config", "-c", help="Config YAML (topology=two_node).", exists=True, readable=True
+    ),
+) -> None:
+    """Nodo A: ingesta + normalización + servidor de red ZeroMQ."""
+    from eovrt_media.config import load_run_config
+    from eovrt_media.runtime.two_node import run_node_a
+
+    console.print("\n[bold cyan]E-OVRT Media Plane — Nodo A (producer)[/bold cyan]")
+    run_node_a(load_run_config(config), console=console)
+
+
+@app.command(name="run-consumer")
+def run_consumer(
+    config: Path = typer.Option(
+        ..., "--config", "-c", help="Config YAML (topology=two_node).", exists=True, readable=True
+    ),
+) -> None:
+    """Nodo B: cliente de red ZeroMQ + inferencia + artefactos."""
+    from eovrt_media.config import load_run_config
+    from eovrt_media.runtime.two_node import run_node_b
+
+    console.print("\n[bold cyan]E-OVRT Media Plane — Nodo B (consumer)[/bold cyan]")
+    run_id = run_node_b(load_run_config(config), console=console)
+    console.print(f"[green]✓ Corrida completada:[/green] {run_id}")
+
+
 @app.command(name="validate-config")
 def validate_config(
     config: Path = typer.Option(

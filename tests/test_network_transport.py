@@ -1,14 +1,13 @@
 """NetworkTransportAdapter sobre ZeroMQ en loopback (mismo proceso, dos hilos)."""
 from __future__ import annotations
 
-import threading
-
 import numpy as np
 import pytest
 
 from eovrt_media.contracts.normalized_unit import (
     END, NormalizedUnit, PayloadFormat, ResizeTransform,
 )
+from eovrt_media.transport.factory import create_transport
 from eovrt_media.transport.network import NetworkTransportAdapter
 
 
@@ -74,6 +73,21 @@ def test_invalid_role_raises_value_error(endpoint):
         NetworkTransportAdapter(role="invalid", endpoint=endpoint)
 
 
+def test_factory_forwards_heartbeat_settings(endpoint):
+    producer = create_transport(
+        backend="network",
+        role="producer",
+        endpoint=endpoint,
+        heartbeat_interval_ms=250,
+        heartbeat_timeout_ms=750,
+    )
+
+    assert producer.heartbeat_interval_ms == 250
+    assert producer.heartbeat_timeout_ms == 750
+
+    producer.shutdown()
+
+
 def test_producer_tracks_peer_activity(endpoint):
     producer = NetworkTransportAdapter(
         role="producer", endpoint=endpoint, policy="bounded_freshness",
@@ -88,3 +102,19 @@ def test_producer_tracks_peer_activity(endpoint):
 
     consumer.shutdown()
     producer.shutdown()
+
+
+def test_producer_shutdown_stops_server_after_consumer_stops_early(endpoint):
+    producer = NetworkTransportAdapter(
+        role="producer", endpoint=endpoint, policy="bounded_freshness", buffer_size=4
+    )
+    consumer = NetworkTransportAdapter(role="consumer", endpoint=endpoint)
+
+    producer.offer(_unit(0))
+    producer.close()
+    assert consumer.request().unit_id == "frame_000000"
+
+    consumer.shutdown()
+    producer.shutdown()
+
+    assert producer._server.is_alive() is False

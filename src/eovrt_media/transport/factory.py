@@ -36,5 +36,7 @@ def create_transport(
             policy=policy,
             buffer_size=buffer_size,
             max_staleness_ms=max_staleness_ms,
+            heartbeat_interval_ms=kwargs.get("heartbeat_interval_ms", 1000),
+            heartbeat_timeout_ms=kwargs.get("heartbeat_timeout_ms", 5000),
         )
     raise ValueError(f"backend desconocido: {backend!r}. Opciones: memory, ipc, network.")

@@ -49,10 +49,15 @@ class NetworkTransportAdapter(TransportAdapter):
                 policy=policy, buffer_size=buffer_size, max_staleness_ms=max_staleness_ms
             )
             self.units_dropped = 0
-            self._sock = self._ctx.socket(zmq.REP)
-            self._sock.bind(endpoint)
+            self._closed = False
+            self._shutdown_event = threading.Event()
+            self._server_ready = threading.Event()
+            self._server_error: Exception | None = None
             self._server = threading.Thread(target=self._serve, name="net-rep-server", daemon=True)
             self._server.start()
+            self._server_ready.wait()
+            if self._server_error is not None:
+                raise self._server_error
         else:
             self._sock = self._ctx.socket(zmq.REQ)
             self._sock.connect(endpoint)
@@ -64,20 +69,41 @@ class NetworkTransportAdapter(TransportAdapter):
 
     def close(self) -> None:
         """Señala fin de stream al buffer; el server enviará END a los REQUEST."""
-        self._buffer.close()
+        if self.role == "producer" and not self._closed:
+            self._buffer.close()
+            self._closed = True
 
     def _serve(self) -> None:
         """Hilo REP: por cada REQUEST entrega el frame más antiguo o END."""
-        while True:
-            msg = self._sock.recv()
-            self._last_peer_activity = time.monotonic()
-            if not is_control(msg):
-                continue  # solo REQUEST/HEARTBEAT esperados del consumidor
-            item = self._buffer.request()  # bloquea hasta frame o END
-            if item is END:
-                self._sock.send(END_MSG)
-                return
-            self._sock.send(serialize_unit(item))
+        sock = self._ctx.socket(zmq.REP)
+        try:
+            sock.bind(self.endpoint)
+        except Exception as exc:
+            self._server_error = exc
+            self._server_ready.set()
+            sock.close(linger=0)
+            return
+
+        self._server_ready.set()
+        poller = zmq.Poller()
+        poller.register(sock, zmq.POLLIN)
+        try:
+            while not self._shutdown_event.is_set():
+                if sock not in dict(poller.poll(timeout=100)):
+                    continue
+                msg = sock.recv()
+                self._last_peer_activity = time.monotonic()
+                if not is_control(msg):
+                    sock.send(END_MSG)
+                    continue
+                item = self._buffer.request()  # bloquea hasta frame o END
+                if item is END:
+                    sock.send(END_MSG)
+                    return
+                sock.send(serialize_unit(item))
+        finally:
+            poller.unregister(sock)
+            sock.close(linger=0)
 
     def is_peer_alive(self) -> bool:
         """True si el consumidor mostró actividad dentro del timeout (lado productor)."""
@@ -85,6 +111,12 @@ class NetworkTransportAdapter(TransportAdapter):
             return False
         elapsed_ms = (time.monotonic() - self._last_peer_activity) * 1000.0
         return elapsed_ms <= self.heartbeat_timeout_ms
+
+    def wait_for_consumer(self) -> None:
+        """Espera a que el consumidor reciba END y el servidor REP termine."""
+        if self.role != "producer":
+            raise ValueError("wait_for_consumer solo está disponible para el productor.")
+        self._server.join()
 
     # --- consumidor ---
 
@@ -97,8 +129,11 @@ class NetworkTransportAdapter(TransportAdapter):
 
     def shutdown(self) -> None:
         """Cierra socket y, en producer, espera el hilo servidor."""
-        if self.role == "producer" and self._server.is_alive():
+        if self.role == "producer":
+            self.close()
+            self._shutdown_event.set()
             self._server.join(timeout=5.0)
+            return
         self._sock.close(linger=0)
 
     @property
