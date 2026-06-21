@@ -43,6 +43,7 @@ class NormalizedUnit(BaseModel):
     run_id: str | None = None
     unit_id: str
     source_id: str | None = None
+    source_path: str | None = None
     frame_index: int | None = None
     timestamp_ms: float | None = None
 

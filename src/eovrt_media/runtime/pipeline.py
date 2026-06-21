@@ -26,6 +26,7 @@ from eovrt_media.runtime.run_context import RunContext
 from eovrt_media.sinks import RunArtifactWriter
 from eovrt_media.sources import BaseSource, ImageFolderSource, VideoFileSource
 from eovrt_media.transport import RateGate, create_transport
+from eovrt_media.visualize import draw_detections
 
 logger = logging.getLogger(__name__)
 
@@ -272,6 +273,17 @@ def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
                             source_path=item.source_id,
                         )
                     )
+                    if (
+                        config.outputs.save_previews
+                        and detections
+                        and item.source_path
+                        and item.frame_index is None
+                        and run_context.units_processed < config.outputs.preview_max
+                    ):
+                        preview_path = (
+                            run_context.run_dir / "previews" / f"{item.unit_id}.preview.jpg"
+                        )
+                        draw_detections(item.source_path, detections, preview_path)
                     artifact_writer.write_metric(
                         MetricSample(
                             run_id=run_context.run_id,

@@ -126,12 +126,13 @@ class TestPipelineMock:
         config_path = run_dir / "effective_config.yaml"
         assert config_path.exists()
 
-    def test_creates_previews(self, mock_config):
-        """Se generan previews anotadas."""
+    def test_creates_annotated_preview(self, mock_config):
+        """Las detecciones generan al menos una preview anotada legible."""
         run_id = run_pipeline(mock_config)
         run_dir = Path(mock_config.output.base_dir) / run_id
 
         previews_dir = run_dir / "previews"
         assert previews_dir.exists()
-        # Puede haber 0 previews si el mock no generó detecciones para alguna imagen,
-        # pero al menos el directorio debe existir.
+        previews = list(previews_dir.glob("*.preview.jpg"))
+        assert previews
+        assert cv2.imread(str(previews[0])) is not None
