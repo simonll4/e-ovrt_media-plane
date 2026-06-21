@@ -72,6 +72,14 @@ def test_probe_rejects_zero_frames() -> None:
         probe_rtsp.probe(Path("dummy-config.yaml"), frames=0)
 
 
+def test_build_parser_requires_config_and_defaults_frames_to_thirty() -> None:
+    parser = probe_rtsp.build_parser()
+
+    assert parser.parse_args(["--config", "local.yaml"]).frames == 30
+    with pytest.raises(SystemExit):
+        parser.parse_args([])
+
+
 def test_probe_suppresses_rtsp_logger_credentials(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -86,6 +94,8 @@ def test_probe_suppresses_rtsp_logger_credentials(
         )
     )
     rtsp_logger = logging.getLogger("eovrt_media.sources.rtsp_source")
+    original_disabled = rtsp_logger.disabled
+    rtsp_logger.disabled = False
 
     class FakeRtspSource:
         def __init__(self, **_kwargs: object) -> None:
@@ -98,7 +108,11 @@ def test_probe_suppresses_rtsp_logger_credentials(
     monkeypatch.setattr(probe_rtsp, "load_run_config", lambda _path: config)
     monkeypatch.setattr(probe_rtsp, "RtspSource", FakeRtspSource)
 
-    with pytest.raises(ConnectionError):
-        probe_rtsp.probe(Path("dummy-config.yaml"), frames=1)
+    try:
+        with pytest.raises(ConnectionError):
+            probe_rtsp.probe(Path("dummy-config.yaml"), frames=1)
 
-    assert raw_url not in caplog.text
+        assert raw_url not in caplog.text
+        assert rtsp_logger.disabled is False
+    finally:
+        rtsp_logger.disabled = original_disabled

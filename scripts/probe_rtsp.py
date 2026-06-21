@@ -81,11 +81,15 @@ def probe(config_path: Path, frames: int) -> ProbeResult:
     )
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Probe a configured RTSP source.")
     parser.add_argument("--config", type=Path, required=True)
-    parser.add_argument("--frames", type=int, required=True)
-    args = parser.parse_args()
+    parser.add_argument("--frames", type=int, default=30)
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
 
     try:
         result = probe(args.config, args.frames)
