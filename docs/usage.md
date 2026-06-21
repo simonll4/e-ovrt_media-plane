@@ -113,8 +113,8 @@ runs/<run_id>/
 backpressure, `run_descriptor`, desglose por label/prompt y VRAM máxima. `metrics.jsonl`
 usa `media.metric.v2` e incluye latencia de normalización.
 
-El directorio `previews/` se crea si está habilitado en outputs; el renderizado de previews
-desde el nuevo payload normalizado sigue pendiente.
+Con `save_previews: true`, el pipeline renderiza previews anotadas para fuentes de imagen.
+La renderización de previews de frames de vídeo sigue pendiente.
 
 ### Ver resumen
 

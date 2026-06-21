@@ -110,7 +110,7 @@ mostrar descriptor, métricas y procedencia.
 | Dos nodos | `NetworkTransportAdapter`, contratos de red y gating de topología | Serialización de `NormalizedUnit`, REQUEST/RESPONSE/HEARTBEAT y reconexión. |
 | FP16 | `PayloadFormat.FP16` y gating | Conversión y transporte de media precisión. |
 | Métrica de staleness observada | Campo en `RunContext` y `summary.json` | Medir edad con timestamps de captura de una fuente viva. |
-| Previews anotadas | Directorio `previews/` y contrato de detecciones | Conservar una referencia renderizable de origen en `NormalizedUnit` o renderizar desde payload. |
+| Previews anotadas de imágenes | `source_path` en `NormalizedUnit` y `draw_detections()` | Implementadas para `ImageFolderSource`; falta extraer y renderizar frames de vídeo. |
 | Preparación tensorial compartida | `prepare_model_input()` | Adaptar GDINO/YOLOE para consumirla directamente cuando se valide paridad por backend. |
 
 ## Operación y validación

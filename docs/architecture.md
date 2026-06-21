@@ -22,8 +22,8 @@ Ver [implementation-status.md](implementation-status.md) para la matriz completa
 - **`detections.jsonl`**: un evento por unidad visual procesada, con todas las detecciones normalizadas.
 - **`summary.json`**: resumen de la corrida (latencia, conteos, errores).
 - **`metrics.jsonl`**: métricas por unidad visual.
-- **`previews/`**: directorio reservado para imágenes anotadas; el renderizado desde el
-  nuevo payload normalizado sigue pendiente.
+- **`previews/`**: imágenes anotadas para fuentes de imagen; la renderización de frames de
+  vídeo sigue pendiente.
 - **`effective_config.yaml`**: configuración efectiva utilizada.
 - **`run_provenance.json`**: identidad del dataset y fingerprint de la fuente.
 - **`run_manifest.json`**: versión de código y lista de artefactos generados.
