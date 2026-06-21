@@ -1,6 +1,7 @@
 """Tests for the credential-safe RTSP probe script."""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -69,3 +70,35 @@ def test_probe_reads_requested_frames_with_sanitized_endpoint(monkeypatch: pytes
 def test_probe_rejects_zero_frames() -> None:
     with pytest.raises(ValueError, match="frames"):
         probe_rtsp.probe(Path("dummy-config.yaml"), frames=0)
+
+
+def test_probe_suppresses_rtsp_logger_credentials(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    raw_url = "rtsp://camera_user:camera_password@example.test:8554/live"
+    config = SimpleNamespace(
+        source=SimpleNamespace(
+            type="rtsp",
+            url=raw_url,
+            path="unused-fallback",
+            reconnect_retries=1,
+            reconnect_delay_ms=0,
+        )
+    )
+    rtsp_logger = logging.getLogger("eovrt_media.sources.rtsp_source")
+
+    class FakeRtspSource:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def __iter__(self):
+            rtsp_logger.warning("RTSP connection failed: %s", raw_url)
+            raise ConnectionError("connection failed")
+
+    monkeypatch.setattr(probe_rtsp, "load_run_config", lambda _path: config)
+    monkeypatch.setattr(probe_rtsp, "RtspSource", FakeRtspSource)
+
+    with pytest.raises(ConnectionError):
+        probe_rtsp.probe(Path("dummy-config.yaml"), frames=1)
+
+    assert raw_url not in caplog.text

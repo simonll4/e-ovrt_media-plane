@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from time import perf_counter
 from urllib.parse import urlsplit
@@ -48,17 +49,23 @@ def probe(config_path: Path, frames: int) -> ProbeResult:
         max_units=frames,
     )
 
-    started = perf_counter()
-    iterator = iter(source)
     last_unit = None
     frames_read = 0
-    for _ in range(frames):
-        try:
-            last_unit = next(iterator)
-        except StopIteration:
-            break
-        frames_read += 1
-    elapsed_seconds = perf_counter() - started
+    rtsp_logger = logging.getLogger("eovrt_media.sources.rtsp_source")
+    logger_was_disabled = rtsp_logger.disabled
+    rtsp_logger.disabled = True
+    try:
+        started = perf_counter()
+        iterator = iter(source)
+        for _ in range(frames):
+            try:
+                last_unit = next(iterator)
+            except StopIteration:
+                break
+            frames_read += 1
+        elapsed_seconds = perf_counter() - started
+    finally:
+        rtsp_logger.disabled = logger_was_disabled
 
     if last_unit is None:
         raise RuntimeError(f"RTSP source returned {frames_read} of {frames} requested frames")
