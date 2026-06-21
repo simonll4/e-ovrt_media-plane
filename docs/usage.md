@@ -92,6 +92,21 @@ Espera `data/samples/videos/sample.mp4`; el stride se controla con
 `rate_control.stride` y el límite de unidades con `run.max_units`. La sección `sampling`
 ya no es válida y el loader informa cómo migrarla.
 
+### Cámara RTSP con YOLOE en GPU (single-host)
+
+Guarde las configuraciones operativas locales en `configs/runs/local/`; este directorio
+está ignorado por Git. La URI RTSP no debe versionarse ni incluirse en tickets. Para la
+cámara, use el modelo `yoloe/yoloe-26s` con `device: cuda:0`, `source.type: rtsp` y
+`rate_control.policy: bounded_freshness`.
+
+```bash
+python scripts/probe_rtsp.py --config configs/runs/local/ezviz_yoloe_rtsp.yaml --frames 30
+eovrt-media run --config configs/runs/local/ezviz_yoloe_rtsp.yaml
+```
+
+Los archivos `effective_config.yaml` y `detections.jsonl` conservan la ruta de la fuente:
+manténgalos locales o elimine esa información antes de compartirlos.
+
 ## Leer resultados
 
 Cada corrida genera un directorio en `runs/`:
