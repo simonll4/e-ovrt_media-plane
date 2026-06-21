@@ -139,6 +139,57 @@ class TestPipelineMock:
         assert previews
         assert cv2.imread(str(previews[0])) is not None
 
+    def test_live_source_with_type_error_len_runs(self, tmp_path, monkeypatch):
+        """Una fuente cuyo __len__ lanza TypeError corre sin romper el pipeline ni el progreso."""
+        from eovrt_media.sources.video_file_source import VideoFileSource
+        from eovrt_media.runtime import pipeline as pipeline_module
+
+        # Crear un video de prueba en disco (para que load_image pueda leerlo)
+        video_path = tmp_path / "stream.mp4"
+        writer = cv2.VideoWriter(
+            str(video_path), cv2.VideoWriter_fourcc(*"mp4v"), 5.0, (64, 48)
+        )
+        for i in range(6):
+            writer.write(np.full((48, 64, 3), i * 10, dtype=np.uint8))
+        writer.release()
+
+        class _LiveLikeSource(VideoFileSource):
+            """VideoFileSource que finge ser viva lanzando TypeError en __len__."""
+
+            def __len__(self) -> int:
+                raise TypeError("live stream has no defined length")
+
+        # Sustituir create_source para devolver una fuente cuyo __len__ lanza TypeError
+        # — simula el contrato de fuente viva (RtspSource, OakDSource) sin RTSP real.
+        def fake_create_source(config):
+            return _LiveLikeSource(
+                video_path=str(video_path),
+                every_n=1,
+                target_fps=None,
+                max_units=config.run.max_units,
+            )
+
+        monkeypatch.setattr(pipeline_module, "create_source", fake_create_source)
+
+        config = load_run_config(CONFIGS_DIR / "runs" / "mock.yaml")
+        config.model.adapter = "mock"
+        config.source.type = "rtsp"
+        config.source.url = "rtsp://fake/stream"
+        config.source.kind = "live"
+        config.rate_control.policy = "bounded_freshness"
+        config.run.max_units = 4
+        config.outputs.base_dir = str(tmp_path / "runs")
+        config.outputs.run_dir = str(tmp_path / "runs")
+        config.outputs.save_previews = False
+
+        run_id = run_pipeline(config)
+        summary = json.loads(
+            (Path(config.outputs.base_dir) / run_id / "summary.json").read_text()
+        )
+        total = summary["units_processed"] + summary["units_failed"] + summary["units_dropped"]
+        assert total <= 4
+        assert summary["units_processed"] >= 1
+
     def test_detections_reprojected_to_original_image_space(self, tmp_path, monkeypatch):
         """Boxes de adapter.forward() se reproyectan del espacio-modelo al espacio original.
 

@@ -48,9 +48,25 @@ def create_source(config: RunConfig) -> BaseSource:
             target_fps=None,
             max_units=config.run.max_units,
         )
+    if source_type == "rtsp":
+        from eovrt_media.sources import RtspSource
+
+        return RtspSource(
+            url=config.source.url or config.source.path,
+            reconnect_retries=config.source.reconnect_retries,
+            reconnect_delay_ms=config.source.reconnect_delay_ms,
+            max_units=config.run.max_units,
+        )
+    if source_type == "oak_d":
+        from eovrt_media.sources import OakDSource
+
+        return OakDSource(
+            url=config.source.url or config.source.path,
+            max_units=config.run.max_units,
+        )
     raise ValueError(
         f"Tipo de fuente '{source_type}' no soportado o no implementado. "
-        "Usar image_folder o video_file."
+        "Usar image_folder, video_file, rtsp u oak_d."
     )
 
 
@@ -131,7 +147,12 @@ def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
         artifact_writer.write_effective_config()
 
         source = create_source(config)
-        source_count = len(source)
+        try:
+            source_count = len(source)
+            progress_total: int | None = source_count if source_count >= 0 else None
+        except TypeError:
+            source_count = -1
+            progress_total = None
         prompt_texts = config.get_prompt_texts()
         prompt_items = config.get_prompt_items()
         prompt_version = config.prompts_file.resolved_version if config.prompts_file else "unknown"
@@ -180,7 +201,7 @@ def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
             TaskProgressColumn(),
             console=console,
         ) as progress:
-            task = progress.add_task("Procesando unidades visuales...", total=source_count)
+            task = progress.add_task("Procesando unidades visuales...", total=progress_total)
             while True:
                 item = transport.request()
                 producer_errors = _drain_producer_errors(
