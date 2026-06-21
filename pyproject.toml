@@ -16,6 +16,8 @@ dependencies = [
     "rich",
     "huggingface_hub",
     "ultralytics",
+    "pyzmq",
+    "msgpack",
 ]
 
 [project.optional-dependencies]
