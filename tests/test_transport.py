@@ -8,7 +8,7 @@ from eovrt_media.contracts.normalized_unit import (
 )
 from eovrt_media.transport.memory import MemoryTransportAdapter
 from eovrt_media.transport.rate_gate import RateGate
-from eovrt_media.transport.declared import IpcTransportAdapter, NetworkTransportAdapter
+from eovrt_media.transport.declared import IpcTransportAdapter
 
 
 def _make_unit(uid: str) -> NormalizedUnit:
@@ -111,11 +111,6 @@ class TestDeclaredStubs:
         adapter = IpcTransportAdapter()
         with pytest.raises(NotImplementedError, match="ipc"):
             adapter.offer(_make_unit("u_1"))
-
-    def test_network_request_raises(self):
-        adapter = NetworkTransportAdapter(endpoint="tcp://localhost:5555")
-        with pytest.raises(NotImplementedError, match="network"):
-            adapter.request()
 
 
 # Suite agnóstica de backend — ejecutar contra memory; misma suite valida futuros backends

@@ -22,24 +22,3 @@ class IpcTransportAdapter(TransportAdapter):
 
     def close(self) -> None:
         raise NotImplementedError("backend=ipc no implementado.")
-
-
-class NetworkTransportAdapter(TransportAdapter):
-    """Backend ZeroMQ REQ/REP + heartbeat ZMTP — declarado, no implementado."""
-
-    def __init__(self, endpoint: str) -> None:
-        self.endpoint = endpoint
-
-    def offer(self, unit: NormalizedUnit) -> None:
-        raise NotImplementedError(
-            "backend=network (ZeroMQ) está declarado pero no implementado. "
-            "Se implementa junto con topology=two_node."
-        )
-
-    def request(self, **kwargs) -> NormalizedUnit | type[END]:
-        raise NotImplementedError(
-            "backend=network está declarado pero no implementado."
-        )
-
-    def close(self) -> None:
-        raise NotImplementedError("backend=network no implementado.")
