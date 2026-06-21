@@ -25,6 +25,7 @@ class UnitTimingResult:
     unit_id: str
     read_ms: float = 0.0
     preprocess_ms: float = 0.0
+    normalize_ms: float = 0.0
     inference_ms: float = 0.0
     postprocess_ms: float = 0.0
     write_ms: float = 0.0
@@ -43,6 +44,10 @@ class UnitTimer:
 
         self.preprocess_start = None
         self.preprocess_end = None
+
+        self.normalize_start = None
+        self.normalize_end = None
+        self._normalize_ms = 0.0
 
         self.inference_start = None
         self.inference_end = None
@@ -64,6 +69,16 @@ class UnitTimer:
 
     def end_preprocess(self) -> None:
         self.preprocess_end = time.perf_counter()
+
+    def start_normalize(self) -> None:
+        self.normalize_start = time.perf_counter()
+
+    def end_normalize(self) -> None:
+        self.normalize_end = time.perf_counter()
+
+    def record_normalize_ms(self, duration_ms: float) -> None:
+        """Registra normalización medida en el hilo productor."""
+        self._normalize_ms = duration_ms
 
     def start_inference(self) -> None:
         self.inference_start = time.perf_counter()
@@ -96,6 +111,7 @@ class UnitTimer:
 
         read = (self.read_end - self.read_start) * 1000.0 if (self.read_start and self.read_end) else 0.0
         prep = (self.preprocess_end - self.preprocess_start) * 1000.0 if (self.preprocess_start and self.preprocess_end) else 0.0
+        norm = (self.normalize_end - self.normalize_start) * 1000.0 if (self.normalize_start and self.normalize_end) else self._normalize_ms
         inf = (self.inference_end - self.inference_start) * 1000.0 if (self.inference_start and self.inference_end) else 0.0
         post = (self.postprocess_end - self.postprocess_start) * 1000.0 if (self.postprocess_start and self.postprocess_end) else 0.0
         write = (self.write_end - self.write_start) * 1000.0 if (self.write_start and self.write_end) else 0.0
@@ -108,6 +124,7 @@ class UnitTimer:
             unit_id=self.unit_id,
             read_ms=round(read, 2),
             preprocess_ms=round(prep, 2),
+            normalize_ms=round(norm, 2),
             inference_ms=round(inf, 2),
             postprocess_ms=round(post, 2),
             write_ms=round(write, 2),
@@ -172,3 +189,11 @@ class LatencyTracker:
         idx = int(len(sorted_lat) * 0.95)
         idx = min(idx, len(sorted_lat) - 1)
         return sorted_lat[idx]
+
+    def p99_latency_ms(self) -> float:
+        """Percentil 99 de latencia."""
+        latencies = self.get_latencies_ms()
+        if not latencies:
+            return 0.0
+        sorted_lat = sorted(latencies)
+        return sorted_lat[min(int(len(sorted_lat) * 0.99), len(sorted_lat) - 1)]

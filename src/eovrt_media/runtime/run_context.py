@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import queue
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -35,6 +36,10 @@ class RunContext:
         self.detections_by_label: dict[str, int] = {}
         self.detections_by_prompt_id: dict[str, int] = {}
         self.gpu_memory_peak_mb = 0.0
+        self.units_dropped = 0
+        self.backpressure_wait_ms = 0.0
+        self.max_staleness_observed_ms = 0.0
+        self._errors_queue: queue.SimpleQueue = queue.SimpleQueue()
 
     def record_detections(self, detections) -> None:
         """Acumula conteos de detecciones por label y por prompt_id."""

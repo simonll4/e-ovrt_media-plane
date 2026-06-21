@@ -6,11 +6,13 @@ import logging
 import warnings
 from pathlib import Path
 
+import numpy as np
 import torch
 from PIL import Image
 from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
 
 from eovrt_media.contracts.detection import RawDetection
+from eovrt_media.contracts.normalized_unit import NormalizedUnit
 from eovrt_media.models.base import BaseDetectorAdapter, ModelInputSpec
 
 logger = logging.getLogger(__name__)
@@ -127,6 +129,13 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
             )
 
         return detections
+
+    def forward(self, unit: NormalizedUnit, prompts: list[str]) -> list[RawDetection]:
+        """Ejecuta la inferencia desde el payload normalizado del canal."""
+        payload = unit.payload
+        if payload.dtype != np.uint8:
+            payload = np.clip(payload * 255.0, 0, 255).astype(np.uint8)
+        return self.predict(Image.fromarray(payload), prompts)
 
     @property
     def input_spec(self) -> ModelInputSpec:

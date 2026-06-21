@@ -10,6 +10,7 @@ from eovrt_media.contracts.normalized_unit import (
     NormalizedUnit, PayloadFormat, ResizeTransform
 )
 from eovrt_media.models.base import ModelInputSpec
+from eovrt_media.preprocessing.image_loader import load_image
 
 
 def _letterbox(
@@ -50,11 +51,8 @@ def normalize_spatial(
             "implement it together with the backend network."
         )
 
-    # Cargar imagen en RGB
-    img_bgr = cv2.imread(unit.path)
-    if img_bgr is None:
-        raise FileNotFoundError(f"No se pudo leer la imagen: {unit.path}")
-    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    # ``load_image`` centraliza tanto imágenes como extracción de frames de vídeo.
+    img_rgb = np.asarray(load_image(unit))
 
     target_h, target_w = spec.target_size
 

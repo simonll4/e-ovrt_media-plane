@@ -80,6 +80,28 @@ class TestNormalizeSpatial:
         result = normalize_spatial(unit, spec, PayloadFormat.UINT8_RGB)
         assert result.run_id == "test_run_123"
 
+    def test_video_frame_is_decoded_before_normalization(self, tmp_path):
+        video_path = tmp_path / "sample.avi"
+        writer = cv2.VideoWriter(
+            str(video_path), cv2.VideoWriter_fourcc(*"MJPG"), 10.0, (64, 48)
+        )
+        writer.write(np.full((48, 64, 3), 127, dtype=np.uint8))
+        writer.release()
+        unit = VisualUnit(
+            unit_id="frame_000000",
+            source_type="video_frame",
+            frame_index=0,
+            width=64,
+            height=48,
+            path=str(video_path),
+        )
+
+        result = normalize_spatial(
+            unit, ModelInputSpec(target_size=(64, 64)), PayloadFormat.UINT8_RGB
+        )
+
+        assert result.payload.shape == (64, 64, 3)
+
 
 class TestPrepareModelInput:
     def test_output_tensor_shape(self, tmp_path):

@@ -1,115 +1,177 @@
-"""Pipeline principal del plano de medios — orquestación DBE."""
+"""Pipeline del plano de medios con productor/consumidor desacoplados."""
 
 from __future__ import annotations
 
 import logging
-from pathlib import Path
+import queue
+import threading
+import time
 
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
-from eovrt_media.models import create_adapter
 from eovrt_media.config import RunConfig
-from eovrt_media.contracts import DetectionEvent, MetricSample, ErrorEvent
+from eovrt_media.contracts import DetectionEvent, ErrorEvent, MetricSample
+from eovrt_media.contracts.normalized_unit import END, PayloadFormat
 from eovrt_media.metrics import (
     LatencyTracker,
     get_gpu_memory_allocated_mb,
     get_gpu_memory_peak_mb,
     reset_gpu_peak_memory,
 )
-from eovrt_media.sources import ImageFolderSource, VideoFileSource, BaseSource
-from eovrt_media.preprocessing import load_image
+from eovrt_media.models import create_adapter
 from eovrt_media.postprocessing import DetectionNormalizer
-from eovrt_media.sinks import RunArtifactWriter
+from eovrt_media.preprocessing import normalize_spatial
 from eovrt_media.runtime.run_context import RunContext
-from eovrt_media.visualize import draw_detections
+from eovrt_media.sinks import RunArtifactWriter
+from eovrt_media.sources import BaseSource, ImageFolderSource, VideoFileSource
+from eovrt_media.transport import RateGate, create_transport
 
 logger = logging.getLogger(__name__)
 
 
 def create_source(config: RunConfig) -> BaseSource:
-    """Crea una fuente visual según la configuración de corrida."""
+    """Crea una fuente; RateGate aplica el stride después de la ingesta."""
     source_type = config.source.type.lower().strip()
     if source_type == "image_folder":
         return ImageFolderSource(
             folder_path=config.source.path,
             extensions=config.source.extensions,
-            every_n=config.sampling.every_n,
-            max_units=config.sampling.max_units,
+            every_n=1,
+            max_units=config.run.max_units,
         )
-    elif source_type in ("video", "video_frame", "video_file"):
+    if source_type in {"video", "video_frame", "video_file"}:
         return VideoFileSource(
             video_path=config.source.path,
-            every_n=config.sampling.every_n,
-            target_fps=config.sampling.target_fps,
-            max_units=config.sampling.max_units,
+            every_n=1,
+            target_fps=None,
+            max_units=config.run.max_units,
         )
-    else:
-        raise ValueError(
-            f"Tipo de fuente '{source_type}' no soportado. "
-            f"Opciones: image_folder, video_file"
+    raise ValueError(
+        f"Tipo de fuente '{source_type}' no soportado o no implementado. "
+        "Usar image_folder o video_file."
+    )
+
+
+def _producer_thread(
+    source: BaseSource,
+    rate_gate: RateGate,
+    spec,
+    payload_format: PayloadFormat,
+    transport,
+    run_id: str,
+    errors_queue: queue.SimpleQueue,
+    timings: dict[str, float],
+) -> None:
+    """Ingesta, filtra, normaliza y ofrece unidades al canal."""
+    try:
+        for source_index, unit in enumerate(source):
+            if not rate_gate.should_pass(source_index):
+                continue
+            try:
+                normalize_started = time.perf_counter()
+                normalized = normalize_spatial(unit, spec, payload_format)
+                normalized.run_id = run_id
+                timings[normalized.unit_id] = (time.perf_counter() - normalize_started) * 1000.0
+
+                offer_started = time.perf_counter()
+                transport.offer(normalized)
+                timings["backpressure_wait_ms"] = timings.get("backpressure_wait_ms", 0.0) + (
+                    (time.perf_counter() - offer_started) * 1000.0
+                )
+            except Exception as exc:
+                errors_queue.put(("normalize", unit.unit_id, str(exc)))
+    except Exception as exc:
+        errors_queue.put(("source", None, str(exc)))
+    finally:
+        transport.close()
+
+
+def _drain_producer_errors(
+    errors_queue: queue.SimpleQueue,
+    artifact_writer: RunArtifactWriter,
+    run_context: RunContext,
+) -> int:
+    """Persiste errores del productor sin detener el consumidor."""
+    count = 0
+    while True:
+        try:
+            stage, unit_id, message = errors_queue.get_nowait()
+        except queue.Empty:
+            return count
+        artifact_writer.write_error(
+            ErrorEvent(
+                run_id=run_context.run_id,
+                unit_id=unit_id or "unknown",
+                stage=stage,
+                message=message,
+                recoverable=True,
+            )
         )
+        run_context.units_failed += 1
+        count += 1
 
 
 def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
-    """Ejecuta el pipeline DBE completo de forma lineal y estructurada.
-
-    Args:
-        config: Configuración de corrida cargada y validada.
-        console: Console de Rich para output formateado (opcional).
-
-    Returns:
-        El run_id generado de la corrida.
-    """
-    if console is None:
-        console = Console()
-
-    # 1. Crear contexto de corrida y persistir configs iniciales
+    """Ejecuta una corrida mediante un productor y un consumidor en memoria."""
+    console = console or Console()
     run_context = RunContext(config)
     artifact_writer = RunArtifactWriter(run_context)
+    tracker = LatencyTracker()
+    adapter = None
+    producer = None
 
     console.print(f"[bold green]▶ Corrida:[/bold green] {run_context.run_id}")
     console.print(f"[dim]  Directorio de salida: {run_context.run_dir}[/dim]")
 
-    # Guardar config original y efectiva
-    if config.config_path:
-        artifact_writer.write_original_config(config.config_path)
-    artifact_writer.write_effective_config()
-
-    # 2. Cargar fuente visual
-    source = create_source(config)
-    source_count = len(source)
-    console.print(f"[dim]  Fuente: {config.source.path} ({source_count} unidades)[/dim]")
-
-    # 3. Obtener prompts activos
-    prompt_texts = config.get_prompt_texts()
-    prompt_items = config.get_prompt_items()
-    prompt_version = config.prompts_file.resolved_version if config.prompts_file else "unknown"
-    console.print(f"[dim]  Prompts activos ({prompt_version}): {prompt_texts}[/dim]")
-
-    # 4. Crear normalizador de detecciones
-    normalizer = DetectionNormalizer(
-        min_confidence=config.postprocess.min_confidence,
-        min_box_area_px=config.postprocess.min_box_area_px,
-        normalize_boxes=config.postprocess.normalize_boxes,
-    )
-
-    # 5. Crear e iniciar adaptador de modelo OVD
-    adapter = create_adapter(config.model)
-    console.print(f"[dim]  Modelo/Adaptador: {config.model.name or config.model.adapter}[/dim]")
-    console.print(f"[dim]  Dispositivo: {config.model.device}[/dim]\n")
-
-    # Reset del pico de VRAM para que refleje solo esta corrida (incluida la carga del modelo)
-    reset_gpu_peak_memory()
-
-    with console.status("[bold cyan]Cargando modelo..."):
-        adapter.load()
-    console.print("[green]✓[/green] Modelo cargado en memoria\n")
-
-    # Tracking de métricas de tiempo
-    tracker = LatencyTracker()
-
     try:
+        if config.config_path:
+            artifact_writer.write_original_config(config.config_path)
+        artifact_writer.write_effective_config()
+
+        source = create_source(config)
+        source_count = len(source)
+        prompt_texts = config.get_prompt_texts()
+        prompt_items = config.get_prompt_items()
+        prompt_version = config.prompts_file.resolved_version if config.prompts_file else "unknown"
+
+        normalizer = DetectionNormalizer(
+            min_confidence=config.postprocess.min_confidence,
+            min_box_area_px=config.postprocess.min_box_area_px,
+            normalize_boxes=config.postprocess.normalize_boxes,
+        )
+        adapter = create_adapter(config.model)
+        reset_gpu_peak_memory()
+        with console.status("[bold cyan]Cargando modelo..."):
+            adapter.load()
+
+        rate_control = config.rate_control
+        transport = create_transport(
+            backend=config.transport.backend,
+            policy=rate_control.policy,
+            max_queue_size=rate_control.max_queue_size,
+            buffer_size=rate_control.buffer_size,
+            max_staleness_ms=rate_control.max_staleness_ms,
+            endpoint=config.transport.endpoint,
+        )
+        timings: dict[str, float] = {"backpressure_wait_ms": 0.0}
+        producer = threading.Thread(
+            target=_producer_thread,
+            args=(
+                source,
+                RateGate(stride=rate_control.stride),
+                adapter.input_spec,
+                PayloadFormat(config.transport.payload_format),
+                transport,
+                run_context.run_id,
+                run_context._errors_queue,
+                timings,
+            ),
+            daemon=True,
+            name="pipeline-producer",
+        )
+        producer.start()
+
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -118,223 +180,147 @@ def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
             console=console,
         ) as progress:
             task = progress.add_task("Procesando unidades visuales...", total=source_count)
+            while True:
+                item = transport.request()
+                producer_errors = _drain_producer_errors(
+                    run_context._errors_queue, artifact_writer, run_context
+                )
+                if producer_errors:
+                    progress.update(task, advance=producer_errors)
+                if item is END:
+                    break
 
-            for unit in source:
-                timer = tracker.start_unit(unit.unit_id)
-
-                # --- 1. LECTURA ---
-                timer.start_read()
-                try:
-                    pil_image = load_image(unit)
-                    timer.end_read()
-                except Exception as e:
-                    logger.error(f"Error leyendo unidad visual {unit.unit_id}: {e}")
-                    timer.end_read()
-                    
-                    err_event = ErrorEvent(
-                        run_id=run_context.run_id,
-                        unit_id=unit.unit_id,
-                        stage="read",
-                        message=str(e),
-                        recoverable=True,
-                    )
-                    artifact_writer.write_error(err_event)
-                    run_context.units_failed += 1
-
-                    # Métrica de fallo
-                    metric = MetricSample(
-                        run_id=run_context.run_id,
-                        unit_id=unit.unit_id,
-                        source_path=unit.source_path,
-                        error=str(e),
-                    )
-                    artifact_writer.write_metric(metric)
-                    progress.update(task, advance=1)
-                    continue
-
-                # --- 2. PREPROCESAMIENTO ---
-                timer.start_preprocess()
-                # Los pasos específicos del modelo los maneja el adaptador, aquí medimos la fase común
-                timer.end_preprocess()
-
-                # --- 3. INFERENCIA ---
+                timer = tracker.start_unit(item.unit_id)
+                timer.record_normalize_ms(timings.get(item.unit_id, 0.0))
                 timer.start_inference()
                 try:
-                    raw_detections = adapter.predict(pil_image, prompt_texts)
+                    raw_detections = adapter.forward(item, prompt_texts)
+                except Exception as exc:
                     timer.end_inference()
-                except Exception as e:
-                    logger.error(f"Error de inferencia en unidad {unit.unit_id}: {e}")
-                    timer.end_inference()
-                    
-                    err_event = ErrorEvent(
-                        run_id=run_context.run_id,
-                        unit_id=unit.unit_id,
-                        stage="inference",
-                        message=str(e),
-                        recoverable=True,
+                    tracker.finish_unit(timer, error=str(exc))
+                    artifact_writer.write_error(
+                        ErrorEvent(
+                            run_id=run_context.run_id,
+                            unit_id=item.unit_id,
+                            stage="inference",
+                            message=str(exc),
+                            recoverable=True,
+                        )
                     )
-                    artifact_writer.write_error(err_event)
                     run_context.units_failed += 1
-
-                    metric = MetricSample(
-                        run_id=run_context.run_id,
-                        unit_id=unit.unit_id,
-                        source_path=unit.source_path,
-                        error=str(e),
-                    )
-                    artifact_writer.write_metric(metric)
                     progress.update(task, advance=1)
                     continue
+                timer.end_inference()
 
-                # --- 4. POSTPROCESAMIENTO ---
                 timer.start_postprocess()
                 try:
                     detections = normalizer.normalize(
                         raw_detections=raw_detections,
-                        width=unit.width,
-                        height=unit.height,
-                        model_name=config.model.name or config.model.adapter,
+                        width=item.orig_width,
+                        height=item.orig_height,
+                        model_name=config.model.name or config.model.adapter or "unknown",
                         prompt_items=prompt_items,
+                        transform=item.transform,
                     )
+                except Exception as exc:
                     timer.end_postprocess()
-                except Exception as e:
-                    logger.error(f"Error de postprocesamiento en unidad {unit.unit_id}: {e}")
-                    timer.end_postprocess()
-                    
-                    err_event = ErrorEvent(
-                        run_id=run_context.run_id,
-                        unit_id=unit.unit_id,
-                        stage="postprocess",
-                        message=str(e),
-                        recoverable=True,
+                    tracker.finish_unit(timer, error=str(exc))
+                    artifact_writer.write_error(
+                        ErrorEvent(
+                            run_id=run_context.run_id,
+                            unit_id=item.unit_id,
+                            stage="postprocess",
+                            message=str(exc),
+                            recoverable=True,
+                        )
                     )
-                    artifact_writer.write_error(err_event)
                     run_context.units_failed += 1
-
-                    metric = MetricSample(
-                        run_id=run_context.run_id,
-                        unit_id=unit.unit_id,
-                        source_path=unit.source_path,
-                        error=str(e),
-                    )
-                    artifact_writer.write_metric(metric)
                     progress.update(task, advance=1)
                     continue
+                timer.end_postprocess()
 
-                # --- 5. ESCRITURA ---
                 timer.start_write()
                 try:
-                    tracker.finish_unit(timer, detection_count=len(detections))
                     granular = timer.get_granular_result()
-                    gpu_mem = get_gpu_memory_allocated_mb()
-
-                    # Construir y guardar DetectionEvent
-                    event = DetectionEvent(
-                        run_id=run_context.run_id,
-                        unit_id=unit.unit_id,
-                        source={
-                            "source_id": unit.source_id or Path(unit.source_path).name,
-                            "source_type": unit.source_type,
-                            "frame_index": unit.frame_index,
-                            "timestamp_ms": unit.timestamp_ms,
-                            "width": unit.width,
-                            "height": unit.height,
-                        },
-                        model={
-                            "name": config.model.name or config.model.adapter,
-                            "model_id": config.model.model_id,
-                            "device": config.model.device,
-                        },
-                        prompts={
-                            "prompt_set_id": prompt_version,
-                        },
-                        detections=detections,
-                        timing={
-                            "read_ms": granular.read_ms,
-                            "preprocess_ms": granular.preprocess_ms,
-                            "inference_ms": granular.inference_ms,
-                            "postprocess_ms": granular.postprocess_ms,
-                            "write_ms": granular.write_ms,
-                            "total_ms": granular.total_ms,
-                        },
+                    source_type = "video_frame" if item.frame_index is not None else "image"
+                    artifact_writer.write_detection(
+                        DetectionEvent(
+                            run_id=run_context.run_id,
+                            unit_id=item.unit_id,
+                            source={
+                                "source_id": item.source_id or item.unit_id,
+                                "source_type": source_type,
+                                "frame_index": item.frame_index,
+                                "timestamp_ms": item.timestamp_ms,
+                                "width": item.orig_width,
+                                "height": item.orig_height,
+                            },
+                            model={
+                                "name": config.model.name or config.model.adapter or "unknown",
+                                "model_id": config.model.model_id,
+                                "device": config.model.device,
+                            },
+                            prompts={"prompt_set_id": prompt_version},
+                            detections=detections,
+                            timing={
+                                "preprocess_ms": granular.normalize_ms,
+                                "inference_ms": granular.inference_ms,
+                                "postprocess_ms": granular.postprocess_ms,
+                                "write_ms": granular.write_ms,
+                                "total_ms": granular.total_ms,
+                            },
+                            source_path=item.source_id,
+                        )
                     )
-                    artifact_writer.write_detection(event)
-
-                    # Construir y guardar MetricSample
-                    metric = MetricSample(
-                        run_id=run_context.run_id,
-                        unit_id=unit.unit_id,
-                        source_path=unit.source_path,
-                        fps_effective=round(1000.0 / granular.total_ms, 2) if granular.total_ms > 0 else 0.0,
-                        latency_total_ms=granular.total_ms,
-                        latency_inference_ms=granular.inference_ms,
-                        detections_count=len(detections),
-                        dropped_units=0,
-                        device=config.model.device,
-                        gpu_memory_allocated_mb=round(gpu_mem, 2),
+                    artifact_writer.write_metric(
+                        MetricSample(
+                            run_id=run_context.run_id,
+                            unit_id=item.unit_id,
+                            source_path=item.source_id,
+                            fps_effective=(
+                                round(1000.0 / granular.total_ms, 2)
+                                if granular.total_ms > 0
+                                else 0.0
+                            ),
+                            latency_total_ms=granular.total_ms,
+                            latency_inference_ms=granular.inference_ms,
+                            detections_count=len(detections),
+                            device=config.model.device,
+                            gpu_memory_allocated_mb=round(get_gpu_memory_allocated_mb(), 2),
+                        )
                     )
-                    artifact_writer.write_metric(metric)
-
-                    # Anotaciones de Previews (limitar a preview_max)
-                    if config.outputs.save_previews and detections and run_context.units_processed < config.outputs.preview_max:
-                        preview_name = Path(unit.source_path).stem
-                        if unit.frame_index is not None:
-                            preview_name += f"_frame_{unit.frame_index:06d}"
-                        preview_name += ".preview.jpg"
-                        preview_path = run_context.run_dir / "previews" / preview_name
-                        draw_detections(unit.source_path, detections, preview_path)
-
                     timer.end_write()
+                    tracker.finish_unit(timer, detection_count=len(detections))
                     run_context.units_processed += 1
                     run_context.total_detections += len(detections)
                     run_context.record_detections(detections)
-
-                except Exception as e:
-                    logger.error(f"Error escribiendo outputs de unidad {unit.unit_id}: {e}")
+                except Exception as exc:
                     timer.end_write()
-                    
-                    err_event = ErrorEvent(
-                        run_id=run_context.run_id,
-                        unit_id=unit.unit_id,
-                        stage="write",
-                        message=str(e),
-                        recoverable=True,
+                    tracker.finish_unit(timer, error=str(exc))
+                    artifact_writer.write_error(
+                        ErrorEvent(
+                            run_id=run_context.run_id,
+                            unit_id=item.unit_id,
+                            stage="write",
+                            message=str(exc),
+                            recoverable=True,
+                        )
                     )
-                    artifact_writer.write_error(err_event)
                     run_context.units_failed += 1
-
                 progress.update(task, advance=1)
 
+        _drain_producer_errors(run_context._errors_queue, artifact_writer, run_context)
+        run_context.units_dropped = getattr(transport, "units_dropped", 0)
+        run_context.backpressure_wait_ms = timings["backpressure_wait_ms"]
     finally:
-        # Cerrar escritor de artefactos (libera archivos JSONL)
+        if producer is not None:
+            producer.join(timeout=30.0)
+        if adapter is not None:
+            adapter.close()
         artifact_writer.close()
-        # Cerrar/descargar adaptador
-        adapter.close()
 
-    # Finalizar contexto y guardar resumen + manifiesto
     run_context.gpu_memory_peak_mb = get_gpu_memory_peak_mb()
     run_context.finish()
     artifact_writer.write_summary(tracker)
     artifact_writer.write_manifest()
-
-    # Imprimir métricas finales por pantalla
-    console.print("\n[bold green]✓ Corrida completada[/bold green]")
-    console.print(f"  Procesadas: {run_context.units_processed}/{source_count}")
-    if run_context.units_failed > 0:
-        console.print(f"  [red]Fallos/Errores: {run_context.units_failed}[/red]")
-    console.print(f"  Detecciones totales: {run_context.total_detections}")
-    if run_context.detections_by_label:
-        by_label = ", ".join(
-            f"{label}: {count}"
-            for label, count in sorted(
-                run_context.detections_by_label.items(), key=lambda kv: -kv[1]
-            )
-        )
-        console.print(f"  Detecciones por label: {by_label}")
-    console.print(f"  Latencia promedio: {tracker.avg_latency_ms():.1f} ms")
-    console.print(f"  Latencia p95: {tracker.p95_latency_ms():.1f} ms")
-    if run_context.gpu_memory_peak_mb > 0:
-        console.print(f"  VRAM pico: {run_context.gpu_memory_peak_mb:.0f} MB")
-    console.print(f"\n  [dim]Resultados guardados en: {run_context.run_dir}[/dim]\n")
-
     return run_context.run_id

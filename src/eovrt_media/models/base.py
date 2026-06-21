@@ -5,9 +5,13 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 from PIL import Image
 
 from eovrt_media.contracts.detection import RawDetection
+
+if TYPE_CHECKING:
+    from eovrt_media.contracts.normalized_unit import NormalizedUnit
 
 
 @dataclass
@@ -51,6 +55,10 @@ class BaseDetectorAdapter(ABC):
         Returns:
             Lista de detecciones crudas (RawDetection).
         """
+
+    @abstractmethod
+    def forward(self, unit: NormalizedUnit, prompts: list[str]) -> list[RawDetection]:
+        """Ejecutar inferencia desde una unidad normalizada del canal."""
 
     @property
     @abstractmethod

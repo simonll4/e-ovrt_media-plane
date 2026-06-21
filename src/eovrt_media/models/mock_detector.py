@@ -8,6 +8,7 @@ from pathlib import Path
 from PIL import Image
 
 from eovrt_media.contracts.detection import RawDetection
+from eovrt_media.contracts.normalized_unit import NormalizedUnit
 from eovrt_media.models.base import BaseDetectorAdapter, ModelInputSpec
 
 
@@ -49,6 +50,26 @@ class MockDetectorAdapter(BaseDetectorAdapter):
                     )
                 )
 
+        return detections
+
+    def forward(self, unit: NormalizedUnit, prompts: list[str]) -> list[RawDetection]:
+        """Genera detecciones en el espacio ``target_size`` normalizado."""
+        target_h, target_w = unit.target_size
+        detections = []
+        for prompt in prompts:
+            n_detections = self._rng.randint(0, 3)
+            for _ in range(n_detections):
+                x1 = self._rng.uniform(0, target_w * 0.7)
+                y1 = self._rng.uniform(0, target_h * 0.7)
+                x2 = self._rng.uniform(x1 + 20, min(x1 + target_w * 0.4, target_w))
+                y2 = self._rng.uniform(y1 + 20, min(y1 + target_h * 0.4, target_h))
+                detections.append(
+                    RawDetection(
+                        label=prompt,
+                        score=self._rng.uniform(0.3, 0.99),
+                        box_xyxy=[x1, y1, x2, y2],
+                    )
+                )
         return detections
 
     @property
