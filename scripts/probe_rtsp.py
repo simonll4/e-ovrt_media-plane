@@ -23,14 +23,17 @@ class ProbeResult:
 
 def redact_rtsp_url(url: str) -> str:
     """Return an RTSP endpoint without user info, query parameters, or fragments."""
-    parsed = urlsplit(url)
-    if parsed.hostname is None:
+    try:
+        parsed = urlsplit(url)
+        if parsed.hostname is None:
+            return "rtsp://unknown-host/"
+        hostname = parsed.hostname
+        if ":" in hostname and not hostname.startswith("["):
+            hostname = f"[{hostname}]"
+        port = f":{parsed.port}" if parsed.port is not None else ""
+        return f"{parsed.scheme}://{hostname}{port}{parsed.path}"
+    except ValueError:
         return "rtsp://unknown-host/"
-    hostname = parsed.hostname
-    if ":" in hostname and not hostname.startswith("["):
-        hostname = f"[{hostname}]"
-    port = f":{parsed.port}" if parsed.port is not None else ""
-    return f"{parsed.scheme}://{hostname}{port}{parsed.path}"
 
 
 def probe(config_path: Path, frames: int) -> ProbeResult:

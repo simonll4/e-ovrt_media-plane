@@ -33,6 +33,22 @@ def test_redact_rtsp_url_fails_closed_for_an_opaque_url() -> None:
     assert "token" not in redacted
 
 
+@pytest.mark.parametrize(
+    "raw_url",
+    [
+        "rtsp://user:secret@camera:badport/live?token=value",
+        "rtsp://user:secret@[malformed/live?token=value",
+    ],
+)
+def test_redact_rtsp_url_fails_closed_for_invalid_authority(raw_url: str) -> None:
+    redacted = probe_rtsp.redact_rtsp_url(raw_url)
+
+    assert redacted == "rtsp://unknown-host/"
+    assert "user" not in redacted
+    assert "secret" not in redacted
+    assert "token" not in redacted
+
+
 def test_probe_reads_requested_frames_with_sanitized_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     raw_url = "rtsp://camera_user:camera_password@example.test:8554/live?token=value"
     config = SimpleNamespace(
