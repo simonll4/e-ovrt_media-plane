@@ -23,7 +23,7 @@ from eovrt_media.config.schemas import PromptsFile, RunConfig
 
 
 _PULLEABLE_TYPES = {"image_folder", "video_file", "video", "video_frame"}
-_LIVE_TYPES = {"camera", "rtsp"}
+_LIVE_TYPES = {"camera", "rtsp", "oak_d"}
 
 
 def _raise_sampling_migration_error() -> None:
@@ -122,9 +122,13 @@ def _validate_deployment(config: RunConfig) -> None:
         raise NotImplementedError(
             "transport.payload_format=fp16 está declarado pero no implementado."
         )
-    if config.source.type.lower() in _LIVE_TYPES:
+    if config.source.type.lower() == "camera":
         raise NotImplementedError(
-            f"source.type={config.source.type!r} está declarado pero no implementado."
+            "source.type=camera está declarado pero no implementado."
+        )
+    if config.source.type.lower() == "oak_d":
+        raise NotImplementedError(
+            "source.type=oak_d (OAK-D Pro PoE) está declarado pero no implementado."
         )
 
 

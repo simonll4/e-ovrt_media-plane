@@ -116,6 +116,11 @@ class SourceSection(BaseModel):
     split: str | None = None
     vocabulary: list[str] | None = None
 
+    # Fuente viva (RTSP / cámaras IP)
+    url: str | None = None
+    reconnect_retries: int = 5
+    reconnect_delay_ms: int = 1000
+
 
 class SamplingConfig(BaseModel):
     """Sección 'sampling' de la configuración."""
