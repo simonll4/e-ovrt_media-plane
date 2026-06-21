@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 
 from eovrt_media.contracts.detection import RawDetection
-from eovrt_media.models.base import BaseDetectorAdapter
+from eovrt_media.models.base import BaseDetectorAdapter, ModelInputSpec
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +101,17 @@ class YOLOEUltralyticsAdapter(BaseDetectorAdapter):
                 )
 
         return detections
+
+    @property
+    def input_spec(self) -> ModelInputSpec:
+        """Especificación de preprocesamiento de YOLOE (640x640 letterbox, sin normalización)."""
+        size = self.image_size if isinstance(self.image_size, int) else 640
+        return ModelInputSpec(
+            target_size=(size, size),
+            resize_mode="letterbox",
+            mean=(0.0, 0.0, 0.0),
+            std=(1.0, 1.0, 1.0),
+        )
 
     def close(self) -> None:
         """Libera el modelo."""

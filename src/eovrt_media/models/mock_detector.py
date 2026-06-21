@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 
 from eovrt_media.contracts.detection import RawDetection
-from eovrt_media.models.base import BaseDetectorAdapter
+from eovrt_media.models.base import BaseDetectorAdapter, ModelInputSpec
 
 
 class MockDetectorAdapter(BaseDetectorAdapter):
@@ -50,6 +50,16 @@ class MockDetectorAdapter(BaseDetectorAdapter):
                 )
 
         return detections
+
+    @property
+    def input_spec(self) -> ModelInputSpec:
+        """Especificación de preprocesamiento del mock (640x640 letterbox)."""
+        return ModelInputSpec(
+            target_size=(640, 640),
+            resize_mode="letterbox",
+            mean=(0.485, 0.456, 0.406),
+            std=(0.229, 0.224, 0.225),
+        )
 
     def close(self) -> None:
         """Nada que liberar."""

@@ -11,7 +11,7 @@ from PIL import Image
 from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
 
 from eovrt_media.contracts.detection import RawDetection
-from eovrt_media.models.base import BaseDetectorAdapter
+from eovrt_media.models.base import BaseDetectorAdapter, ModelInputSpec
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +127,16 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
             )
 
         return detections
+
+    @property
+    def input_spec(self) -> ModelInputSpec:
+        """Especificación de preprocesamiento de Grounding DINO (800x800 letterbox)."""
+        return ModelInputSpec(
+            target_size=(800, 800),
+            resize_mode="letterbox",
+            mean=(0.485, 0.456, 0.406),
+            std=(0.229, 0.224, 0.225),
+        )
 
     def close(self) -> None:
         """Libera el modelo de memoria."""
