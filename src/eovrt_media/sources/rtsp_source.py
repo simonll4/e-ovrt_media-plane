@@ -78,6 +78,7 @@ class RtspSource(BaseSource):
                     width=width,
                     height=height,
                     timestamp_ms=round(timestamp_ms, 2),
+                    pixel_data=frame,  # BGR; evita que image_loader reabra el stream
                 )
                 emitted += 1
         finally:

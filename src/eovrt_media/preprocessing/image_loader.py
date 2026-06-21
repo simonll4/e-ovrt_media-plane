@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import cv2
+import numpy as np
 from PIL import Image
 from eovrt_media.contracts import VisualUnit
 
@@ -10,8 +11,9 @@ from eovrt_media.contracts import VisualUnit
 def load_image(unit: VisualUnit) -> Image.Image:
     """Carga la imagen correspondiente a una unidad visual.
 
-    Soporta carga desde archivo directo de imagen o extracción de un
-    frame específico de un archivo de video.
+    Si ``unit.pixel_data`` está presente (frame BGR capturado por fuentes vivas
+    como RtspSource), lo convierte directamente sin reabrir la fuente.
+    En caso contrario carga desde disco o archivo de video por ruta.
 
     Args:
         unit: Instancia de VisualUnit.
@@ -19,6 +21,11 @@ def load_image(unit: VisualUnit) -> Image.Image:
     Returns:
         Imagen cargada como PIL.Image (RGB).
     """
+    # Fuentes vivas (RTSP) embeben el frame capturado para evitar reabrir el stream.
+    if unit.pixel_data is not None:
+        frame_bgr = np.asarray(unit.pixel_data)
+        return Image.fromarray(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
+
     path_str = unit.path or unit.source_path
     if not path_str:
         raise ValueError(f"No se especificó ruta de archivo en VisualUnit: {unit.unit_id}")
