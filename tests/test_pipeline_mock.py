@@ -8,6 +8,8 @@ import numpy as np
 import pytest
 
 from eovrt_media.config import load_run_config
+from eovrt_media.contracts.detection import RawDetection
+from eovrt_media.models.mock_detector import MockDetectorAdapter
 from eovrt_media.runtime import run_pipeline
 
 
@@ -136,3 +138,47 @@ class TestPipelineMock:
         previews = list(previews_dir.glob("*.preview.jpg"))
         assert previews
         assert cv2.imread(str(previews[0])) is not None
+
+    def test_detections_reprojected_to_original_image_space(self, tmp_path, monkeypatch):
+        """Boxes de adapter.forward() se reproyectan del espacio-modelo al espacio original.
+
+        Imagen 100H×200W con target 640×640 letterbox:
+          scale=3.2, pad_y=160, pad_x=0
+          box modelo (200,320,400,440) → original (62.5,50,125,87.5)
+          bbox_norm ≈ (0.3125, 0.5, 0.625, 0.875)
+
+        Sin reproyección, y1=320/100=3.2 se recortaría a 1.0 (incorrecta).
+        """
+        images_dir = tmp_path / "nonsquare"
+        images_dir.mkdir()
+        for i in range(3):
+            cv2.imwrite(str(images_dir / f"img_{i:03d}.jpg"), np.zeros((100, 200, 3), np.uint8))
+
+        def fixed_forward(self, unit, prompts):
+            return [RawDetection(label=prompts[0], score=0.9, box_xyxy=[200.0, 320.0, 400.0, 440.0])]
+
+        monkeypatch.setattr(MockDetectorAdapter, "forward", fixed_forward)
+
+        config = load_run_config(CONFIGS_DIR / "runs" / "mock.yaml")
+        config.source.path = str(images_dir)
+        config.outputs.base_dir = str(tmp_path / "runs")
+        config.outputs.run_dir = str(tmp_path / "runs")
+        config.outputs.save_previews = False
+
+        run_id = run_pipeline(config)
+        detections_path = Path(config.outputs.base_dir) / run_id / "detections.jsonl"
+        events = [json.loads(line) for line in detections_path.read_text().splitlines()]
+
+        assert all(len(e["detections"]) == 1 for e in events)
+
+        for event in events:
+            det = event["detections"][0]
+            norm = det["bbox_norm_xyxy"]
+            # Con reproyección correcta: ~(0.3125, 0.5, 0.625, 0.875)
+            # Sin reproyección: y1=320/100=3.2 → clampado a 1.0
+            assert norm[1] < 1.0, f"y1_norm={norm[1]:.4f}: parece sin reproyección (debería ser ~0.5)"
+            assert norm[3] < 1.0, f"y2_norm={norm[3]:.4f}: parece sin reproyección (debería ser ~0.875)"
+            assert pytest.approx(norm[0], abs=0.01) == 0.3125
+            assert pytest.approx(norm[1], abs=0.01) == 0.5
+            assert pytest.approx(norm[2], abs=0.01) == 0.625
+            assert pytest.approx(norm[3], abs=0.01) == 0.875
