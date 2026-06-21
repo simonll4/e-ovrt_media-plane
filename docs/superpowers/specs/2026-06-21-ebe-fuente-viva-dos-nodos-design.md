@@ -32,7 +32,9 @@ incrementalmente:
   la fuente viva, el head-drop y la frescura funcionan de punta a punta sin red.
 - **Fase 2 — EBE en dos nodos**: `NetworkTransportAdapter` (ZeroMQ REQ/REP + heartbeat),
   serialización de `NormalizedUnit`, y los comandos CLI `run-producer` / `run-consumer`. Se
-  habilita cuando la Fase 1 funciona y la infraestructura de red está lista.
+  habilita cuando la Fase 1 funciona y la infraestructura de red está lista. Esta fase tiene
+  una sub-fase final de **containerización (2c)**: empaquetar Nodo A y Nodo B como imágenes
+  Docker separadas (ver "Decisión: containerización con Docker").
 
 El diseño de la Fase 1 anticipa lo que necesita la Fase 2 (timestamps precisos, payload
 serializable) para no retocar contratos después.
@@ -323,6 +325,58 @@ Derivación `rtsp → live → bounded_freshness`, gating de `oak_d`, validació
 | `NetworkTransportAdapter` | 8 |
 | CLI `run-producer`/`run-consumer` | 3 |
 | Config (derivación rtsp, two_node) | 4 |
+
+## Decisión: containerización con Docker
+
+**Decisión**: dockerizar el servicio, pero **solo al entrar en la Fase 2 (dos nodos)**, como
+sub-fase final (2c). **No** dockerizar la Fase 1.
+
+### Por qué Docker sí vale la pena (en Fase 2)
+
+El diseño de dos nodos ya separa responsabilidades que mapean directamente a dos imágenes con
+dependencias muy distintas. Docker convierte esa separación lógica en separación real de
+artefactos de despliegue:
+
+| | Nodo A (edge) | Nodo B (GPU) |
+|---|---|---|
+| Dependencias | OpenCV + pyzmq + pydantic | torch + CUDA + transformers + ultralytics |
+| Tamaño de imagen | ~300 MB | varios GB |
+| Hardware objetivo | máquina chica cerca de las cámaras | servidor con GPU |
+| Acceso externo | red local / RTSP | ninguno |
+
+Hoy ambos nodos comparten un `pyproject.toml` monolítico: el Nodo A arrastra PyTorch y CUDA sin
+usarlos. Con imágenes Docker separadas (o un multi-stage build con extras opcionales por nodo),
+el edge instala solo lo que usa. Beneficios concretos:
+
+- **Reproducibilidad real** entre las máquinas de despliegue y el entorno de desarrollo —
+  resuelve de paso la fragilidad conocida del venv al mover el proyecto.
+- **Despliegue de dos nodos reproducible**: un `docker-compose` con servicios `node-a` y
+  `node-b` y una red puente para el canal ZeroMQ.
+
+### Por qué NO en Fase 1
+
+La Fase 1 valida `RtspSource` + `bounded_freshness` de punta a punta en un solo host. Meter
+Docker ahí agrega una capa de depuración ("¿es mi código o el contenedor?") justo cuando se
+busca feedback rápido. Un venv local con instalación editable es lo correcto para esa fase.
+
+### Fricciones a tener en cuenta al llegar a 2c
+
+- **GPU passthrough**: el Nodo B necesita `nvidia-container-toolkit` y `--gpus all`. En **WSL2**
+  el stack CUDA-en-Docker depende del driver del host Windows, no del contenedor — resoluble,
+  pero requiere setup dedicado.
+- **Cámaras**: RTSP (EZVIZ) es solo acceso de red — el contenedor solo debe estar en la LAN.
+  La OAK-D Pro PoE vía DepthAI puede requerir acceso a dispositivos/red específico que complica
+  el contenedor; coincide con que su adaptador ya se difirió.
+- **Builds pesados**: las imágenes con PyTorch+CUDA son grandes y lentas de construir; iterar
+  sobre el código dentro de Docker es más lento que con un venv editable local.
+
+### Acción para el plan de implementación
+
+El plan de la Fase 2 debe incluir 2c como sub-fase final, **después** de que el `NetworkTransportAdapter`
+funcione en loopback local: dos `Dockerfile` (o uno multi-stage), un `docker-compose.yml` con
+`node-a`/`node-b` y red puente, y documentación de despliegue. La separación de imágenes por
+nodo debe influir en cómo se estructuran las dependencias opcionales en `pyproject.toml`
+(p. ej. extras `edge` y `gpu`).
 
 ## Lo que NO cambia (núcleo defendible)
 
