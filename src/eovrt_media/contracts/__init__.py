@@ -2,7 +2,7 @@
 
 from eovrt_media.contracts.visual_unit import VisualUnit
 from eovrt_media.contracts.detection import RawDetection, Detection
-from eovrt_media.contracts.events import DetectionEvent, RunSummary
+from eovrt_media.contracts.events import DetectionEvent, RunDescriptor, RunSummary
 from eovrt_media.contracts.metrics import MetricSample
 from eovrt_media.contracts.errors import ErrorEvent
 from eovrt_media.contracts.normalized_unit import (
@@ -17,6 +17,7 @@ __all__ = [
     "RawDetection",
     "Detection",
     "DetectionEvent",
+    "RunDescriptor",
     "RunSummary",
     "MetricSample",
     "ErrorEvent",

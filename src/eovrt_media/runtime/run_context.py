@@ -22,8 +22,10 @@ class RunContext:
             self.run_id = config.run.id
         else:
             ts = self.started_at.strftime("%Y%m%d_%H%M%S")
-            suffix = config.run.name or config.model.adapter or "run"
-            self.run_id = f"run_{ts}_{suffix}"
+            scenario = config.run.scenario.lower()
+            model = (config.model.name or config.model.adapter or "model").lower()
+            policy = config.rate_control.policy.lower()
+            self.run_id = f"run_{ts}_{scenario}_{model}_{policy}"
 
         # Directorio de salida
         self.run_dir = Path(config.outputs.run_dir) / self.run_id

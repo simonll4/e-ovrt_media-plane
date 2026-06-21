@@ -284,6 +284,7 @@ def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
                             ),
                             latency_total_ms=granular.total_ms,
                             latency_inference_ms=granular.inference_ms,
+                            latency_normalize_ms=granular.normalize_ms,
                             detections_count=len(detections),
                             device=config.model.device,
                             gpu_memory_allocated_mb=round(get_gpu_memory_allocated_mb(), 2),
@@ -322,5 +323,6 @@ def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
     run_context.gpu_memory_peak_mb = get_gpu_memory_peak_mb()
     run_context.finish()
     artifact_writer.write_summary(tracker)
+    artifact_writer.write_provenance()
     artifact_writer.write_manifest()
     return run_context.run_id

@@ -118,10 +118,24 @@ class DetectionEvent(BaseModel):
         return data
 
 
+class RunDescriptor(BaseModel):
+    """Claves de comparación del despliegue persistidas en ``summary.json``."""
+
+    scenario: str
+    topology: str
+    transport: dict
+    rate_control: dict
+    source_kind: str
+    model: str
+    prompt_set: str | None = None
+    device: str | None = None
+    code_version: str | None = None
+
+
 class RunSummary(BaseModel):
     """Resumen de una corrida completa."""
 
-    schema_version: str = "media.summary.v1"
+    schema_version: str = "media.summary.v2"
     run_id: str
     scenario: str
     model_adapter: str | None = None
@@ -138,12 +152,17 @@ class RunSummary(BaseModel):
     avg_latency_ms: float = 0.0
     p50_latency_ms: float = 0.0
     p95_latency_ms: float = 0.0
+    p99_latency_ms: float = 0.0
     fps_effective: float = 0.0
     gpu_memory_peak_mb: float = 0.0
     device: str | None = None
     duration_seconds: float = 0.0
     started_at: str
     finished_at: str
+    units_dropped: int = 0
+    backpressure_wait_ms: float = 0.0
+    max_staleness_observed_ms: float = 0.0
+    run_descriptor: RunDescriptor | None = None
 
     @model_validator(mode="before")
     @classmethod

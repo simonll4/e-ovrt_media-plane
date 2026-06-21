@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
@@ -11,7 +12,13 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
-from eovrt_media.contracts import DetectionEvent, MetricSample, RunSummary, ErrorEvent
+from eovrt_media.contracts import (
+    DetectionEvent,
+    ErrorEvent,
+    MetricSample,
+    RunDescriptor,
+    RunSummary,
+)
 from eovrt_media.sinks.jsonl_sink import JSONLSink, SummarySink
 
 if TYPE_CHECKING:
@@ -33,6 +40,17 @@ def _get_code_version() -> str | None:
     except Exception:
         pass
     return None
+
+
+def _compute_source_fingerprint(source_path: str) -> str:
+    """Devuelve SHA-256 del listado ordenado ``path:tamaño`` de una fuente."""
+    folder = Path(source_path)
+    if not folder.is_dir():
+        return ""
+    entries = sorted(
+        f"{path.name}:{path.stat().st_size}" for path in folder.iterdir() if path.is_file()
+    )
+    return hashlib.sha256("\n".join(entries).encode()).hexdigest()
 
 
 class RunArtifactWriter:
@@ -94,6 +112,20 @@ class RunArtifactWriter:
         if self.errors_sink:
             self.errors_sink.write_error(error)
 
+    def write_provenance(self) -> None:
+        """Guarda procedencia de la fuente y una huella reproducible de sus archivos."""
+        source = self.context.config.source
+        provenance = {
+            "run_id": self.context.run_id,
+            "dataset_id": source.dataset_id,
+            "view": source.view,
+            "split": source.split,
+            "vocabulary": source.vocabulary,
+            "source_fingerprint": _compute_source_fingerprint(source.path),
+        }
+        with open(self.run_dir / "run_provenance.json", "w", encoding="utf-8") as file:
+            json.dump(provenance, file, indent=2, ensure_ascii=False)
+
     def write_summary(self, tracker: Any | None = None) -> None:
         """Genera y guarda el resumen final summary.json."""
         finished_at_str = (
@@ -109,6 +141,7 @@ class RunArtifactWriter:
         avg_lat = 0.0
         p50_lat = 0.0
         p95_lat = 0.0
+        p99_lat = 0.0
 
         if tracker is not None:
             # LatencyTracker viejo o nuevo
@@ -118,6 +151,30 @@ class RunArtifactWriter:
                 p50_lat = tracker.p50_latency_ms()
             if hasattr(tracker, "p95_latency_ms"):
                 p95_lat = tracker.p95_latency_ms()
+            if hasattr(tracker, "p99_latency_ms"):
+                p99_lat = tracker.p99_latency_ms()
+
+        config = self.context.config
+        descriptor = RunDescriptor(
+            scenario=config.run.scenario,
+            topology=config.topology.mode,
+            transport={
+                "backend": config.transport.backend,
+                "payload_format": config.transport.payload_format,
+            },
+            rate_control={
+                "policy": config.rate_control.policy,
+                "stride": config.rate_control.stride,
+                "max_queue_size": config.rate_control.max_queue_size,
+            },
+            source_kind=config.source.kind or "pulleable",
+            model=config.model.name or config.model.adapter or "unknown",
+            prompt_set=(
+                config.prompts_file.resolved_version if config.prompts_file else None
+            ),
+            device=config.model.device,
+            code_version=_get_code_version(),
+        )
 
         summary = RunSummary(
             run_id=self.context.run_id,
@@ -143,12 +200,17 @@ class RunArtifactWriter:
             avg_latency_ms=round(avg_lat, 2),
             p50_latency_ms=round(p50_lat, 2),
             p95_latency_ms=round(p95_lat, 2),
+            p99_latency_ms=round(p99_lat, 2),
             fps_effective=round(fps_eff, 2),
             gpu_memory_peak_mb=round(self.context.gpu_memory_peak_mb, 2),
             device=self.context.config.model.device,
             duration_seconds=round(dur, 2),
             started_at=self.context.started_at.isoformat(),
             finished_at=finished_at_str,
+            units_dropped=self.context.units_dropped,
+            backpressure_wait_ms=round(self.context.backpressure_wait_ms, 2),
+            max_staleness_observed_ms=round(self.context.max_staleness_observed_ms, 2),
+            run_descriptor=descriptor,
         )
 
         summary_sink = SummarySink(self.run_dir / "summary.json")

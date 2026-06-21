@@ -170,12 +170,33 @@ def inspect_run(
         console.print(f"  By Label:         {labels_str}")
     console.print(f"  Avg Latency (ms): {summary.get('avg_latency_ms', 'N/A')}")
     console.print(f"  P95 Latency (ms): {summary.get('p95_latency_ms', 'N/A')}")
+    console.print(f"  P99 Latency (ms): {summary.get('p99_latency_ms', 'N/A')}")
+    console.print(f"  Units Dropped:    {summary.get('units_dropped', 0)}")
     console.print(f"  Effective FPS:    {summary.get('fps_effective', 'N/A')}")
     gpu_peak = summary.get("gpu_memory_peak_mb", 0.0)
     if gpu_peak:
         console.print(f"  GPU Peak (MB):    {gpu_peak}")
     console.print(f"  Started:          {summary.get('started_at', 'N/A')}")
     console.print(f"  Finished:         {summary.get('finished_at', 'N/A')}")
+
+    descriptor = summary.get("run_descriptor")
+    if descriptor:
+        console.print("\n[bold]Deployment Descriptor[/bold]")
+        console.print(f"  Topology:         {descriptor.get('topology', 'N/A')}")
+        console.print(f"  Transport:        {descriptor.get('transport', 'N/A')}")
+        console.print(f"  Rate Control:     {descriptor.get('rate_control', 'N/A')}")
+        console.print(f"  Source Kind:      {descriptor.get('source_kind', 'N/A')}")
+        console.print(f"  Code Version:     {descriptor.get('code_version', 'N/A')}")
+
+    provenance_path = run_dir / "run_provenance.json"
+    if provenance_path.exists():
+        with open(provenance_path, encoding="utf-8") as file:
+            provenance = json.load(file)
+        fingerprint = provenance.get("source_fingerprint") or "—"
+        console.print("\n[bold]Provenance[/bold]")
+        console.print(f"  Dataset:          {provenance.get('dataset_id', 'N/A')}")
+        console.print(f"  View / split:     {provenance.get('view', 'N/A')} / {provenance.get('split', 'N/A')}")
+        console.print(f"  Fingerprint:      {fingerprint[:16]}..." if fingerprint != "—" else "  Fingerprint:      —")
     console.print()
 
 
