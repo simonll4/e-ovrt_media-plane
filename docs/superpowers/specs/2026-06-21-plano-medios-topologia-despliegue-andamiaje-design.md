@@ -19,9 +19,23 @@ El pipeline actual es **DBE, un host, síncrono**: un loop por unidad
 productor/consumidor, con la normalización implícita dentro de cada adapter.
 
 Este trabajo **reorganiza el plano de medios para que el código mapee 1:1 con las etapas del
-documento** y deja todas las costuras de despliegue listas, implementando de verdad solo el camino
-prioritario (un host + DBE), y dejando EBE/dos nodos como **interfaces declaradas pero no
+documento** y deja **todo listo para implementar el pipeline completo en las cuatro combinaciones**
+(escenario DBE/EBE × topología un host/dos hosts), aunque **ahora solo se implementa de verdad el
+escenario A: un host + DBE**. EBE y dos nodos quedan como **interfaces declaradas pero no
 implementadas**.
+
+**Qué significa "declarado, no implementado"**: los contratos e interfaces están **completos y
+listos** (no son esbozos). Implementar cualquier parte diferida debe ser **solo rellenar la
+implementación concreta detrás de una interfaz que ya existe — nunca rediseñar contratos ni tocar la
+lógica de los roles productor/consumidor**. Las cuatro celdas quedan cubiertas por las costuras:
+
+| | Un host | Dos hosts |
+|---|---|---|
+| **DBE** | **implementado** | falta solo backend `network` |
+| **EBE** | falta solo fuente `live` | falta fuente `live` + backend `network` |
+
+(La política `bounded_freshness` y el backend `memory` se implementan ahora, así que EBE un host es
+solo agregar la fuente viva.)
 
 ### Objetivos
 
@@ -338,6 +352,14 @@ experimento del doc). `MetricSample.dropped_units` (hoy siempre 0) toma valores 
 de mensaje del protocolo de dos nodos definidos como contratos; la factory reconoce el tipo declarado
 y lanza `NotImplementedError` con mensaje explícito. La config lo expresa, el runtime lo rechaza con
 claridad.
+
+**Criterio de aceptación de extensibilidad** (cómo se valida que "todo quedó listo"): implementar
+cualquier pieza diferida —fuente `live`, backend `network`/`ipc`, topología `two_node`, `fp16`— debe
+lograrse **agregando una implementación concreta detrás de una interfaz ya existente, sin modificar
+ningún contrato (`VisualUnit`, `NormalizedUnit`, `RawDetection`, `DetectionEvent`, `TransportAdapter`,
+los mensajes del protocolo) ni la lógica de los roles productor/consumidor**. Si implementar un
+diferido obligara a tocar un contrato o un rol, la costura estaba mal diseñada y es un bug del
+andamiaje. La suite de tests agnóstica de backend (§8) es la verificación operativa de esto.
 
 ## 8. Testing
 
