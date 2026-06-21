@@ -110,10 +110,6 @@ def _validate_deployment(config: RunConfig) -> None:
     if config.transport.endpoint and config.transport.backend != "network":
         raise ValueError("transport.endpoint solo aplica a transport.backend=network.")
 
-    if config.topology.mode == "two_node":
-        raise NotImplementedError(
-            "topology.mode=two_node está declarado pero no implementado en este build."
-        )
     if config.transport.backend == "ipc":
         raise NotImplementedError(
             "transport.backend=ipc está declarado pero no implementado en este build."

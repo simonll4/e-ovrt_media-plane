@@ -148,6 +148,8 @@ class TransportConfig(BaseModel):
     backend: str = "memory"
     payload_format: str = "uint8_rgb"
     endpoint: str | None = None
+    heartbeat_interval_ms: int = 1000
+    heartbeat_timeout_ms: int = 5000
 
 
 class TopologyConfig(BaseModel):

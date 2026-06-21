@@ -78,13 +78,15 @@ class TestConfigValidation:
 
 
 class TestConfigGating:
-    def test_two_node_topology_is_gated(self, tmp_path: Path):
-        with pytest.raises(NotImplementedError, match="two_node.*implementado"):
-            _minimal_config(
-                tmp_path,
-                topology={"mode": "two_node"},
-                transport={"backend": "network", "endpoint": "tcp://localhost:5555"},
-            )
+    def test_two_node_with_network_is_valid(self, tmp_path: Path):
+        cfg = _minimal_config(
+            tmp_path,
+            topology={"mode": "two_node"},
+            transport={"backend": "network", "endpoint": "tcp://127.0.0.1:5555"},
+        )
+        assert cfg.topology.mode == "two_node"
+        assert cfg.transport.backend == "network"
+        assert cfg.transport.heartbeat_timeout_ms == 5000
 
     def test_ipc_backend_is_gated(self, tmp_path: Path):
         with pytest.raises(NotImplementedError, match="ipc.*implementado"):
