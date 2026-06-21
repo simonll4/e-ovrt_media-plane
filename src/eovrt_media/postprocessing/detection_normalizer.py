@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from eovrt_media.contracts import Detection, RawDetection
 from eovrt_media.config import PromptItem
+
+if TYPE_CHECKING:
+    from eovrt_media.contracts.normalized_unit import ResizeTransform
 
 
 class DetectionNormalizer:
@@ -30,6 +35,7 @@ class DetectionNormalizer:
         height: int,
         model_name: str,
         prompt_items: list[PromptItem] | None = None,
+        transform: ResizeTransform | None = None,
     ) -> list[Detection]:
         """Normaliza una lista de detecciones crudas (RawDetection).
 
@@ -37,29 +43,37 @@ class DetectionNormalizer:
 
         Args:
             raw_detections: Lista de detecciones crudas del adaptador.
-            width: Ancho de la unidad visual en píxeles.
-            height: Alto de la unidad visual en píxeles.
+            width: Ancho de la unidad visual en píxeles (espacio original).
+            height: Alto de la unidad visual en píxeles (espacio original).
             model_name: Nombre del modelo/adaptador.
             prompt_items: Lista de PromptItem para resolver prompt_id.
+            transform: Si se proporciona, reproyecta las cajas del espacio-modelo
+                al espacio original antes de calcular coordenadas normalizadas.
 
         Returns:
             Lista de detecciones normalizadas (Detection).
         """
         normalized_detections = []
-        
+
         for idx, raw in enumerate(raw_detections):
             # 1. Filtro de confianza
             if raw.score < self.min_confidence:
                 continue
 
-            x1, y1, x2, y2 = raw.box_xyxy
+            # 2. Reproyectar caja al espacio original si se provee transform
+            if transform is not None:
+                box_xyxy = transform.project_to_original(raw.box_xyxy)
+            else:
+                box_xyxy = list(raw.box_xyxy)
+
+            x1, y1, x2, y2 = box_xyxy
             area = (x2 - x1) * (y2 - y1)
 
-            # 2. Filtro de área de bounding box
+            # 3. Filtro de área de bounding box
             if area < self.min_box_area_px:
                 continue
 
-            # 3. Calcular caja normalizada
+            # 4. Calcular caja normalizada
             if self.normalize_boxes and width > 0 and height > 0:
                 bbox_norm = [
                     round(max(0.0, min(1.0, x1 / width)), 4),
@@ -70,7 +84,7 @@ class DetectionNormalizer:
             else:
                 bbox_norm = [0.0, 0.0, 0.0, 0.0]
 
-            # 4. Mapear etiqueta a prompt_id
+            # 5. Mapear etiqueta a prompt_id
             prompt_id = raw.prompt_id
             label_lower = raw.label.lower().strip()
             
@@ -90,7 +104,7 @@ class DetectionNormalizer:
                     label=raw.label,
                     prompt_id=prompt_id,
                     confidence=round(raw.score, 4),
-                    bbox_xyxy=[round(c, 1) for c in raw.box_xyxy],
+                    bbox_xyxy=[round(c, 1) for c in box_xyxy],
                     bbox_norm_xyxy=bbox_norm,
                     area_px=round(area, 1),
                     model_name=model_name,
