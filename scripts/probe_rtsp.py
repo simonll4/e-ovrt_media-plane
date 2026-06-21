@@ -24,7 +24,9 @@ class ProbeResult:
 def redact_rtsp_url(url: str) -> str:
     """Return an RTSP endpoint without user info, query parameters, or fragments."""
     parsed = urlsplit(url)
-    hostname = parsed.hostname or ""
+    if parsed.hostname is None:
+        return "rtsp://unknown-host/"
+    hostname = parsed.hostname
     if ":" in hostname and not hostname.startswith("["):
         hostname = f"[{hostname}]"
     port = f":{parsed.port}" if parsed.port is not None else ""
@@ -38,7 +40,7 @@ def probe(config_path: Path, frames: int) -> ProbeResult:
 
     config = load_run_config(config_path)
     source_config = config.source
-    if source_config.type != "rtsp":
+    if source_config.type.lower().strip() != "rtsp":
         raise ValueError("source.type must be rtsp")
 
     endpoint = source_config.url or source_config.path

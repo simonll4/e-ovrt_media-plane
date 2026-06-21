@@ -24,6 +24,15 @@ def test_redact_rtsp_url_hides_credentials_and_query() -> None:
     )
 
 
+def test_redact_rtsp_url_fails_closed_for_an_opaque_url() -> None:
+    redacted = probe_rtsp.redact_rtsp_url("rtsp:user:secret@camera:554/live?token=value")
+
+    assert redacted == "rtsp://unknown-host/"
+    assert "user" not in redacted
+    assert "secret" not in redacted
+    assert "token" not in redacted
+
+
 def test_probe_reads_requested_frames_with_sanitized_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     raw_url = "rtsp://camera_user:camera_password@example.test:8554/live?token=value"
     config = SimpleNamespace(
@@ -65,6 +74,40 @@ def test_probe_reads_requested_frames_with_sanitized_endpoint(monkeypatch: pytes
     assert result.endpoint == "rtsp://example.test:8554/live"
     assert result.frames_read == 3
     assert (result.width, result.height) == (1920, 1080)
+
+
+def test_probe_accepts_whitespace_and_case_rtsp_source_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = SimpleNamespace(
+        source=SimpleNamespace(
+            type=" RTSP ",
+            url="rtsp://example.test/live",
+            path="unused-fallback",
+            reconnect_retries=1,
+            reconnect_delay_ms=0,
+        )
+    )
+
+    class FakeRtspSource:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def __iter__(self):
+            yield VisualUnit(
+                unit_id="frame_0",
+                source_type="video_frame",
+                frame_index=0,
+                width=640,
+                height=480,
+            )
+
+    monkeypatch.setattr(probe_rtsp, "load_run_config", lambda _path: config)
+    monkeypatch.setattr(probe_rtsp, "RtspSource", FakeRtspSource)
+
+    result = probe_rtsp.probe(Path("dummy-config.yaml"), frames=1)
+
+    assert result.frames_read == 1
 
 
 def test_probe_rejects_zero_frames() -> None:
