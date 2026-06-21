@@ -72,3 +72,19 @@ def test_consumer_receives_end_when_buffer_empty_and_closed(endpoint):
 def test_invalid_role_raises_value_error(endpoint):
     with pytest.raises(ValueError, match="role"):
         NetworkTransportAdapter(role="invalid", endpoint=endpoint)
+
+
+def test_producer_tracks_peer_activity(endpoint):
+    producer = NetworkTransportAdapter(
+        role="producer", endpoint=endpoint, policy="bounded_freshness",
+        buffer_size=4, heartbeat_timeout_ms=10_000,
+    )
+    consumer = NetworkTransportAdapter(role="consumer", endpoint=endpoint)
+
+    producer.offer(_unit(0))
+    producer.close()
+    _ = consumer.request()       # consume el frame → actividad registrada
+    assert producer.is_peer_alive() is True
+
+    consumer.shutdown()
+    producer.shutdown()

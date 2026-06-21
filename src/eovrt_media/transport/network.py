@@ -6,6 +6,7 @@ bounded_freshness (head-drop). ZeroMQ es solo el canal entre los dos lados.
 from __future__ import annotations
 
 import threading
+import time
 
 import zmq
 
@@ -31,12 +32,17 @@ class NetworkTransportAdapter(TransportAdapter):
         policy: str = "bounded_freshness",
         buffer_size: int = 2,
         max_staleness_ms: float | None = None,
+        heartbeat_interval_ms: int = 1000,
+        heartbeat_timeout_ms: int = 5000,
     ) -> None:
         if role not in {"producer", "consumer"}:
             raise ValueError(f"role debe ser 'producer' o 'consumer', no {role!r}.")
         self.role = role
         self.endpoint = endpoint
         self._ctx = zmq.Context.instance()
+        self.heartbeat_interval_ms = heartbeat_interval_ms
+        self.heartbeat_timeout_ms = heartbeat_timeout_ms
+        self._last_peer_activity = None
 
         if role == "producer":
             self._buffer = MemoryTransportAdapter(
@@ -64,6 +70,7 @@ class NetworkTransportAdapter(TransportAdapter):
         """Hilo REP: por cada REQUEST entrega el frame más antiguo o END."""
         while True:
             msg = self._sock.recv()
+            self._last_peer_activity = time.monotonic()
             if not is_control(msg):
                 continue  # solo REQUEST/HEARTBEAT esperados del consumidor
             item = self._buffer.request()  # bloquea hasta frame o END
@@ -71,6 +78,13 @@ class NetworkTransportAdapter(TransportAdapter):
                 self._sock.send(END_MSG)
                 return
             self._sock.send(serialize_unit(item))
+
+    def is_peer_alive(self) -> bool:
+        """True si el consumidor mostró actividad dentro del timeout (lado productor)."""
+        if self.role != "producer" or self._last_peer_activity is None:
+            return False
+        elapsed_ms = (time.monotonic() - self._last_peer_activity) * 1000.0
+        return elapsed_ms <= self.heartbeat_timeout_ms
 
     # --- consumidor ---
 
