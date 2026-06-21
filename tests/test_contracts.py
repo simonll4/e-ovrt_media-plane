@@ -2,7 +2,16 @@
 
 import json
 
+import numpy as np
+import pytest
+
 from eovrt_media.contracts import Detection, DetectionEvent, RunSummary, VisualUnit
+from eovrt_media.contracts.normalized_unit import (
+    END,
+    NormalizedUnit,
+    PayloadFormat,
+    ResizeTransform,
+)
 
 
 class TestVisualUnit:
@@ -129,3 +138,42 @@ class TestRunSummary:
         )
         assert summary.units_processed == 12
         assert summary.avg_latency_ms == 118.3
+
+
+class TestNormalizedUnit:
+    def test_roundtrip_fields(self):
+        payload = np.zeros((480, 640, 3), dtype=np.uint8)
+        transform = ResizeTransform(scale_x=0.5, scale_y=0.5, pad_x=0.0, pad_y=0.0)
+        unit = NormalizedUnit(
+            run_id="run_001",
+            unit_id="unit_001",
+            source_id="img.jpg",
+            frame_index=0,
+            timestamp_ms=1000.0,
+            orig_width=1280,
+            orig_height=960,
+            payload=payload,
+            payload_format=PayloadFormat.UINT8_RGB,
+            target_size=(480, 640),
+            transform=transform,
+        )
+        assert unit.orig_width == 1280
+        assert unit.target_size == (480, 640)
+        assert unit.payload.shape == (480, 640, 3)
+        assert unit.transform.scale_x == 0.5
+
+    def test_payload_format_enum(self):
+        assert PayloadFormat.UINT8_RGB.value == "uint8_rgb"
+        assert PayloadFormat.FP32.value == "fp32"
+        assert PayloadFormat.FP16.value == "fp16"
+
+    def test_end_sentinel_is_singleton_class(self):
+        assert END is END  # clase usada como sentinel, no instanciada
+
+    def test_resize_transform_project_box(self):
+        # letterbox con scale=0.5, pad_x=10, pad_y=5
+        t = ResizeTransform(scale_x=0.5, scale_y=0.5, pad_x=10.0, pad_y=5.0)
+        # Caja en espacio modelo: [30, 15, 80, 55]
+        box_orig = t.project_to_original([30.0, 15.0, 80.0, 55.0])
+        # (30-10)/0.5=40, (15-5)/0.5=20, (80-10)/0.5=140, (55-5)/0.5=100
+        assert box_orig == pytest.approx([40.0, 20.0, 140.0, 100.0], abs=0.01)
