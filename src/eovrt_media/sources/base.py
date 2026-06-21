@@ -15,6 +15,14 @@ class BaseSource(ABC):
     def __iter__(self) -> Iterator[VisualUnit]:
         """Itera sobre la fuente produciendo instancias de VisualUnit."""
 
+    def stop(self) -> None:
+        """Señala a la fuente que deje de iterar tras la unidad actual.
+
+        No-op para fuentes finitas (archivos, carpetas). Las fuentes vivas
+        (RtspSource, OakDSource) deben sobreescribir este método para
+        interrumpir limpiamente el bucle de captura.
+        """
+
     @abstractmethod
     def __len__(self) -> int:
         """Devuelve la cantidad total de unidades visuales disponibles.

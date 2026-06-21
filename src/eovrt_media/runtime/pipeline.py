@@ -357,30 +357,36 @@ def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
         )
         producer.start()
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Procesando unidades visuales...", total=progress_total)
-            run_consumer_loop(
-                transport=transport,
-                adapter=adapter,
-                normalizer=normalizer,
-                artifact_writer=artifact_writer,
-                run_context=run_context,
-                tracker=tracker,
-                config=config,
-                prompt_texts=prompt_texts,
-                prompt_items=prompt_items,
-                prompt_version=prompt_version,
-                timings=timings,
-                progress=progress,
-                task=task,
-                drain_errors=True,
-            )
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                console=console,
+            ) as progress:
+                task = progress.add_task("Procesando unidades visuales...", total=progress_total)
+                run_consumer_loop(
+                    transport=transport,
+                    adapter=adapter,
+                    normalizer=normalizer,
+                    artifact_writer=artifact_writer,
+                    run_context=run_context,
+                    tracker=tracker,
+                    config=config,
+                    prompt_texts=prompt_texts,
+                    prompt_items=prompt_items,
+                    prompt_version=prompt_version,
+                    timings=timings,
+                    progress=progress,
+                    task=task,
+                    drain_errors=True,
+                )
+        except KeyboardInterrupt:
+            console.print("\n[yellow]⚠ Corrida interrumpida — guardando artefactos...[/yellow]")
+            source.stop()
+            transport.close()
+            producer.join(timeout=5.0)
 
         _drain_producer_errors(run_context._errors_queue, artifact_writer, run_context)
         run_context.units_dropped = getattr(transport, "units_dropped", 0)

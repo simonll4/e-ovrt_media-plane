@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from typing import Iterator
 
@@ -32,6 +33,7 @@ class RtspSource(BaseSource):
         self.reconnect_retries = reconnect_retries
         self.reconnect_delay_ms = reconnect_delay_ms
         self.max_units = max_units
+        self._stop_event = threading.Event()
 
     def _open_capture(self, url: str) -> cv2.VideoCapture:
         """Abre la captura RTSP. Sobreescribible en tests para usar un archivo."""
@@ -54,11 +56,17 @@ class RtspSource(BaseSource):
             f"RTSP: no se pudo conectar tras {self.reconnect_retries} intentos: {self.url}"
         )
 
+    def stop(self) -> None:
+        """Interrumpe el bucle de captura tras el frame actual."""
+        self._stop_event.set()
+
     def __iter__(self) -> Iterator[VisualUnit]:
         cap = self._connect()
         emitted = 0
         try:
             while True:
+                if self._stop_event.is_set():
+                    return
                 if self.max_units is not None and emitted >= self.max_units:
                     return
                 ok, frame = cap.read()
