@@ -58,6 +58,28 @@ class TestNormalizeSpatial:
         assert result.orig_height == 600
         assert result.unit_id == "u1"
 
+    def test_fp16_raises(self, tmp_path):
+        unit = _make_visual_unit(tmp_path)
+        spec = ModelInputSpec(target_size=(640, 640))
+        with pytest.raises(NotImplementedError, match="fp16"):
+            normalize_spatial(unit, spec, PayloadFormat.FP16)
+
+    def test_fp32_payload_format(self, tmp_path):
+        unit = _make_visual_unit(tmp_path)
+        spec = ModelInputSpec(target_size=(640, 640))
+        result = normalize_spatial(unit, spec, PayloadFormat.FP32)
+        assert result.payload.dtype == np.float32
+        assert result.payload.min() >= 0.0
+        assert result.payload.max() <= 1.0
+        assert result.payload_format == PayloadFormat.FP32
+
+    def test_run_id_propagated(self, tmp_path):
+        unit = _make_visual_unit(tmp_path)
+        unit = unit.model_copy(update={"run_id": "test_run_123"})
+        spec = ModelInputSpec(target_size=(640, 640))
+        result = normalize_spatial(unit, spec, PayloadFormat.UINT8_RGB)
+        assert result.run_id == "test_run_123"
+
 
 class TestPrepareModelInput:
     def test_output_tensor_shape(self, tmp_path):

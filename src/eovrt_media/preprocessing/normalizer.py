@@ -44,6 +44,12 @@ def normalize_spatial(
     Returns:
         NormalizedUnit con el payload redimensionado y el transform aplicado.
     """
+    if payload_format == PayloadFormat.FP16:
+        raise NotImplementedError(
+            "payload_format=fp16 is declared but not implemented; "
+            "implement it together with the backend network."
+        )
+
     # Cargar imagen en RGB
     img_bgr = cv2.imread(unit.path)
     if img_bgr is None:
@@ -64,6 +70,9 @@ def normalize_spatial(
             scale_x=scale_x, scale_y=scale_y, pad_x=0.0, pad_y=0.0
         )
 
+    if payload_format == PayloadFormat.FP32:
+        payload = payload.astype(np.float32) / 255.0
+
     return NormalizedUnit(
         unit_id=unit.unit_id,
         source_id=getattr(unit, "source_id", None),
@@ -75,6 +84,7 @@ def normalize_spatial(
         payload_format=payload_format,
         target_size=(target_h, target_w),
         transform=transform,
+        run_id=unit.run_id,
     )
 
 
