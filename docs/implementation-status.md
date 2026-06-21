@@ -1,6 +1,6 @@
 # Estado de implementación del andamiaje de despliegue
 
-**Actualizado:** 2026-06-21  
+**Actualizado:** 2026-06-21 (EBE + dos nodos implementados, validado E2E con cámara EZVIZ)  
 **Alcance:** plano de medios de E-OVRT-VDP; no incluye el plano de control ni reglas de riesgo.
 
 Este documento describe el estado del código, no la arquitectura aspiracional. La decisión de
@@ -8,41 +8,55 @@ despliegue vigente está en [topologías DBE/EBE](contexto/topologias-despliegue
 
 ## Resumen ejecutivo
 
-El camino operativo es **DBE en un host**. La ejecución está desacoplada en un productor y un
-consumidor, conectados mediante `TransportAdapter` con backend `memory`. El sistema ya registra
-configuración efectiva, artefactos versionados, descriptor de despliegue y procedencia de la fuente.
+El plano de medios tiene las cuatro combinaciones de escenario × topología implementadas. El camino
+más simple sigue siendo **DBE en un host**; las capacidades EBE y dos nodos están disponibles y
+validadas. `IPC` y `fp16` no se simulan: sus interfaces existen pero una configuración que los solicite
+termina con un error explícito.
 
-Las capacidades de EBE, IPC y red no se simulan: sus interfaces y validaciones existen, pero una
-configuración que las solicite termina con un error explícito antes de ejecutar una corrida.
-
-| Combinación | Estado | Motivo / condición restante |
+| Combinación | Estado | Notas |
 |---|---|---|
-| DBE + un host | Implementada | `ImageFolderSource` y `VideoFileSource`, transporte en memoria y política determinista. |
-| EBE + un host | Declarada | Falta una implementación concreta de `LiveSource` para cámara o RTSP. |
-| DBE + dos nodos | Declarada | Falta `NetworkTransportAdapter` y su protocolo/serialización. |
-| EBE + dos nodos | Declarada | Requiere fuente viva y transporte de red. |
+| DBE + un host | Implementada | `ImageFolderSource` y `VideoFileSource`, transporte en memoria, política determinista. |
+| EBE + un host | Implementada | `RtspSource` con timestamps de pared, `bounded_freshness`, `pixel_data` en `VisualUnit`. Validado con cámara EZVIZ (1920×1080). |
+| DBE + dos nodos | Implementada | `NetworkTransportAdapter` ZeroMQ REQ/REP, serialización msgpack, heartbeat. CLI `run-producer`/`run-consumer`. |
+| EBE + dos nodos | Implementada | Combina fuente viva y transporte de red. Docker: `Dockerfile.node-a` (edge) + `Dockerfile.node-b` (CUDA). |
 
 ## Flujo implementado
 
+**Un host (single-host):**
 ```
-BaseSource                         TransportAdapter                    consumidor (main)
-ImageFolderSource / VideoFileSource       memory
-         │                                    │                                │
-         ▼                                    ▼                                ▼
-VisualUnit → RateGate → normalize_spatial → NormalizedUnit → forward() → postproceso → sinks
-              (productor, hilo)              END                          DetectionEvent
+BaseSource (ImageFolderSource / VideoFileSource / RtspSource)
+         │
+         ▼  VisualUnit (+ pixel_data para fuentes vivas)
+RateGate → normalize_spatial → NormalizedUnit
+              (hilo productor)        │
+                              MemoryTransportAdapter (memory)
+                                      │
+                              forward() → postproceso → sinks
+                              (hilo consumidor)    DetectionEvent
+```
+
+**Dos nodos (two-node, network):**
+```
+Nodo A: BaseSource → RateGate → normalize_spatial → MemoryTransportAdapter(buffer)
+                                                              │
+                                                     NetworkTransportAdapter(REP, ZeroMQ)
+                                                              │ LAN
+                                                     NetworkTransportAdapter(REQ, ZeroMQ)
+                                                              │
+Nodo B:                                              forward() → postproceso → sinks
 ```
 
 1. El productor itera la fuente y aplica `RateGate`.
-2. `normalize_spatial()` decodifica imágenes o frames de vídeo, asegura RGB, aplica resize/letterbox
-   y genera un `NormalizedUnit` con su `ResizeTransform`.
-3. El productor ofrece la unidad al canal y, al terminar, emite `END` mediante `close()`.
+2. `normalize_spatial()` decodifica imágenes o frames; fuentes vivas (RTSP) usan `pixel_data`
+   directamente sin reabrir el stream. Genera `NormalizedUnit` con `ResizeTransform`.
+3. El productor ofrece la unidad al canal; al terminar emite `END` mediante `close()`.
 4. El consumidor solicita unidades, ejecuta `BaseDetectorAdapter.forward()`, reproyecta cajas al
    espacio original y persiste detecciones, métricas y errores recuperables.
 
-El consumidor corre en el hilo principal y el productor en `pipeline-producer`. El apagado drena el
-canal hasta `END`; los errores de normalización o de fuente se escriben en `errors.jsonl` sin abortar
-las unidades siguientes.
+En single-host el consumidor corre en el hilo principal y el productor en `pipeline-producer`. En
+two-node, `run_node_a` y `run_node_b` son procesos separados (o contenedores Docker distintos).
+El apagado drena el canal hasta `END`; los errores se escriben en `errors.jsonl` sin abortar las
+unidades siguientes.
 
 ## Capacidades implementadas
 
@@ -54,7 +68,7 @@ las unidades siguientes.
 | `memory` + `bounded_freshness` | Implementada | Buffer acotado con head-drop del elemento más antiguo y contador `units_dropped`. |
 | `RateGate` | Implementada | `stride >= 1`; se aplica antes de normalizar. |
 | `ipc` | Declarada, bloqueada | `IpcTransportAdapter` existe y lanza `NotImplementedError`. |
-| `network` | Declarada, bloqueada | `NetworkTransportAdapter` y contratos REQUEST/RESPONSE/HEARTBEAT existen; el backend no. |
+| `network` | Implementada | ZeroMQ REQ/REP; Nodo A bind REP, Nodo B connect REQ; serialización msgpack + numpy raw; heartbeat via actividad de requests. |
 
 ### Normalización y adaptadores
 
@@ -76,7 +90,7 @@ Las secciones de despliegue son `rate_control`, `transport` y `topology`.
 
 - `source.type` deriva `source.kind` (`pulleable` o `live`).
 - Una fuente pulleable deriva `policy=deterministic`; una viva deriva `bounded_freshness`.
-- `topology.mode=single_host` deriva `backend=memory`; `two_node` deriva `network` y queda bloqueado.
+- `topology.mode=single_host` deriva `backend=memory`; `two_node` deriva `network` (implementado).
 - `sampling` fue retirado: cualquier YAML que lo contenga falla con un mensaje de migración.
 - `run.max_units` reemplaza `sampling.max_units`; `rate_control.stride` reemplaza `sampling.every_n`.
 
@@ -103,15 +117,18 @@ mostrar descriptor, métricas y procedencia.
 
 ## Límites conocidos y trabajo encaminado
 
-| Pendiente | Costura ya disponible | Siguiente implementación concreta |
+| Ítem | Estado | Notas |
 |---|---|---|
-| Cámara / RTSP | `LiveSource`, `source.kind=live`, `bounded_freshness` | Implementar captura y timestamps de pared. |
-| IPC local | `IpcTransportAdapter`, factory y config | Ring buffer en memoria compartida. |
-| Dos nodos | `NetworkTransportAdapter`, contratos de red y gating de topología | Serialización de `NormalizedUnit`, REQUEST/RESPONSE/HEARTBEAT y reconexión. |
-| FP16 | `PayloadFormat.FP16` y gating | Conversión y transporte de media precisión. |
-| Métrica de staleness observada | Campo en `RunContext` y `summary.json` | Medir edad con timestamps de captura de una fuente viva. |
-| Previews anotadas de imágenes | `source_path` en `NormalizedUnit` y `draw_detections()` | Implementadas para `ImageFolderSource`; falta extraer y renderizar frames de vídeo. |
-| Preparación tensorial compartida | `prepare_model_input()` | Adaptar GDINO/YOLOE para consumirla directamente cuando se valide paridad por backend. |
+| Cámara / RTSP | **Implementado** | `RtspSource`, timestamps de pared, `pixel_data`, reconexión con backoff. |
+| Dos nodos | **Implementado** | `NetworkTransportAdapter` ZeroMQ, serialización msgpack, heartbeat, CLI `run-producer`/`run-consumer`. |
+| Métricas de staleness | **Implementado** | `max_staleness_observed_ms` y `units_dropped` en `summary.json`. |
+| OAK-D Pro PoE | Declarado/deferred | `OakDSource.__iter__` lanza `NotImplementedError`; requiere SDK DepthAI. |
+| IPC local | Declarado/deferred | `IpcTransportAdapter` existe y lanza `NotImplementedError`. |
+| FP16 | Declarado/deferred | `PayloadFormat.FP16` existe; conversión y transporte pendientes. |
+| Previews de video | Parcial | Implementadas para `ImageFolderSource`; frames de video/RTSP sin renderizado anotado. |
+| Preparación tensorial compartida | Pendiente | `prepare_model_input()` disponible pero GDINO/YOLOE aún convierten a PIL internamente. |
+| Heartbeat PUSH/PULL dedicado | Pendiente | Actualmente se infiere del patrón de requests; un socket separado daría mayor precisión. |
+| Edge sin torch | Pendiente | Nodo A importa torch al resolver `input_spec`; optimizable para imágenes sin GPU. |
 
 ## Operación y validación
 
@@ -119,7 +136,7 @@ La suite incluye pruebas de transporte, configuración, normalización, producto
 trazabilidad. La última verificación local fue:
 
 ```bash
-pytest -q                 # 114 pruebas
+pytest -q                 # 151 pruebas
 ruff check src tests
 ```
 

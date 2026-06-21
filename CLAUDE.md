@@ -17,6 +17,10 @@ make run-gdino                                  # Grounding DINO sample run
 make run-yoloe                                  # YOLOE sample run
 eovrt-media run --config configs/runs/<file>.yaml   # direct CLI
 
+# Two-node topology (EBE distributed)
+eovrt-media run-producer --config configs/runs/<file>.yaml  # Nodo A: ingesta + normalización + ZeroMQ REP
+eovrt-media run-consumer --config configs/runs/<file>.yaml  # Nodo B: inferencia + artefactos + ZeroMQ REQ
+
 # CLI utilities
 eovrt-media validate-config --config <yaml>
 eovrt-media inspect-run runs/<run_id>
@@ -37,11 +41,13 @@ Python pipeline for open-vocabulary object detection (OVD). All behavior is conf
 
 **Config catalogs**: run configs in `configs/runs/` compose catalog entries by reference — `model.ref` → `configs/models/<family>/<variant>.yaml`, `source.ref` → `configs/datasets/<name>.yaml`, `prompts.ref` → `configs/prompts/<name>.yaml`. Inline fields in the run config override catalog values; ref resolution lives in `config/loader.py`. Weights live in `models/<family>/{original,finetuned/<tag>}/`, one catalog entry per weight. See `configs/README.md`.
 
-**Execution path**: `cli.py` → `runtime/pipeline.py:run_pipeline()` → per-unit loop (read → preprocess → inference → postprocess → write)
+**Execution path (single-host)**: `cli.py` → `runtime/pipeline.py:run_pipeline()` → producer thread (read → rate-gate → normalize) + consumer thread (inference → postprocess → write), coupled via `MemoryTransportAdapter`.
+
+**Execution path (two-node)**: `run-producer` → `runtime/two_node.py:run_node_a()` (ingesta + ZeroMQ REP server); `run-consumer` → `runtime/two_node.py:run_node_b()` (ZeroMQ REQ client + inference + artifacts). Transport: `NetworkTransportAdapter` (ZeroMQ REQ/REP, msgpack serialization, heartbeat via request activity).
 
 **Key abstractions**:
 - `BaseDetectorAdapter` (`models/base.py`) — plugin interface for inference; register new adapters in `models/__init__.py:create_adapter()`
-- `BaseSource` (`sources/base.py`) — yields `VisualUnit` objects; two implementations: `ImageFolderSource`, `VideoFileSource`
+- `BaseSource` (`sources/base.py`) — yields `VisualUnit` objects; implementations: `ImageFolderSource`, `VideoFileSource`, `RtspSource` (live RTSP with wall-clock timestamps and reconnect), `OakDSource` (OAK-D Pro PoE stub, raises `NotImplementedError`)
 - `RunContext` (`runtime/run_context.py`) — stateful execution context (run_id, unit counts, timing); owns the output directory
 - `RunArtifactWriter` (`sinks/run_artifact_writer.py`) — persists to `runs/<run_id>/`: `detections.jsonl`, `metrics.jsonl`, `errors.jsonl`, `summary.json`, `previews/`
 

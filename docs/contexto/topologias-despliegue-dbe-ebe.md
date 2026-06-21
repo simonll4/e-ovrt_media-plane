@@ -12,8 +12,8 @@ válidas; su disponibilidad en este build es distinta:
 
 | | Un host | Dos nodos |
 |---|---|---|
-| **DBE** | **implementado** — escenario principal | declarado — falta backend `network` |
-| **EBE** | declarado — falta fuente `live` | declarado — faltan fuente viva y red |
+| **DBE** | **implementado** — escenario principal | **implementado** — `NetworkTransportAdapter` ZeroMQ REQ/REP |
+| **EBE** | **implementado** — `RtspSource` + `bounded_freshness` + `pixel_data` | **implementado** — `run_node_a`/`run_node_b`, validado en LAN |
 
 (*) EBE ya implica alta complejidad de montaje (cámara real, entorno controlado, stream en vivo). Agregar la topología distribuida encima puede no aportar valor experimental suficiente para justificarlo dentro del alcance académico del proyecto. La combinación más informativa para comparar el impacto de la distribución es **DBE un host vs DBE dos nodos**, porque el escenario está completamente controlado y los resultados son reproducibles. EBE distribuido queda como combinación posible pero de prioridad baja.
 
@@ -279,7 +279,7 @@ Flujo de señales (LAN cableada Ethernet):
 | `VisualUnit` | Nodo A → Nodo B | frame del buffer, en el `payload_format` configurado |
 | `HEARTBEAT` | bidireccional | keep-alive periódico |
 
-Protocolo de transporte a definir al implementar (candidatos: ZeroMQ, gRPC). La elección no afecta los contratos ni la lógica conceptual de los componentes.
+Protocolo implementado: **ZeroMQ REQ/REP**. Nodo A hace bind en REP; Nodo B conecta en REQ. Serialización: `[4B header_len big-endian][msgpack meta][numpy bytes raw]`. Mensajes de control: `REQUEST`, `END`, `HEARTBEAT`. La elección no afecta los contratos ni la lógica conceptual de los componentes.
 
 ---
 
@@ -308,14 +308,17 @@ Protocolo de transporte a definir al implementar (candidatos: ZeroMQ, gRPC). La 
 - **Un host — DBE**: implementado. El productor y consumidor se desacoplan con
   `TransportAdapter(memory)`; `deterministic` aplica backpressure y `RateGate` mantiene
   reproducibilidad con stride fijo.
-- **Un host — EBE**: la política `bounded_freshness`, el head-drop y la configuración
-  `source.kind=live` ya existen. Falta `LiveSource` para cámara/RTSP y timestamps de captura
-  que hagan significativa la métrica de frescura.
-- **Dos nodos — DBE**: contratos REQUEST/RESPONSE/HEARTBEAT, `NetworkTransportAdapter` y
-  gating de `topology.mode=two_node` existen; falta implementar serialización, red y reconexión.
-- **Dos nodos — EBE**: combina los pendientes de fuente viva y red; mantiene prioridad baja.
+- **Un host — EBE**: implementado. `RtspSource` captura frames con timestamps de pared;
+  `pixel_data` embebe el frame BGR en `VisualUnit` para que `image_loader` no reabra el stream.
+  `bounded_freshness` descarta frames obsoletos bajo carga. Validado con cámara EZVIZ real
+  (1920×1080, 9 fps observados).
+- **Dos nodos — DBE/EBE**: implementado. `NetworkTransportAdapter` usa ZeroMQ REQ/REP;
+  serialización msgpack + numpy raw; heartbeat via actividad de requests. Nodo A (`run_node_a`)
+  vincula el servidor REP; Nodo B (`run_node_b`) conecta el cliente REQ y produce los artefactos.
+  Contenedores Docker disponibles: `Dockerfile.node-a` (edge, sin GPU) y `Dockerfile.node-b`
+  (CUDA), orquestados con `docker-compose.yml`.
 
-`ipc`, `network`, `two_node` y `payload_format=fp16` no hacen fallback silencioso: el loader
-o el factory fallan explícitamente. La política de rate control y el formato de payload siguen
-siendo configurables mediante YAML. El detalle operativo y los límites conocidos viven en
+`ipc` y `payload_format=fp16` no hacen fallback silencioso: el loader o el factory fallan
+explícitamente. La política de rate control y el formato de payload siguen siendo configurables
+mediante YAML. El detalle operativo y los límites conocidos viven en
 [implementation-status.md](../implementation-status.md).
