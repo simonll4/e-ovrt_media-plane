@@ -6,17 +6,17 @@ El plano de medios es el componente de E-OVRT-VDP responsable de la **percepció
 
 ## Estado operativo
 
-El camino implementado es **DBE en un host**: fuente pulleable, productor en un
-hilo, consumidor en el hilo principal y `TransportAdapter` con backend `memory`.
-Las combinaciones EBE, IPC y red están declaradas y bloqueadas explícitamente.
+Las cuatro combinaciones escenario × topología están implementadas y validadas:
+DBE/EBE en un host (`memory`) y en dos nodos (`network`/ZeroMQ). `OAK-D` y `fp16`
+son capacidades declaradas para implementación futura.
 Ver [implementation-status.md](implementation-status.md) para la matriz completa.
 
 ## Qué entra y qué sale
 
 ### Entrada
-- **Fuente visual**: carpeta de imágenes (DBE) o video local.
-- **Configuración YAML**: modelo a usar, prompts activos, thresholds, rutas.
-- **Prompts**: lista de entidades visuales a detectar (e.g., "person", "safety helmet").
+- **Fuente visual**: carpeta de imágenes, video local (DBE) o stream RTSP (EBE).
+- **Configuración YAML**: modelo a usar, prompts activos, thresholds, rutas, topología.
+- **Prompts**: lista de entidades visuales a detectar (e.g., "person", "helmet").
 
 ### Salida
 - **`detections.jsonl`**: un evento por unidad visual procesada, con todas las detecciones normalizadas.
@@ -33,19 +33,21 @@ Ver [implementation-status.md](implementation-status.md) para la matriz completa
 ```
 RunConfig YAML
     ↓
-BaseSource (ImageFolderSource | VideoFileSource)
+BaseSource (ImageFolderSource | VideoFileSource | RtspSource | OakDSource†)
     ↓
-VisualUnit
+VisualUnit (+ pixel_data para fuentes vivas)
     ↓
 Productor: RateGate → normalize_spatial → NormalizedUnit → TransportAdapter.offer()
                                                    │
-                              memory: deterministic | bounded_freshness
+                  memory (un host) | network/ZeroMQ (dos nodos)
                                                    │
 Consumidor: TransportAdapter.request() → ModelAdapter.forward() → RawDetection
     ↓
 DetectionNormalizer (reproyección con ResizeTransform) → Detection
     ↓
 Sinks: detections.jsonl, metrics.jsonl, summary.json, provenance y errores
+
+† OakDSource declarado, pendiente SDK DepthAI.
 ```
 
 ## Por qué DBE primero
@@ -68,8 +70,8 @@ Cada modelo OVD (Grounding DINO, YOLOE, etc.) tiene su propia API. Los adaptador
 
 - **Plano de control**: patrones de riesgo (CR-01, CR-02), alertas, persistencia de episodios, motor de estados.
 - **UI / Dashboard**.
-- **Fuente viva / streaming real / MediaMTX** (la interfaz `LiveSource` está declarada).
-- **Edge Node, IPC y despliegue distribuido** (interfaces declaradas, sin backend).
+- **OAK-D Pro PoE** (`OakDSource` declarado; requiere SDK DepthAI, pendiente).
+- **FP16** como formato de payload (enum declarado; conversión y transporte pendientes).
 - **MOT formal / tracking multi-objeto**.
 - **Fine-tuning / entrenamiento** (los checkpoints finetuneados se entrenan fuera de este repo; acá solo se catalogan como pesos en `models/<familia>/finetuned/` con su entrada en `configs/models/`).
 - **Zonas o reglas espaciales**.

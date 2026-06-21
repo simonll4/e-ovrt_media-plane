@@ -1,11 +1,11 @@
-# Corrida sobre video local con YOLOE-26s, muestreando 1 de cada 5 frames
+# Corrida strided sobre CHV demo v2 con YOLOE-26s (1 de cada 5 imágenes)
 run:
   scenario: DBE
-  name: dbe_yoloe_video_cr01_cr02
-  description: "Corrida DBE sobre video local con YOLOE para CR-01 y CR-02"
+  name: dbe_yoloe_strided_demo_v2
+  description: "Corrida DBE con stride=5 sobre CHV demo v2 con YOLOE-26s"
 
 source:
-  ref: video_sample
+  ref: demo_v2
 
 rate_control:
   stride: 5
@@ -14,5 +14,5 @@ model:
   ref: yoloe/yoloe-26s
 
 prompts:
-  ref: cr01_cr02_v1
+  ref: cr01_cr02_v2_short
   active_ids: [person, helmet, vest]

@@ -1,15 +1,15 @@
-# Corrida de muestra con Grounding DINO tiny en CPU
+# Corrida de muestra con Grounding DINO tiny en CPU sobre CHV demo v2
 run:
   scenario: DBE
-  name: dbe_grounding_dino_cr01_cr02
-  description: "Corrida experimental con Grounding DINO para CR-01 y CR-02"
+  name: dbe_grounding_dino_demo_v2
+  description: "Corrida de muestra con Grounding DINO tiny (canonical_v2, CHV demo)"
 
 source:
-  ref: dataset_v1
+  ref: demo_v2
 
 model:
   ref: grounding-dino/gdino-tiny
 
 prompts:
-  ref: cr01_cr02_v1
+  ref: cr01_cr02_v2_short
   active_ids: [person, helmet, vest]

@@ -88,8 +88,8 @@ class TestConfigGating:
         assert cfg.transport.backend == "network"
         assert cfg.transport.heartbeat_timeout_ms == 5000
 
-    def test_ipc_backend_is_gated(self, tmp_path: Path):
-        with pytest.raises(NotImplementedError, match="ipc.*implementado"):
+    def test_ipc_backend_is_invalid(self, tmp_path: Path):
+        with pytest.raises(ValueError, match="backend debe ser"):
             _minimal_config(tmp_path, transport={"backend": "ipc"})
 
     def test_fp16_payload_format_is_gated(self, tmp_path: Path):

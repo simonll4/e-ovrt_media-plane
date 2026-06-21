@@ -62,9 +62,9 @@ eovrt-media run --config configs/runs/mock.yaml
 make run-mock
 ```
 
-La config `mock.yaml` usa el catálogo `dataset_v1`, cuya ruta es
-`data/samples/images/dataset_v1`. Cree o monte ese directorio con imágenes válidas antes
-de ejecutar la corrida. Si la fuente no existe, el CLI falla al inicio con `FileNotFoundError`.
+La config `mock.yaml` usa el catálogo `demo_v2` (CHV demo v2, repo hermano
+`../e-ovrt_datasets`). No requiere pesos de modelos; valida el pipeline completo con
+el detector mock. Asegúrese de que el repo hermano esté presente como sibling en disco.
 
 ### Con Grounding DINO
 
@@ -82,15 +82,30 @@ eovrt-media run --config configs/runs/yoloe.yaml
 make run-yoloe
 ```
 
-### Sobre video local
+### Con stride (muestreo por paso)
 
 ```bash
 eovrt-media run --config configs/runs/yoloe_video.yaml
 ```
 
-Espera `data/samples/videos/sample.mp4`; el stride se controla con
-`rate_control.stride` y el límite de unidades con `run.max_units`. La sección `sampling`
-ya no es válida y el loader informa cómo migrarla.
+Procesa CHV demo v2 con `stride: 5` (1 de cada 5 imágenes). El stride se controla
+con `rate_control.stride` y el límite de unidades con `run.max_units`. La sección
+`sampling` ya no es válida; el loader informa cómo migrarla.
+
+### Topología dos nodos (Nodo A edge + Nodo B GPU)
+
+```bash
+# Nodo A: ingesta + normalización + ZeroMQ REP
+eovrt-media run-producer --config configs/runs/<archivo>.yaml
+
+# Nodo B: inferencia + artefactos + ZeroMQ REQ
+eovrt-media run-consumer --config configs/runs/<archivo>.yaml
+```
+
+El config del run debe declarar `topology.mode: two_node`; el loader deriva
+automáticamente `transport.backend: network`. Ver
+[docs/deployment/two-node-docker.md](deployment/two-node-docker.md) para el
+despliegue con Docker Compose.
 
 ### Cámara RTSP con YOLOE en GPU (single-host)
 

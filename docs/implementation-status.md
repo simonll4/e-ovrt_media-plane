@@ -10,7 +10,7 @@ despliegue vigente está en [topologías DBE/EBE](contexto/topologias-despliegue
 
 El plano de medios tiene las cuatro combinaciones de escenario × topología implementadas. El camino
 más simple sigue siendo **DBE en un host**; las capacidades EBE y dos nodos están disponibles y
-validadas. `IPC` y `fp16` no se simulan: sus interfaces existen pero una configuración que los solicite
+validadas. `fp16` y `oak_d` están declarados pero no implementados: una configuración que los solicite
 termina con un error explícito.
 
 | Combinación | Estado | Notas |
@@ -67,7 +67,7 @@ unidades siguientes.
 | `memory` + `deterministic` | Implementada | Cola FIFO acotada y backpressure bloqueante; `stride` selecciona unidades reproduciblemente. |
 | `memory` + `bounded_freshness` | Implementada | Buffer acotado con head-drop del elemento más antiguo y contador `units_dropped`. |
 | `RateGate` | Implementada | `stride >= 1`; se aplica antes de normalizar. |
-| `ipc` | Declarada, bloqueada | `IpcTransportAdapter` existe y lanza `NotImplementedError`. |
+| `ipc` | Eliminado | Caso de uso cubierto por `network` con endpoint `ipc://`. |
 | `network` | Implementada | ZeroMQ REQ/REP; Nodo A bind REP, Nodo B connect REQ; serialización msgpack + numpy raw; heartbeat via actividad de requests. |
 
 ### Normalización y adaptadores
@@ -123,7 +123,7 @@ mostrar descriptor, métricas y procedencia.
 | Dos nodos | **Implementado** | `NetworkTransportAdapter` ZeroMQ, serialización msgpack, heartbeat, CLI `run-producer`/`run-consumer`. |
 | Métricas de staleness | **Implementado** | `max_staleness_observed_ms` y `units_dropped` en `summary.json`. |
 | OAK-D Pro PoE | Declarado/deferred | `OakDSource.__iter__` lanza `NotImplementedError`; requiere SDK DepthAI. |
-| IPC local | Declarado/deferred | `IpcTransportAdapter` existe y lanza `NotImplementedError`. |
+| IPC local | Eliminado | Cubierto por `network` con endpoint `ipc://` (ZeroMQ soporta Unix sockets). |
 | FP16 | Declarado/deferred | `PayloadFormat.FP16` existe; conversión y transporte pendientes. |
 | Previews de video | Parcial | Implementadas para `ImageFolderSource`; frames de video/RTSP sin renderizado anotado. |
 | Preparación tensorial compartida | Pendiente | `prepare_model_input()` disponible pero GDINO/YOLOE aún convierten a PIL internamente. |
@@ -140,8 +140,7 @@ pytest -q                 # 151 pruebas
 ruff check src tests
 ```
 
-La corrida `configs/runs/mock.yaml` requiere que exista la fuente del catálogo `dataset_v1`
-(`data/samples/images/dataset_v1`). En un checkout sin esas imágenes, el CLI falla al inicio con
-`FileNotFoundError`; esto es una condición de datos, no una degradación silenciosa del pipeline.
-Para validación aislada, las pruebas de integración generan imágenes temporales y ejercitan el flujo
-completo sin pesos reales.
+La corrida `configs/runs/mock.yaml` usa el catálogo `demo_v2` (CHV demo v2, repo hermano
+`../e-ovrt_datasets`). Requiere que el repo hermano esté presente en disco como sibling.
+Para validación aislada sin el repo hermano, las pruebas de integración generan imágenes
+temporales y ejercitan el flujo completo sin pesos reales (`make test`).

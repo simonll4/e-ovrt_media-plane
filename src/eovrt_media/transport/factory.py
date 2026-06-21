@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from eovrt_media.transport.base import TransportAdapter
 from eovrt_media.transport.memory import MemoryTransportAdapter
-from eovrt_media.transport.declared import IpcTransportAdapter
 from eovrt_media.transport.network import NetworkTransportAdapter
 
 
@@ -25,8 +24,6 @@ def create_transport(
             buffer_size=buffer_size,
             max_staleness_ms=max_staleness_ms,
         )
-    if backend == "ipc":
-        return IpcTransportAdapter()
     if backend == "network":
         if not endpoint:
             raise ValueError("backend=network requiere transport.endpoint configurado.")
@@ -39,4 +36,4 @@ def create_transport(
             heartbeat_interval_ms=kwargs.get("heartbeat_interval_ms", 1000),
             heartbeat_timeout_ms=kwargs.get("heartbeat_timeout_ms", 5000),
         )
-    raise ValueError(f"backend desconocido: {backend!r}. Opciones: memory, ipc, network.")
+    raise ValueError(f"backend desconocido: {backend!r}. Opciones: memory, network.")
