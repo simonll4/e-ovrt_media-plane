@@ -71,3 +71,42 @@ class TestImageFolderSource:
 
         source = ImageFolderSource(tmp_path)
         assert len(source) == 5
+
+    def test_max_units_limits_iteration(self, tmp_path):
+        for i in range(10):
+            _create_test_image(tmp_path / f"img_{i:03d}.jpg")
+
+        source = ImageFolderSource(tmp_path, max_units=3)
+        units = list(source)
+        assert len(units) == 3
+        assert len(source) == 3
+        # Debe quedarse con las primeras (orden alfabético)
+        names = [Path(u.source_path).name for u in units]
+        assert names == ["img_000.jpg", "img_001.jpg", "img_002.jpg"]
+
+    def test_every_n_subsamples(self, tmp_path):
+        for i in range(6):
+            _create_test_image(tmp_path / f"img_{i:03d}.jpg")
+
+        source = ImageFolderSource(tmp_path, every_n=2)
+        names = [Path(u.source_path).name for u in source]
+        assert names == ["img_000.jpg", "img_002.jpg", "img_004.jpg"]
+        assert len(source) == 3
+
+    def test_every_n_then_max_units(self, tmp_path):
+        for i in range(10):
+            _create_test_image(tmp_path / f"img_{i:03d}.jpg")
+
+        # every_n=2 -> 0,2,4,6,8 ; luego cap a 2
+        source = ImageFolderSource(tmp_path, every_n=2, max_units=2)
+        names = [Path(u.source_path).name for u in source]
+        assert names == ["img_000.jpg", "img_002.jpg"]
+        assert len(source) == 2
+
+    def test_no_sampling_by_default(self, tmp_path):
+        for i in range(4):
+            _create_test_image(tmp_path / f"img_{i}.jpg")
+
+        source = ImageFolderSource(tmp_path)
+        assert len(list(source)) == 4
+        assert len(source) == 4

@@ -1,0 +1,9 @@
+# DEMO v2 — CHV train split (1064 imgs)
+# Imágenes del rol DEMO: CHV train, calidad alta, 0 defectos de anotación.
+# Solo positivos (person/helmet/vest); sin bare_head ni negativos explícitos.
+# Uso: smoke-test cualitativo del pipeline; no usar para evaluación cuantitativa.
+description: "DEMO v2: 1064 imgs CHV train (person/helmets color/vest). Calidad alta, 0 defectos. Solo positivos EPP."
+
+type: image_folder
+path: ../e-ovrt_datasets/datasets/raw/chv/CHV_dataset/images
+extensions: [".jpg", ".jpeg", ".png"]

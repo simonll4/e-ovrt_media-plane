@@ -1,0 +1,9 @@
+# BENCH v2 — construction_site_safety split val (114 imgs)
+# Split val del BENCH: imágenes de obra con anotaciones canonical_v2.
+# Parte del BENCH de evaluación (196 imgs total = val + test).
+# Ejecutar junto con bench_v2_test para cubrir el BENCH completo.
+description: "BENCH v2 val: 114 imgs de obra (construction_site_safety v27, split val). Canonical_v2: person/helmet/vest/bare_head."
+
+type: image_folder
+path: ../e-ovrt_datasets/datasets/raw/construction_site_safety/valid/images
+extensions: [".jpg", ".jpeg", ".png"]

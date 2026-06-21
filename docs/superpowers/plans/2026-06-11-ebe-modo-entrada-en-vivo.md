@@ -30,7 +30,7 @@
 
 ## Alineación con el diseño arquitectónico (Etapa 3, §17.3)
 
-Este plan implementa, dentro del alcance del repo (solo plano de medios), la topología EBE definida en §17.3.14 del diseño arquitectónico de la plataforma (`docs/contexto/E-OVRT-VDP_Etapa_3_Diseno_Arquitectonico_para_agente_codigo.md`). Correspondencias:
+Este plan implementa, dentro del alcance del repo (solo plano de medios), la topología EBE definida en §17.3.14 del diseño arquitectónico de la plataforma (`docs/contexto/diseno-arquitectonico.md`). Correspondencias:
 
 | Decisión del plan | Sustento en el diseño arquitectónico |
 | --- | --- |

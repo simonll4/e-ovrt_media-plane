@@ -20,11 +20,21 @@ class ImageFolderSource(BaseSource):
     Parámetros:
         folder_path: Ruta a la carpeta de imágenes.
         extensions: Extensiones de archivo soportadas (e.g., [".jpg", ".jpeg", ".png"]).
+        every_n: Procesar una imagen cada N (orden alfabético). Por defecto 1 (todas).
+        max_units: Límite máximo de imágenes a procesar (aplicado tras every_n).
     """
 
-    def __init__(self, folder_path: str | Path, extensions: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        folder_path: str | Path,
+        extensions: list[str] | None = None,
+        every_n: int = 1,
+        max_units: int | None = None,
+    ) -> None:
         self.folder_path = Path(folder_path)
         self.extensions = [ext.lower() for ext in (extensions or [".jpg", ".jpeg", ".png"])]
+        self.every_n = every_n
+        self.max_units = max_units
 
         if not self.folder_path.exists():
             raise FileNotFoundError(f"Carpeta de imágenes no encontrada: {self.folder_path}")
@@ -32,11 +42,17 @@ class ImageFolderSource(BaseSource):
             raise NotADirectoryError(f"La ruta no es un directorio: {self.folder_path}")
 
     def _list_image_files(self) -> list[Path]:
-        """Lista archivos de imagen ordenados alfabéticamente."""
+        """Lista archivos de imagen ordenados alfabéticamente, tras aplicar muestreo."""
         files = []
         for path in sorted(self.folder_path.iterdir()):
             if path.is_file() and path.suffix.lower() in self.extensions:
                 files.append(path)
+
+        # Submuestreo cada N y luego límite máximo (misma semántica que VideoFileSource).
+        step = max(1, self.every_n)
+        files = files[::step]
+        if self.max_units is not None:
+            files = files[: self.max_units]
         return files
 
     def _create_visual_unit(self, image_path: Path, index: int) -> VisualUnit:

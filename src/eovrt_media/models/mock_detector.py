@@ -57,8 +57,8 @@ class MockDetectorAdapter(BaseDetectorAdapter):
         return ModelInputSpec(
             target_size=(640, 640),
             resize_mode="letterbox",
-            mean=(0.485, 0.456, 0.406),
-            std=(0.229, 0.224, 0.225),
+            mean=(0.0, 0.0, 0.0),
+            std=(1.0, 1.0, 1.0),
         )
 
     def close(self) -> None:

@@ -1,7 +1,7 @@
 # Relevamiento: plano de medios vs. documentación de contexto
 
 **Fecha:** 2026-06-10
-**Documentos de referencia:** `docs/contexto/context.md`, `docs/contexto/modelos-candidatos.md`, `docs/contexto/referencias-modelos.md`
+**Documentos de referencia:** `docs/contexto/diseno-arquitectonico.md`, `docs/contexto/modelos-candidatos.md`, `docs/contexto/referencias-modelos.md`
 **Alcance:** auditoría completa del código del repositorio contra el contexto, contratos, frontera arquitectónica, roadmap y matriz experimental descriptos en los documentos de contexto.
 
 ---

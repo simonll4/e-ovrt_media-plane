@@ -32,6 +32,8 @@ class TestModelInputSpec:
         assert isinstance(spec, ModelInputSpec)
         assert len(spec.target_size) == 2
         assert spec.target_size[0] > 0 and spec.target_size[1] > 0
+        assert spec.mean == (0.0, 0.0, 0.0)
+        assert spec.std == (1.0, 1.0, 1.0)
 
     def test_gdino_adapter_has_input_spec(self):
         section = ModelSection(adapter="grounding_dino_hf", device="cpu")
@@ -39,6 +41,8 @@ class TestModelInputSpec:
         spec = adapter.input_spec
         assert spec.target_size == (800, 800)
         assert spec.resize_mode == "letterbox"
+        assert spec.mean == (0.485, 0.456, 0.406)
+        assert spec.std == (0.229, 0.224, 0.225)
 
     def test_yoloe_adapter_has_input_spec(self):
         section = ModelSection(adapter="yoloe", device="cpu")

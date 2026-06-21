@@ -1,0 +1,29 @@
+prompt_set:
+  id: cr01_cr02_bench_v2
+  description: >
+    Prompt set para evaluación BENCH v2. Etiquetas cortas compatibles con YOLOE y GDINO.
+    Incluye bare_head para detección de cabeza sin casco (canonical_v2 class).
+    Basado en el diagnóstico P-E1 (etiquetas cortas > frases compuestas para YOLOE)
+    y el protocolo experimental v2 (2026-06-18).
+    NO modificar — congelado para reproducibilidad del BENCH.
+  language: en
+  items:
+    - id: person
+      text: "person"
+      role: entity
+      enabled_by_default: true
+
+    - id: helmet
+      text: "helmet"
+      role: ppe
+      enabled_by_default: true
+
+    - id: vest
+      text: "vest"
+      role: ppe
+      enabled_by_default: true
+
+    - id: bare_head
+      text: "bare head"
+      role: visual_risk_indicator
+      enabled_by_default: true

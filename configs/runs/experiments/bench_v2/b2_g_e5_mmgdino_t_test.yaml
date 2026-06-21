@@ -1,0 +1,16 @@
+# B2-G-E5-TEST — MM-Grounding DINO tiny, BENCH v2 test split
+run:
+  scenario: DBE
+  name: b2_g_e5_mmgdino_t_test
+  description: "B2-G-E5-TEST: MM-GDINO-tiny en GPU sobre BENCH v2 test (82 imgs). Prompts bench_v2: person/helmet/vest/bare_head."
+
+source:
+  ref: bench_v2_test
+
+model:
+  ref: mm-grounding-dino/mm-gdino-tiny
+  device: cuda
+
+prompts:
+  ref: cr01_cr02_bench_v2
+  active_ids: [person, helmet, vest, bare_head]

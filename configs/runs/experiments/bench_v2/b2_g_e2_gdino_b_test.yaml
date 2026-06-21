@@ -1,0 +1,16 @@
+# B2-G-E2-TEST — Grounding DINO base, BENCH v2 test split
+run:
+  scenario: DBE
+  name: b2_g_e2_gdino_b_test
+  description: "B2-G-E2-TEST: GDINO-base en GPU sobre BENCH v2 test (82 imgs). Prompts bench_v2: person/helmet/vest/bare_head."
+
+source:
+  ref: bench_v2_test
+
+model:
+  ref: grounding-dino/gdino-base
+  device: cuda
+
+prompts:
+  ref: cr01_cr02_bench_v2
+  active_ids: [person, helmet, vest, bare_head]

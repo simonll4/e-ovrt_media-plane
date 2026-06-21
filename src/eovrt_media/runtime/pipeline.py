@@ -34,6 +34,8 @@ def create_source(config: RunConfig) -> BaseSource:
         return ImageFolderSource(
             folder_path=config.source.path,
             extensions=config.source.extensions,
+            every_n=config.sampling.every_n,
+            max_units=config.sampling.max_units,
         )
     elif source_type in ("video", "video_frame", "video_file"):
         return VideoFileSource(

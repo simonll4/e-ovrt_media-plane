@@ -1,0 +1,16 @@
+# B2-G-E5-VAL — MM-Grounding DINO tiny, BENCH v2 val split
+run:
+  scenario: DBE
+  name: b2_g_e5_mmgdino_t_val
+  description: "B2-G-E5-VAL: MM-GDINO-tiny en GPU sobre BENCH v2 val (114 imgs). Prompts bench_v2: person/helmet/vest/bare_head."
+
+source:
+  ref: bench_v2_val
+
+model:
+  ref: mm-grounding-dino/mm-gdino-tiny
+  device: cuda
+
+prompts:
+  ref: cr01_cr02_bench_v2
+  active_ids: [person, helmet, vest, bare_head]

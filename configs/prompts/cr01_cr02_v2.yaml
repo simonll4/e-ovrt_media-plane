@@ -1,0 +1,101 @@
+prompt_set:
+  id: cr01_cr02_v2
+  description: "Prompts para detección CR-01 (sin casco) y CR-02 (sin chaleco) — E1/E2 positivos + E3 negación congelada"
+  language: en
+  items:
+    # E1/E2 POSITIVE CLASSES — Zero-shot detection vocabulary
+    - id: person
+      text: "person"
+      role: entity
+      aliases:
+        - "worker"
+        - "laborer"
+        - "construction worker"
+
+    - id: helmet
+      text: "safety helmet"
+      role: ppe
+      aliases:
+        - "hard hat"
+        - "hardhat"
+        - "construction helmet"
+
+    - id: vest
+      text: "reflective vest"
+      role: ppe
+      aliases:
+        - "safety vest"
+        - "high-visibility vest"
+        - "hi-vis vest"
+        - "reflective jacket"
+
+    - id: bare_head
+      text: "bare head"
+      role: visual_risk_indicator
+      aliases:
+        - "uncovered head"
+        - "head without helmet"
+        - "worker without hard hat head"
+
+    # E3 NEGATION PROMPTS — Frozen from protocol §4, exact text
+    # CR-01: Absence of safety helmet
+    - id: E3-CR01-P01
+      text: "a person not wearing a safety helmet"
+      role: negation_e3
+      enabled_by_default: false
+
+    - id: E3-CR01-P02
+      text: "a worker without a hard hat"
+      role: negation_e3
+      enabled_by_default: false
+
+    - id: E3-CR01-P03
+      text: "a construction worker with no helmet"
+      role: negation_e3
+      enabled_by_default: false
+
+    - id: E3-CR01-P04
+      text: "a worker with bare head on a construction site"
+      role: negation_e3
+      enabled_by_default: false
+
+    - id: E3-CR01-Y01
+      text: "a person not wearing a safety helmet"
+      role: negation_e3
+      enabled_by_default: false
+
+    - id: E3-CR01-Y02
+      text: "a worker without a hard hat"
+      role: negation_e3
+      enabled_by_default: false
+
+    # CR-02: Absence of reflective vest
+    - id: E3-CR02-P01
+      text: "a person without a reflective vest"
+      role: negation_e3
+      enabled_by_default: false
+
+    - id: E3-CR02-P02
+      text: "a worker not wearing a safety vest"
+      role: negation_e3
+      enabled_by_default: false
+
+    - id: E3-CR02-P03
+      text: "a construction worker with no high-visibility vest"
+      role: negation_e3
+      enabled_by_default: false
+
+    - id: E3-CR02-P04
+      text: "a worker not wearing a reflective safety jacket"
+      role: negation_e3
+      enabled_by_default: false
+
+    - id: E3-CR02-Y01
+      text: "a person without a reflective vest"
+      role: negation_e3
+      enabled_by_default: false
+
+    - id: E3-CR02-Y02
+      text: "a worker not wearing a safety vest"
+      role: negation_e3
+      enabled_by_default: false

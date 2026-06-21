@@ -1,0 +1,16 @@
+# B2-Y-E3-TEST — YOLOE-26l @ 640px, BENCH v2 test split
+run:
+  scenario: DBE
+  name: b2_y_e3_yoloe_26l_test
+  description: "B2-Y-E3-TEST: YOLOE-26l @ 640px en GPU sobre BENCH v2 test (82 imgs). Prompts bench_v2: person/helmet/vest/bare_head."
+
+source:
+  ref: bench_v2_test
+
+model:
+  ref: yoloe/yoloe-26l
+  device: cuda
+
+prompts:
+  ref: cr01_cr02_bench_v2
+  active_ids: [person, helmet, vest, bare_head]
