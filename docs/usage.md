@@ -104,8 +104,9 @@ python scripts/probe_rtsp.py --config configs/runs/local/ezviz_yoloe_rtsp.yaml -
 eovrt-media run --config configs/runs/local/ezviz_yoloe_rtsp.yaml
 ```
 
-Los archivos `effective_config.yaml` y `detections.jsonl` conservan la ruta de la fuente:
-manténgalos locales o elimine esa información antes de compartirlos.
+Todo el directorio `runs/<run_id>/` puede contener la URI RTSP, incluidos
+`run_config.yaml`, `effective_config.yaml`, `detections.jsonl`, `metrics.jsonl` y
+`errors.jsonl`; manténgalo local o sanitícelo antes de compartirlo.
 
 ## Leer resultados
 
