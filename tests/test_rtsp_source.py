@@ -80,6 +80,76 @@ class TestRtspSource:
         assert len(units) == 2
         assert attempts["count"] >= 3  # reintentó hasta conectar
 
+    def test_reconnects_mid_stream(self, tmp_path, monkeypatch):
+        """Verifica reconexión cuando cap.read() falla después de emitir frames.
+
+        Simula un corte de red tras el frame 1 del primer stream: _open_capture
+        devuelve primero un video real (3 frames) que luego "se corta" (read
+        devuelve ok=False) y, en la segunda apertura, otro video real (3 frames).
+        Se espera que se emitan al menos 4 frames en total.
+
+        El path cubierto es rtsp_source.py:100-106 (reconexión mid-stream).
+        """
+
+        def _make_video(path: Path, n_frames: int) -> Path:
+            writer = cv2.VideoWriter(
+                str(path), cv2.VideoWriter_fourcc(*"mp4v"), 5.0, (64, 48)
+            )
+            for i in range(n_frames):
+                frame = np.full((48, 64, 3), i * 20, dtype=np.uint8)
+                writer.write(frame)
+            writer.release()
+            return path
+
+        video_a = _make_video(tmp_path / "stream_a.mp4", 3)
+        video_b = _make_video(tmp_path / "stream_b.mp4", 3)
+
+        open_calls = {"count": 0}
+
+        class _BreakingCapA:
+            """Wrapper que falla en la segunda lectura (simula corte mid-stream)."""
+
+            def __init__(self, path: Path) -> None:
+                self._inner = cv2.VideoCapture(str(path))
+                self._reads = 0
+
+            def isOpened(self) -> bool:
+                return self._inner.isOpened()
+
+            def read(self):
+                self._reads += 1
+                if self._reads == 2:
+                    # Simula corte mid-stream en la segunda lectura
+                    return False, None
+                return self._inner.read()
+
+            def release(self) -> None:
+                self._inner.release()
+
+        def controlled_open(self, url: str):
+            open_calls["count"] += 1
+            if open_calls["count"] == 1:
+                return _BreakingCapA(video_a)
+            return cv2.VideoCapture(str(video_b))
+
+        monkeypatch.setattr(RtspSource, "_open_capture", controlled_open)
+
+        # max_units=4 garantiza terminación:
+        # – 1 frame del primer stream (antes del corte simulado)
+        # – 3 frames del segundo stream (video_b) → llega a max_units
+        source = RtspSource(
+            url="rtsp://fake/stream",
+            reconnect_retries=3,
+            reconnect_delay_ms=0,
+            max_units=4,
+        )
+        units = list(source)
+
+        # Primera apertura: 1 frame ok, luego read falla → reconecta
+        # Segunda apertura: 3 frames ok → total = 4 (cap de max_units)
+        assert len(units) >= 4, f"Esperados ≥4 frames, obtenidos {len(units)}"
+        assert open_calls["count"] >= 2  # al menos 2 aperturas (reconectó)
+
     def test_raises_after_exhausting_retries(self, tmp_path, monkeypatch):
         missing = tmp_path / "missing.mp4"
         monkeypatch.setattr(

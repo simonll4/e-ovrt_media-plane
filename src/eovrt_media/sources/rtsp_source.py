@@ -48,7 +48,7 @@ class RtspSource(BaseSource):
                 "RTSP no disponible (intento %d/%d): %s",
                 attempt, self.reconnect_retries, self.url,
             )
-            if self.reconnect_delay_ms > 0:
+            if attempt < self.reconnect_retries and self.reconnect_delay_ms > 0:
                 time.sleep(self.reconnect_delay_ms / 1000.0)
         raise ConnectionError(
             f"RTSP: no se pudo conectar tras {self.reconnect_retries} intentos: {self.url}"

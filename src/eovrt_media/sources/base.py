@@ -17,4 +17,14 @@ class BaseSource(ABC):
 
     @abstractmethod
     def __len__(self) -> int:
-        """Devuelve la cantidad total de unidades visuales disponibles."""
+        """Devuelve la cantidad total de unidades visuales disponibles.
+
+        Contrato para fuentes vivas (longitud indefinida):
+        Las implementaciones de fuentes en vivo (e.g. RtspSource, LiveSource,
+        OakDSource) DEBEN hacer ``raise TypeError(...)`` en lugar de retornar
+        un número.  Retornar -1 viola el contrato ``__len__ >= 0`` de Python
+        (ValueError en CPython 3.9+); retornar ``sys.maxsize`` provoca
+        MemoryError en ``list()``.  El ``TypeError`` es la única forma
+        compatible con CPython para señalar "sin longitud definida" y aun así
+        permitir que ``list(source)`` funcione mediante iteración pura.
+        """
