@@ -3,12 +3,10 @@ run:
   scenario: DBE
   name: dbe_mock_chv
   description: "Smoke test (mock) leyendo CHV desde el repo hermano e-ovrt_datasets"
+  max_units: 5
 
 source:
   ref: chv
-
-sampling:
-  max_units: 5
 
 model:
   ref: mock

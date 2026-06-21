@@ -2,7 +2,11 @@
 # Imágenes alojadas de forma centralizada en el repo hermano e-ovrt_datasets.
 # El path es relativo a la raíz del media-plane (ejecutar eovrt-media desde aquí).
 description: "CHV: 1330 imgs de obra con anotaciones person/helmet(4 colores)/vest. Alineado a CR-01 (casco) y CR-02 (chaleco)."
-
+dataset_id: chv
+view: canonical_v2
+split: full
+vocabulary: [person, helmet, vest]
+kind: pulleable
 type: image_folder
 path: ../e-ovrt_datasets/datasets/raw/chv/CHV_dataset/images
 extensions: [".jpg", ".jpeg", ".png"]

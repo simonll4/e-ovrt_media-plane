@@ -43,8 +43,9 @@ Reglas de resolución:
 
 - `ref` se resuelve contra esta carpeta (`configs/`); los campos inline de la
   run config **pisan** los del catálogo.
-- Secciones omitidas (`sampling`, `postprocess`, `outputs`, `logging`) toman
+- Secciones omitidas (`rate_control`, `transport`, `topology`, `postprocess`, `outputs`, `logging`) toman
   los defaults definidos en `src/eovrt_media/config/schemas.py`.
+- `sampling` ya no es válido: usar `rate_control.stride` y `run.max_units`.
 - El formato inline completo (sin refs) sigue siendo válido; la config
   efectiva resuelta queda registrada en el manifest de cada run.
 

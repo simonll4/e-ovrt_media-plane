@@ -1,6 +1,10 @@
 # Catálogo de datasets — dataset_v1 (subset curado de MOCS test)
 description: "37 imágenes curadas del split test de MOCS para evaluación CR-01/CR-02 (trabajadores + EPP)."
-
+dataset_id: mocs
+view: original
+split: test_curated
+vocabulary: [person]
+kind: pulleable
 type: image_folder
 path: data/samples/images/dataset_v1
 extensions: [".jpg", ".jpeg", ".png"]

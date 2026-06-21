@@ -1,5 +1,9 @@
 # Catálogo de datasets — video local de muestra
 description: "Video local de prueba para el source video_file (colocar en data/samples/videos/)."
-
+dataset_id: video_sample
+view: original
+split: sample
+vocabulary: [person, helmet, vest]
+kind: pulleable
 type: video_file
 path: data/samples/videos/sample.mp4

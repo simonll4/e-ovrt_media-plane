@@ -3,7 +3,11 @@
 # Solo positivos (person/helmet/vest); sin bare_head ni negativos explícitos.
 # Uso: smoke-test cualitativo del pipeline; no usar para evaluación cuantitativa.
 description: "DEMO v2: 1064 imgs CHV train (person/helmets color/vest). Calidad alta, 0 defectos. Solo positivos EPP."
-
+dataset_id: chv
+view: canonical_v2
+split: demo_v2
+vocabulary: [person, helmet, vest]
+kind: pulleable
 type: image_folder
 path: ../e-ovrt_datasets/datasets/raw/chv/CHV_dataset/images
 extensions: [".jpg", ".jpeg", ".png"]

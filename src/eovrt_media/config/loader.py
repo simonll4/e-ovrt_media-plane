@@ -19,7 +19,113 @@ from typing import Any
 
 import yaml
 
-from eovrt_media.config.schemas import RunConfig, PromptsFile
+from eovrt_media.config.schemas import PromptsFile, RunConfig
+
+
+_PULLEABLE_TYPES = {"image_folder", "video_file", "video", "video_frame"}
+_LIVE_TYPES = {"camera", "rtsp"}
+
+
+def _raise_sampling_migration_error() -> None:
+    raise ValueError(
+        "La sección 'sampling' fue eliminada. Migrar al nuevo esquema:\n"
+        "  sampling.every_n     → rate_control.stride\n"
+        "  sampling.max_units   → run.max_units\n"
+        "  sampling.target_fps  → eliminado (la tasa emerge del consumidor)\n"
+        "  sampling.mode        → eliminado (reemplazado por rate_control.policy)"
+    )
+
+
+def _derive_defaults(raw: dict[str, Any]) -> None:
+    """Materializa defaults de despliegue antes de validar con Pydantic."""
+    source = raw.setdefault("source", {})
+    if not isinstance(source, dict):
+        return
+
+    source_type = str(source.get("type", "image_folder")).lower()
+    if "kind" not in source:
+        if source_type in _PULLEABLE_TYPES:
+            source["kind"] = "pulleable"
+        elif source_type in _LIVE_TYPES:
+            source["kind"] = "live"
+
+    rate_control = raw.setdefault("rate_control", {})
+    if not isinstance(rate_control, dict):
+        return
+    if "policy" not in rate_control:
+        rate_control["policy"] = (
+            "bounded_freshness" if source.get("kind") == "live" else "deterministic"
+        )
+
+    topology = raw.setdefault("topology", {})
+    transport = raw.setdefault("transport", {})
+    if not isinstance(topology, dict) or not isinstance(transport, dict):
+        return
+    if "backend" not in transport:
+        transport["backend"] = (
+            "network" if topology.get("mode", "single_host") == "two_node" else "memory"
+        )
+
+
+def _validate_deployment(config: RunConfig) -> None:
+    """Valida coherencia de despliegue y bloquea características declaradas."""
+    rate_control = config.rate_control
+    rate_fields = rate_control.model_fields_set
+
+    if config.source.kind not in {"pulleable", "live"}:
+        raise ValueError("source.kind debe ser 'pulleable' o 'live'.")
+    if rate_control.policy not in {"deterministic", "bounded_freshness"}:
+        raise ValueError(
+            "rate_control.policy debe ser 'deterministic' o 'bounded_freshness'."
+        )
+    if config.topology.mode not in {"single_host", "two_node"}:
+        raise ValueError("topology.mode debe ser 'single_host' o 'two_node'.")
+    if config.transport.backend not in {"memory", "ipc", "network"}:
+        raise ValueError("transport.backend debe ser memory, ipc o network.")
+    if config.transport.payload_format not in {"uint8_rgb", "fp32", "fp16"}:
+        raise ValueError("transport.payload_format debe ser uint8_rgb, fp32 o fp16.")
+
+    if rate_control.policy == "bounded_freshness" and rate_fields.intersection(
+        {"stride", "max_queue_size", "overflow"}
+    ):
+        raise ValueError(
+            "'stride', 'max_queue_size' y 'overflow' solo aplican a "
+            "policy=deterministic. Para bounded_freshness usar 'buffer_size'."
+        )
+    if rate_control.policy == "deterministic" and rate_fields.intersection(
+        {"buffer_size", "max_staleness_ms"}
+    ):
+        raise ValueError(
+            "'buffer_size' y 'max_staleness_ms' solo aplican a "
+            "policy=bounded_freshness. Para deterministic usar 'max_queue_size'."
+        )
+
+    if config.topology.mode == "two_node" and config.transport.backend != "network":
+        raise ValueError("topology.mode=two_node requiere transport.backend=network.")
+    if config.topology.mode == "single_host" and config.transport.backend == "network":
+        raise ValueError(
+            "topology.mode=single_host no permite transport.backend=network. "
+            "Usar backend=memory o ipc para un solo host."
+        )
+    if config.transport.endpoint and config.transport.backend != "network":
+        raise ValueError("transport.endpoint solo aplica a transport.backend=network.")
+
+    if config.topology.mode == "two_node":
+        raise NotImplementedError(
+            "topology.mode=two_node está declarado pero no implementado en este build."
+        )
+    if config.transport.backend == "ipc":
+        raise NotImplementedError(
+            "transport.backend=ipc está declarado pero no implementado en este build."
+        )
+    if config.transport.payload_format == "fp16":
+        raise NotImplementedError(
+            "transport.payload_format=fp16 está declarado pero no implementado."
+        )
+    if config.source.type.lower() in _LIVE_TYPES:
+        raise NotImplementedError(
+            f"source.type={config.source.type!r} está declarado pero no implementado."
+        )
 
 
 def load_prompts_file(path: Path) -> PromptsFile:
@@ -89,11 +195,16 @@ def load_run_config(config_path: Path) -> RunConfig:
         raise FileNotFoundError(f"Archivo de configuración no encontrado: {config_path}")
 
     with open(config_path) as f:
-        raw = yaml.safe_load(f)
+        raw = yaml.safe_load(f) or {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"Configuración inválida (se esperaba mapping): {config_path}")
+    if "sampling" in raw:
+        _raise_sampling_migration_error()
 
     configs_root = find_configs_root(config_path)
     _resolve_section_ref(raw, "model", "models", configs_root)
     _resolve_section_ref(raw, "source", "datasets", configs_root)
+    _derive_defaults(raw)
 
     # prompts.ref → ruta dentro del catálogo de prompts (file explícito gana)
     prompts_data = raw.get("prompts")
@@ -113,5 +224,6 @@ def load_run_config(config_path: Path) -> RunConfig:
         # Si no, usar relativa al CWD
 
     config.prompts_file = load_prompts_file(prompts_path)
+    _validate_deployment(config)
 
     return config

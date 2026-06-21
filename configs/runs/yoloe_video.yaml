@@ -7,9 +7,8 @@ run:
 source:
   ref: video_sample
 
-sampling:
-  mode: every_n
-  every_n: 5
+rate_control:
+  stride: 5
 
 model:
   ref: yoloe/yoloe-26s

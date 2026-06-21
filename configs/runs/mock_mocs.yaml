@@ -3,12 +3,10 @@ run:
   scenario: DBE
   name: dbe_mock_mocs
   description: "Smoke test (mock) leyendo MOCS test desde el repo hermano e-ovrt_datasets"
+  max_units: 5
 
 source:
   ref: mocs
-
-sampling:
-  max_units: 5
 
 model:
   ref: mock

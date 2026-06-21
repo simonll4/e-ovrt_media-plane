@@ -94,6 +94,7 @@ class RunSection(BaseModel):
     name: str | None = None
     description: str | None = None
     seed: int = 42
+    max_units: int | None = None
 
 
 class SourceSection(BaseModel):
@@ -109,6 +110,11 @@ class SourceSection(BaseModel):
     type: str = "image_folder"
     path: str
     extensions: list[str] = Field(default_factory=lambda: [".jpg", ".jpeg", ".png"])
+    kind: str | None = None
+    dataset_id: str | None = None
+    view: str | None = None
+    split: str | None = None
+    vocabulary: list[str] | None = None
 
 
 class SamplingConfig(BaseModel):
@@ -118,6 +124,31 @@ class SamplingConfig(BaseModel):
     every_n: int = 1
     target_fps: float | None = None
     max_units: int | None = None
+
+
+class RateControlConfig(BaseModel):
+    """Sección ``rate_control``: política de control de tasa del productor."""
+
+    policy: str = "deterministic"
+    stride: int = 1
+    max_queue_size: int = 8
+    overflow: str = "fail_run"
+    buffer_size: int = 2
+    max_staleness_ms: float | None = None
+
+
+class TransportConfig(BaseModel):
+    """Sección ``transport``: backend del canal productor-consumidor."""
+
+    backend: str = "memory"
+    payload_format: str = "uint8_rgb"
+    endpoint: str | None = None
+
+
+class TopologyConfig(BaseModel):
+    """Sección ``topology``: disposición de nodos del despliegue."""
+
+    mode: str = "single_host"
 
 
 class ModelSection(BaseModel):
@@ -241,7 +272,9 @@ class RunConfig(BaseModel):
     model: ModelSection
     prompts: PromptsSection
     
-    sampling: SamplingConfig = Field(default_factory=SamplingConfig)
+    rate_control: RateControlConfig = Field(default_factory=RateControlConfig)
+    transport: TransportConfig = Field(default_factory=TransportConfig)
+    topology: TopologyConfig = Field(default_factory=TopologyConfig)
     postprocess: PostprocessConfig = Field(default_factory=PostprocessConfig)
     outputs: OutputsConfig = Field(default_factory=OutputsConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
@@ -261,7 +294,14 @@ class RunConfig(BaseModel):
                 data["output"] = data["outputs"]
                 
             # Inicializar secciones si faltan
-            for field in ("sampling", "postprocess", "outputs", "logging"):
+            for field in (
+                "rate_control",
+                "transport",
+                "topology",
+                "postprocess",
+                "outputs",
+                "logging",
+            ):
                 if field not in data:
                     data[field] = {}
         return data
@@ -270,6 +310,19 @@ class RunConfig(BaseModel):
     def output(self) -> OutputsConfig:
         """Propiedad de compatibilidad para código anterior."""
         return self.outputs
+
+    @property
+    def sampling(self) -> SamplingConfig:
+        """Vista transitoria para el pipeline previo al refactor de Task 6.
+
+        Los YAML ya no pueden declarar ``sampling``; la configuración efectiva solo
+        serializa ``rate_control`` y ``run.max_units``.
+        """
+        return SamplingConfig(
+            mode="every_n" if self.rate_control.stride > 1 else "all",
+            every_n=self.rate_control.stride,
+            max_units=self.run.max_units,
+        )
 
     def get_prompt_texts(self) -> list[str]:
         """Devuelve los textos de los prompts activos."""

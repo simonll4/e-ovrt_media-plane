@@ -3,7 +3,11 @@
 # El path es relativo a la raíz del media-plane (ejecutar eovrt-media desde aquí).
 # ImageFolderSource es no recursivo: se apunta a un split concreto (test), no a la raíz MOCS.
 description: "MOCS split test: 302 imgs de obra. Una sola clase anotada (Worker/persona); útil para validar detección de personas."
-
+dataset_id: mocs
+view: original
+split: test
+vocabulary: [person]
+kind: pulleable
 type: image_folder
 path: ../e-ovrt_datasets/datasets/raw/MOCS/test
 extensions: [".jpg", ".jpeg", ".png"]
