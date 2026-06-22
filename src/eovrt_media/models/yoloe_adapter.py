@@ -11,6 +11,11 @@ from PIL import Image
 from eovrt_media.contracts.detection import RawDetection
 from eovrt_media.contracts.normalized_unit import NormalizedUnit
 from eovrt_media.models.base import BaseDetectorAdapter, ModelInputSpec
+from eovrt_media.models.runtime_utils import (
+    make_warmup_image,
+    resolve_device,
+    should_use_half,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +47,14 @@ class YOLOEUltralyticsAdapter(BaseDetectorAdapter):
         """Carga el modelo YOLOE desde el checkpoint."""
         from ultralytics import YOLOE
 
+        self.device = resolve_device(self.device)
         logger.info(f"Cargando YOLOE desde: {self.weights} → {self.device}")
         self.model = YOLOE(self.weights)
+
+        if self.warmup:
+            dummy = Image.fromarray(make_warmup_image((640, 640)))
+            self.predict(dummy, ["object"])
+
         logger.info("YOLOE cargado correctamente.")
 
     def _ensure_classes(self, prompts: list[str]) -> None:
@@ -78,6 +89,7 @@ class YOLOEUltralyticsAdapter(BaseDetectorAdapter):
             "iou": self.iou_threshold,
             "device": self.device,
             "verbose": False,
+            "half": should_use_half(self.device, self.half_precision),
         }
         if self.image_size is not None:
             predict_kwargs["imgsz"] = self.image_size
