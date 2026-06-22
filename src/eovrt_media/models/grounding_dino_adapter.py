@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import warnings
+from contextlib import nullcontext
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +15,7 @@ from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
 from eovrt_media.contracts.detection import RawDetection
 from eovrt_media.contracts.normalized_unit import NormalizedUnit
 from eovrt_media.models.base import BaseDetectorAdapter, ModelInputSpec
+from eovrt_media.models.runtime_utils import make_warmup_image, resolve_device, should_use_half
 
 logger = logging.getLogger(__name__)
 
@@ -68,12 +70,19 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
 
     def load(self) -> None:
         """Carga el processor y modelo en el dispositivo configurado."""
+        self.device = resolve_device(self.device)
         source = self.local_dir if self.local_dir and Path(self.local_dir).exists() else self.model_id
         logger.info(f"Cargando Grounding DINO desde: {source} → {self.device}")
 
         self.processor = AutoProcessor.from_pretrained(source)
         self.model = AutoModelForZeroShotObjectDetection.from_pretrained(source).to(self.device)
         self.model.eval()
+
+        if self.warmup:
+            from PIL import Image as _Image
+
+            dummy = _Image.fromarray(make_warmup_image(self.input_spec.target_size))
+            self.predict(dummy, ["object"])
 
         logger.info("Grounding DINO cargado correctamente.")
 
@@ -101,7 +110,12 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
 
         inputs = self.processor(images=image, text=text, return_tensors="pt").to(self.device)
 
-        with torch.no_grad():
+        amp = (
+            torch.autocast("cuda", dtype=torch.float16)
+            if should_use_half(self.device, self.half_precision)
+            else nullcontext()
+        )
+        with torch.no_grad(), amp:
             outputs = self.model(**inputs)
 
         with warnings.catch_warnings():
