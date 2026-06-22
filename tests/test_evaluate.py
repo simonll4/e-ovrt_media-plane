@@ -3,7 +3,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from typer.testing import CliRunner
 
+from eovrt_media.cli import app
 from eovrt_media.evaluation import ClassResult, EvalPerceptionResults, runner
 from eovrt_media.evaluation.runner import run_evaluation
 
@@ -199,6 +201,33 @@ def test_run_evaluation_writes_json(
         ("helmet", 1, 1),
     ]
     assert payload["cr01_detection_recall"] == 0.5
+
+
+def test_evaluate_command_writes_artifact_and_displays_per_class_results(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "run_006"
+    run_dir.mkdir()
+    _write_detections(run_dir)
+    bench_coco, person_gt = _write_benchmark(tmp_path)
+    monkeypatch.setattr(runner, "_load_evaluate_bench", _synthetic_evaluator)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "evaluate",
+            "--run",
+            str(run_dir),
+            "--bench-coco",
+            str(bench_coco),
+            "--person-gt",
+            str(person_gt),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert (run_dir / "eval_perception.json").exists()
+    assert "AP" in result.output or "person" in result.output
 
 
 def test_run_evaluation_missing_detections_raises(
