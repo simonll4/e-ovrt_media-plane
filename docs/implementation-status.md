@@ -122,6 +122,7 @@ mostrar descriptor, métricas y procedencia.
 | Cámara / RTSP | **Implementado** | `RtspSource`, timestamps de pared, `pixel_data`, reconexión con backoff. |
 | Dos nodos | **Implementado** | `NetworkTransportAdapter` ZeroMQ, serialización msgpack, heartbeat, CLI `run-producer`/`run-consumer`. |
 | Métricas de staleness | **Implementado** | `max_staleness_observed_ms` y `units_dropped` en `summary.json`. |
+| Evaluación de percepción | **Implementado** | `eovrt-media evaluate --run runs/<id>` — AP@0.5/clase y CR-01 recall de detección. Persiste `eval_perception.json`. |
 | OAK-D Pro PoE | Declarado/deferred | `OakDSource.__iter__` lanza `NotImplementedError`; requiere SDK DepthAI. |
 | IPC local | Eliminado | Cubierto por `network` con endpoint `ipc://` (ZeroMQ soporta Unix sockets). |
 | FP16 | Declarado/deferred | `PayloadFormat.FP16` existe; conversión y transporte pendientes. |
