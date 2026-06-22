@@ -34,6 +34,8 @@ class NetworkTransportAdapter(TransportAdapter):
         max_staleness_ms: float | None = None,
         heartbeat_interval_ms: int = 1000,
         heartbeat_timeout_ms: int = 5000,
+        codec: str = "raw",
+        quality: int = 90,
     ) -> None:
         if role not in {"producer", "consumer"}:
             raise ValueError(f"role debe ser 'producer' o 'consumer', no {role!r}.")
@@ -43,6 +45,8 @@ class NetworkTransportAdapter(TransportAdapter):
         self.heartbeat_interval_ms = heartbeat_interval_ms
         self.heartbeat_timeout_ms = heartbeat_timeout_ms
         self._last_peer_activity = None
+        self.codec = codec
+        self.quality = quality
 
         if role == "producer":
             self._buffer = MemoryTransportAdapter(
@@ -100,7 +104,7 @@ class NetworkTransportAdapter(TransportAdapter):
                 if item is END:
                     sock.send(END_MSG)
                     return
-                sock.send(serialize_unit(item))
+                sock.send(serialize_unit(item, codec=self.codec, quality=self.quality))
         finally:
             poller.unregister(sock)
             sock.close(linger=0)

@@ -31,6 +31,8 @@ def run_node_a(config: RunConfig, console: Console | None = None) -> None:
         endpoint=config.transport.endpoint,
         heartbeat_interval_ms=config.transport.heartbeat_interval_ms,
         heartbeat_timeout_ms=config.transport.heartbeat_timeout_ms,
+        codec=config.transport.compression.codec,
+        quality=config.transport.compression.quality,
     )
     errors_queue: queue.SimpleQueue = queue.SimpleQueue()
     timings: dict[str, float] = {"backpressure_wait_ms": 0.0}

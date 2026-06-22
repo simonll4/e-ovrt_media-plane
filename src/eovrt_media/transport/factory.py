@@ -35,5 +35,7 @@ def create_transport(
             max_staleness_ms=max_staleness_ms,
             heartbeat_interval_ms=kwargs.get("heartbeat_interval_ms", 1000),
             heartbeat_timeout_ms=kwargs.get("heartbeat_timeout_ms", 5000),
+            codec=kwargs.get("codec", "raw"),
+            quality=kwargs.get("quality", 90),
         )
     raise ValueError(f"backend desconocido: {backend!r}. Opciones: memory, network.")

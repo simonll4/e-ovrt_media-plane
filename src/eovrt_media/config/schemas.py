@@ -142,6 +142,13 @@ class RateControlConfig(BaseModel):
     max_staleness_ms: float | None = None
 
 
+class CompressionConfig(BaseModel):
+    """Compresión del payload en el transporte de red."""
+
+    codec: str = "jpeg"  # jpeg | raw
+    quality: int = 90  # 1-100, solo si codec=jpeg
+
+
 class TransportConfig(BaseModel):
     """Sección ``transport``: backend del canal productor-consumidor."""
 
@@ -150,6 +157,7 @@ class TransportConfig(BaseModel):
     endpoint: str | None = None
     heartbeat_interval_ms: int = 1000
     heartbeat_timeout_ms: int = 5000
+    compression: CompressionConfig = Field(default_factory=CompressionConfig)
 
 
 class TopologyConfig(BaseModel):
