@@ -99,10 +99,10 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
         if self.model is None or self.processor is None:
             raise RuntimeError("Modelo no cargado. Llamar load() primero.")
 
-        # Asegurar que image es PIL
+        # Aceptar Path, PIL o numpy RGB (evita copia PIL en el hot path)
         if isinstance(image, Path):
             image = Image.open(image).convert("RGB")
-        elif not isinstance(image, Image.Image):
+        elif not isinstance(image, (Image.Image, np.ndarray)):
             raise TypeError(f"Tipo de imagen no soportado: {type(image)}")
 
         # Construir texto para Grounding DINO: "prompt1. prompt2. prompt3."
@@ -125,7 +125,11 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
                 inputs.input_ids,
                 threshold=self.box_threshold,
                 text_threshold=self.text_threshold,
-                target_sizes=[list(image.size[::-1])],  # [height, width]
+                target_sizes=[
+                    [image.shape[0], image.shape[1]]
+                    if isinstance(image, np.ndarray)
+                    else [image.size[1], image.size[0]]
+                ],  # [height, width]
             )[0]
 
         detections = []
@@ -153,7 +157,7 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
         payload = unit.payload
         if payload.dtype != np.uint8:
             payload = np.clip(payload * 255.0, 0, 255).astype(np.uint8)
-        return self.predict(Image.fromarray(payload), prompts)
+        return self.predict(payload, prompts)
 
     @property
     def input_spec(self) -> ModelInputSpec:
