@@ -64,3 +64,27 @@ def test_control_messages_recognized():
 def test_serialized_unit_is_not_control():
     unit = _make_unit(PayloadFormat.UINT8_RGB)
     assert not is_control(serialize_unit(unit))
+
+
+def test_default_codec_is_raw_lossless():
+    unit = _make_unit(PayloadFormat.UINT8_RGB)
+    restored = deserialize_unit(serialize_unit(unit))
+    assert np.array_equal(restored.payload, unit.payload)
+
+
+def test_roundtrip_jpeg_uint8():
+    unit = _make_unit(PayloadFormat.UINT8_RGB)
+    unit.payload[:] = 120  # color sólido: diff acotado bajo compresión lossy
+    restored = deserialize_unit(serialize_unit(unit, codec="jpeg", quality=90))
+    assert restored.payload.dtype == np.uint8
+    assert restored.payload.shape == (640, 640, 3)
+    assert restored.payload_format == PayloadFormat.UINT8_RGB
+    assert restored.unit_id == unit.unit_id
+    assert np.allclose(restored.payload, 120, atol=3)
+
+
+def test_jpeg_falls_back_to_raw_for_fp32():
+    unit = _make_unit(PayloadFormat.FP32)
+    restored = deserialize_unit(serialize_unit(unit, codec="jpeg", quality=90))
+    assert restored.payload.dtype == np.float32
+    assert np.allclose(restored.payload, unit.payload)
