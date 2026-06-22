@@ -1,6 +1,6 @@
 # Estado de implementación del andamiaje de despliegue
 
-**Actualizado:** 2026-06-21 (EBE + dos nodos implementados, validado E2E con cámara EZVIZ)  
+**Actualizado:** 2026-06-22 (evaluación de percepción implementada; `eovrt-media evaluate` validado E2E sobre BENCH v2)  
 **Alcance:** plano de medios de E-OVRT-VDP; no incluye el plano de control ni reglas de riesgo.
 
 Este documento describe el estado del código, no la arquitectura aspiracional. La decisión de
@@ -133,11 +133,11 @@ mostrar descriptor, métricas y procedencia.
 
 ## Operación y validación
 
-La suite incluye pruebas de transporte, configuración, normalización, productor/consumidor y
-trazabilidad. La última verificación local fue:
+La suite incluye pruebas de transporte, configuración, normalización, productor/consumidor,
+trazabilidad y evaluación de percepción. La última verificación local fue:
 
 ```bash
-pytest -q                 # 151 pruebas
+pytest -q                 # 165 pruebas
 ruff check src tests
 ```
 
@@ -145,3 +145,12 @@ La corrida `configs/runs/mock.yaml` usa el catálogo `demo_v2` (CHV demo v2, rep
 `../e-ovrt_datasets`). Requiere que el repo hermano esté presente en disco como sibling.
 Para validación aislada sin el repo hermano, las pruebas de integración generan imágenes
 temporales y ejercitan el flujo completo sin pesos reales (`make test`).
+
+Para evaluar una corrida contra el BENCH:
+
+```bash
+eovrt-media evaluate --run runs/<run_id>
+```
+
+Persiste `runs/<run_id>/eval_perception.json` con AP@0.5 por clase y CR-01 recall.
+Los experimentos de evaluación viven en `configs/runs/experiments/bench_v2/`.

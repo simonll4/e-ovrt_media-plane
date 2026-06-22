@@ -176,6 +176,35 @@ make compare-runs
 
 Imprime una tabla comparativa (modelo, device, unidades, detecciones, latencias, FPS, VRAM pico) y el desglose de detecciones por label de cada corrida.
 
+## Evaluar percepción (BENCH)
+
+Tras ejecutar una corrida sobre imágenes del BENCH, calcule AP@0.5 por clase y CR-01 recall:
+
+```bash
+eovrt-media evaluate --run runs/<run_id>
+```
+
+El comando auto-descubre los archivos del BENCH desde el repo hermano `../e-ovrt_datasets`.
+Si los paths difieren, páselos explícitamente:
+
+```bash
+eovrt-media evaluate \
+  --run runs/<run_id> \
+  --bench-coco ../e-ovrt_datasets/datasets/processed/coco/bench/construction_site_safety_bench.json \
+  --person-gt  ../e-ovrt_datasets/datasets/processed/coco/bench/person_gt.json
+```
+
+Imprime una tabla Rich con AP@0.5 y conteos por clase, CR-01 recall, y persiste
+`runs/<run_id>/eval_perception.json` (`type: "perception"`).
+
+Los configs de experimento BENCH viven en `configs/runs/experiments/bench_v2/`
+(uno por modelo × split val/test). Ejecute con el modelo deseado y luego evalúe:
+
+```bash
+eovrt-media run --config configs/runs/experiments/bench_v2/b2_y_e4_yoloe_26s_val.yaml
+eovrt-media evaluate --run runs/<run_id_generado>
+```
+
 ## Linting y tests
 
 ```bash
