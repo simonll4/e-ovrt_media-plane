@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -318,5 +319,44 @@ def test_load_evaluate_bench_loads_and_caches_temporary_script(
     second = runner._load_evaluate_bench()
 
     assert first is second
-    assert first.__name__ == "eovrt_media._evaluate_bench_sibling"
+    assert first.__name__.startswith("eovrt_media._evaluate_bench_sibling_")
     assert first.evaluator_marker() == "loaded"
+
+
+def test_load_evaluate_bench_keeps_modules_isolated_by_script_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first_script = tmp_path / "first_evaluate_bench.py"
+    first_script.write_text("MARKER = 'first'\n")
+    second_script = tmp_path / "second_evaluate_bench.py"
+    second_script.write_text("MARKER = 'second'\n")
+
+    monkeypatch.setattr(runner, "EVALUATE_BENCH_SCRIPT", first_script)
+    first_module = runner._load_evaluate_bench()
+    monkeypatch.setattr(runner, "EVALUATE_BENCH_SCRIPT", second_script)
+    second_module = runner._load_evaluate_bench()
+    monkeypatch.setattr(runner, "EVALUATE_BENCH_SCRIPT", first_script)
+    first_again = runner._load_evaluate_bench()
+
+    assert first_module is first_again
+    assert first_module is not second_module
+    assert first_module.__name__ != second_module.__name__
+    assert first_module.MARKER == "first"
+    assert second_module.MARKER == "second"
+    assert sys.modules[first_module.__name__] is first_module
+    assert sys.modules[second_module.__name__] is second_module
+
+
+def test_load_evaluate_bench_missing_script_requires_sibling_evaluator(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    missing_script = tmp_path / "missing_evaluate_bench.py"
+    monkeypatch.setattr(runner, "EVALUATE_BENCH_SCRIPT", missing_script)
+
+    with pytest.raises(FileNotFoundError) as error:
+        runner._load_evaluate_bench()
+
+    message = str(error.value)
+    assert "e-ovrt_datasets" in message
+    assert "--bench-coco" not in message
+    assert "--person-gt" not in message

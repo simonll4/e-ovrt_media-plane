@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import sys
 from datetime import datetime, timezone
@@ -17,7 +18,7 @@ DEFAULT_BENCH_COCO = Path(
     "construction_site_safety_bench.json"
 )
 DEFAULT_PERSON_GT = Path("../e-ovrt_datasets/datasets/processed/coco/bench/person_gt.json")
-_EVALUATE_BENCH_MODULE_NAME = "eovrt_media._evaluate_bench_sibling"
+_EVALUATE_BENCH_MODULE_PREFIX = "eovrt_media._evaluate_bench_sibling"
 _EVALUATE_BENCH_CACHE: dict[Path, ModuleType] = {}
 
 
@@ -25,11 +26,15 @@ def _resolve_evaluate_bench_script() -> Path:
     script_path = EVALUATE_BENCH_SCRIPT.resolve()
     if not script_path.is_file():
         raise FileNotFoundError(
-            "Could not find e-ovrt_datasets evaluator at "
-            f"{script_path}. Ensure the e-ovrt_datasets sibling repository is available, "
-            "or pass explicit --bench-coco and --person-gt paths."
+            "Required e-ovrt_datasets sibling evaluator script not found at "
+            f"{script_path}. Ensure the evaluator script is present at this expected path."
         )
     return script_path
+
+
+def _evaluate_bench_module_name(script_path: Path) -> str:
+    digest = hashlib.sha256(str(script_path).encode()).hexdigest()
+    return f"{_EVALUATE_BENCH_MODULE_PREFIX}_{digest}"
 
 
 def _load_evaluate_bench() -> ModuleType:
@@ -38,20 +43,21 @@ def _load_evaluate_bench() -> ModuleType:
     if cached_module is not None:
         return cached_module
 
-    spec = importlib.util.spec_from_file_location(_EVALUATE_BENCH_MODULE_NAME, script_path)
+    module_name = _evaluate_bench_module_name(script_path)
+    spec = importlib.util.spec_from_file_location(module_name, script_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Could not create module spec for BENCH evaluator: {script_path}")
 
     module = importlib.util.module_from_spec(spec)
-    previous_module = sys.modules.get(_EVALUATE_BENCH_MODULE_NAME)
-    sys.modules[_EVALUATE_BENCH_MODULE_NAME] = module
+    previous_module = sys.modules.get(module_name)
+    sys.modules[module_name] = module
     try:
         spec.loader.exec_module(module)
     except Exception:
         if previous_module is None:
-            sys.modules.pop(_EVALUATE_BENCH_MODULE_NAME, None)
+            sys.modules.pop(module_name, None)
         else:
-            sys.modules[_EVALUATE_BENCH_MODULE_NAME] = previous_module
+            sys.modules[module_name] = previous_module
         raise
     _EVALUATE_BENCH_CACHE[script_path] = module
     return module
