@@ -166,6 +166,13 @@ class TopologyConfig(BaseModel):
     mode: str = "single_host"
 
 
+class ModelRuntimeConfig(BaseModel):
+    """Knobs de runtime del modelo (rendimiento)."""
+
+    half_precision: bool = True  # fp16 cuando device=cuda; ignorado en cpu
+    warmup: bool = True  # inferencia dummy al cargar
+
+
 class ModelSection(BaseModel):
     """Sección 'model' de la configuración.
 
@@ -185,6 +192,7 @@ class ModelSection(BaseModel):
     name: str | None = None
     adapter: str | None = None
     device: str = "cpu"
+    runtime: ModelRuntimeConfig = Field(default_factory=ModelRuntimeConfig)
 
     # Grounding DINO fields
     model_id: str | None = None

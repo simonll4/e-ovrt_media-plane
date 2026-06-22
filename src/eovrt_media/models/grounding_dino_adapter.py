@@ -53,12 +53,16 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
         box_threshold: float = 0.35,
         text_threshold: float = 0.25,
         local_dir: str | None = None,
+        half_precision: bool = False,
+        warmup: bool = False,
     ) -> None:
         self.model_id = model_id
         self.device = device
         self.box_threshold = box_threshold
         self.text_threshold = text_threshold
         self.local_dir = local_dir
+        self.half_precision = half_precision
+        self.warmup = warmup
         self.processor = None
         self.model = None
 

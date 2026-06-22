@@ -25,12 +25,16 @@ class YOLOEUltralyticsAdapter(BaseDetectorAdapter):
         confidence_threshold: float = 0.25,
         iou_threshold: float = 0.50,
         image_size: int | list[int] | None = None,
+        half_precision: bool = False,
+        warmup: bool = False,
     ) -> None:
         self.weights = weights
         self.device = device
         self.confidence_threshold = confidence_threshold
         self.iou_threshold = iou_threshold
         self.image_size = image_size
+        self.half_precision = half_precision
+        self.warmup = warmup
         self.model = None
         self._prompts_set: list[str] | None = None
 
