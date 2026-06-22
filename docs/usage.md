@@ -205,6 +205,45 @@ eovrt-media run --config configs/runs/experiments/bench_v2/b2_y_e4_yoloe_26s_val
 eovrt-media evaluate --run runs/<run_id_generado>
 ```
 
+## Knobs de rendimiento
+
+### Inferencia — fp16 y warmup
+
+Cada entrada del catálogo de modelo (`configs/models/<familia>/<variante>.yaml`) acepta
+un bloque `runtime` opcional:
+
+```yaml
+runtime:
+  half_precision: true   # fp16 (autocast en GDINO, half= en YOLOE); ignorado en CPU
+  warmup: true           # inferencia dummy al cargar; reduce latencia del primer frame
+```
+
+**Defaults:** `half_precision: true`, `warmup: true` cuando el bloque se omite.
+El constructor del adaptador usa `false`/`false` si se instancia directamente (seguro en CPU).
+
+**fp16 en CPU es un no-op** — el flag se ignora automáticamente cuando `device` no es CUDA.
+
+**Reproducibilidad del BENCH:** fp16 puede mover levemente los scores de confianza y,
+con ello, el AP@0.5. Las corridas canónicas del BENCH deben fijar `half_precision`
+explícitamente en el config del experimento para que los resultados sean reproducibles.
+
+### Transporte de red — compresión JPEG
+
+La topología dos nodos acepta un bloque de compresión en la sección `transport`:
+
+```yaml
+transport:
+  compression:
+    codec: jpeg    # jpeg | raw  (default: jpeg para el transporte de red)
+    quality: 90    # 1–100; solo aplica si codec=jpeg
+```
+
+El codec viaja en el header del wire (autodescriptivo), por lo que el consumidor no
+necesita configuración. El payload FP32 cae automáticamente a `raw` con un warning.
+
+El camino single-host (`transport.backend: memory`) **no se ve afectado** — las
+corridas DBE reproducibles nunca pasan por compresión lossy.
+
 ## Linting y tests
 
 ```bash
