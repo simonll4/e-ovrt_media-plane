@@ -17,9 +17,11 @@ DEFAULT_BENCH_COCO = Path(
     "construction_site_safety_bench.json"
 )
 DEFAULT_PERSON_GT = Path("../e-ovrt_datasets/datasets/processed/coco/bench/person_gt.json")
+_EVALUATE_BENCH_MODULE_NAME = "eovrt_media._evaluate_bench_sibling"
+_EVALUATE_BENCH_CACHE: dict[Path, ModuleType] = {}
 
 
-def _load_evaluate_bench() -> ModuleType:
+def _resolve_evaluate_bench_script() -> Path:
     script_path = EVALUATE_BENCH_SCRIPT.resolve()
     if not script_path.is_file():
         raise FileNotFoundError(
@@ -27,14 +29,31 @@ def _load_evaluate_bench() -> ModuleType:
             f"{script_path}. Ensure the e-ovrt_datasets sibling repository is available, "
             "or pass explicit --bench-coco and --person-gt paths."
         )
+    return script_path
 
-    spec = importlib.util.spec_from_file_location("evaluate_bench", script_path)
+
+def _load_evaluate_bench() -> ModuleType:
+    script_path = _resolve_evaluate_bench_script()
+    cached_module = _EVALUATE_BENCH_CACHE.get(script_path)
+    if cached_module is not None:
+        return cached_module
+
+    spec = importlib.util.spec_from_file_location(_EVALUATE_BENCH_MODULE_NAME, script_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Could not create module spec for BENCH evaluator: {script_path}")
 
     module = importlib.util.module_from_spec(spec)
-    sys.modules["evaluate_bench"] = module
-    spec.loader.exec_module(module)
+    previous_module = sys.modules.get(_EVALUATE_BENCH_MODULE_NAME)
+    sys.modules[_EVALUATE_BENCH_MODULE_NAME] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        if previous_module is None:
+            sys.modules.pop(_EVALUATE_BENCH_MODULE_NAME, None)
+        else:
+            sys.modules[_EVALUATE_BENCH_MODULE_NAME] = previous_module
+        raise
+    _EVALUATE_BENCH_CACHE[script_path] = module
     return module
 
 
@@ -43,7 +62,7 @@ def _resolve_bench_paths(
     person_gt: Path | None,
 ) -> tuple[Path, Path]:
     if bench_coco is None or person_gt is None:
-        _load_evaluate_bench()
+        _resolve_evaluate_bench_script()
 
     bench_coco_path = (bench_coco or DEFAULT_BENCH_COCO).resolve()
     person_gt_path = (person_gt or DEFAULT_PERSON_GT).resolve()
