@@ -63,6 +63,9 @@ class YOLOEUltralyticsAdapter(BaseDetectorAdapter):
             logger.info(f"Configurando clases YOLOE: {prompts}")
             self.model.set_classes(prompts)
             self._prompts_set = list(prompts)
+            # set_classes resetea capas de texto a fp32; restaurar si usamos half
+            if should_use_half(self.device, self.half_precision):
+                self.model.model.half()
 
     def predict(self, image: Image.Image | Path, prompts: list[str]) -> list[RawDetection]:
         """Ejecuta inferencia con YOLOE.
