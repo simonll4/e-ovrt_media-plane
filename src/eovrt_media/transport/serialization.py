@@ -92,7 +92,7 @@ def deserialize_unit(data: bytes) -> NormalizedUnit:
             raise ValueError("cv2.imdecode falló al descomprimir el payload JPEG")
     else:
         dtype = _DTYPE_BY_FORMAT[fmt]
-        payload = np.frombuffer(payload_bytes, dtype=dtype).reshape((target_h, target_w, 3))
+        payload = np.frombuffer(payload_bytes, dtype=dtype).reshape((target_h, target_w, 3)).copy()
 
     t = meta["transform"]
     return NormalizedUnit(
