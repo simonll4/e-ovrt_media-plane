@@ -79,9 +79,7 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
         self.model.eval()
 
         if self.warmup:
-            from PIL import Image as _Image
-
-            dummy = _Image.fromarray(make_warmup_image(self.input_spec.target_size))
+            dummy = Image.fromarray(make_warmup_image(self.input_spec.target_size))
             self.predict(dummy, ["object"])
 
         logger.info("Grounding DINO cargado correctamente.")
