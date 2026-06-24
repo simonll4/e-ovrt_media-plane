@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class VisualUnit(BaseModel):
     """Representa una imagen o frame procesable."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     run_id: str | None = None
     unit_id: str
@@ -20,6 +22,9 @@ class VisualUnit(BaseModel):
     height: int
     path: str | None = None
     source_path: str | None = None
+    # Frame capturado por fuentes vivas (RTSP). BGR numpy array.
+    # Cuando está presente, image_loader lo usa directamente sin reabrir la fuente.
+    pixel_data: Any = None
 
     @model_validator(mode="before")
     @classmethod

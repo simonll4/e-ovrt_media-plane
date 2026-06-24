@@ -98,12 +98,6 @@ class UnitTimer:
     def end_write(self) -> None:
         self.write_end = time.perf_counter()
 
-    def mark_inference(self) -> None:
-        """Marca el fin de la inferencia (compatibilidad antigua)."""
-        self.inference_end = time.perf_counter()
-        if not self.inference_start:
-            self.inference_start = self._start
-
     def get_granular_result(self) -> UnitTimingResult:
         """Devuelve el desglose granular medido en ms."""
         now = time.perf_counter()
@@ -115,10 +109,6 @@ class UnitTimer:
         inf = (self.inference_end - self.inference_start) * 1000.0 if (self.inference_start and self.inference_end) else 0.0
         post = (self.postprocess_end - self.postprocess_start) * 1000.0 if (self.postprocess_start and self.postprocess_end) else 0.0
         write = (self.write_end - self.write_start) * 1000.0 if (self.write_start and self.write_end) else 0.0
-
-        # Si se usaron métodos de compatibilidad mark_inference, rellenamos
-        if inf == 0.0 and self.inference_end:
-            inf = (self.inference_end - self._start) * 1000.0
 
         return UnitTimingResult(
             unit_id=self.unit_id,

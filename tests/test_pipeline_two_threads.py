@@ -94,3 +94,67 @@ class TestProducerConsumerPipeline:
             (Path(config.outputs.base_dir) / run_id / "summary.json").read_text()
         )
         assert summary["units_processed"] == 3
+
+    def test_bounded_freshness_policy_completes(self, tmp_path: Path):
+        config = _mock_config(tmp_path)
+        config.rate_control.policy = "bounded_freshness"
+        config.rate_control.buffer_size = 2
+        run_id = run_pipeline(config)
+        summary = json.loads(
+            (Path(config.outputs.base_dir) / run_id / "summary.json").read_text()
+        )
+        assert summary["run_descriptor"]["rate_control"]["policy"] == "bounded_freshness"
+        total = summary["units_processed"] + summary["units_failed"] + summary["units_dropped"]
+        assert total <= 5
+
+    def test_producer_normalize_error_is_isolated(self, tmp_path: Path, monkeypatch):
+        import eovrt_media.runtime.pipeline as pipeline_module
+
+        call_count = [0]
+        real_normalize = pipeline_module.normalize_spatial
+
+        def flaky_normalize(unit, spec, payload_format):
+            call_count[0] += 1
+            if call_count[0] == 2:
+                raise ValueError("simulated normalize error")
+            return real_normalize(unit, spec, payload_format)
+
+        monkeypatch.setattr(pipeline_module, "normalize_spatial", flaky_normalize)
+
+        config = _mock_config(tmp_path)
+        run_id = run_pipeline(config)
+        summary = json.loads(
+            (Path(config.outputs.base_dir) / run_id / "summary.json").read_text()
+        )
+
+        assert summary["units_failed"] >= 1
+        assert summary["units_processed"] >= 3
+
+        errors_path = Path(config.outputs.base_dir) / run_id / "errors.jsonl"
+        errors = [json.loads(line) for line in errors_path.read_text().splitlines()]
+        assert any(e["stage"] == "normalize" for e in errors)
+
+    def test_inference_error_is_isolated(self, tmp_path: Path, monkeypatch):
+        call_count = [0]
+        original_forward = MockDetectorAdapter.forward
+
+        def flaky_forward(self, unit, prompts):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise RuntimeError("simulated inference error")
+            return original_forward(self, unit, prompts)
+
+        monkeypatch.setattr(MockDetectorAdapter, "forward", flaky_forward)
+
+        config = _mock_config(tmp_path)
+        run_id = run_pipeline(config)
+        summary = json.loads(
+            (Path(config.outputs.base_dir) / run_id / "summary.json").read_text()
+        )
+
+        assert summary["units_failed"] >= 1
+        assert summary["units_processed"] >= 3
+
+        errors_path = Path(config.outputs.base_dir) / run_id / "errors.jsonl"
+        errors = [json.loads(line) for line in errors_path.read_text().splitlines()]
+        assert any(e["stage"] == "inference" for e in errors)

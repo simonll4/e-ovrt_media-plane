@@ -91,3 +91,24 @@ class TestAutoNamingAndMetricVersion:
         metric = json.loads(metrics_path.read_text().splitlines()[0])
         assert metric["schema_version"] == "media.metric.v2"
         assert metric["latency_normalize_ms"] >= 0.0
+
+    def test_custom_run_id_is_preserved(self, tmp_path: Path):
+        config = _mock_config(tmp_path)
+        config.run.id = "my_custom_run_42"
+        run_id = run_pipeline(config)
+        assert run_id == "my_custom_run_42"
+        run_dir = Path(config.outputs.base_dir) / "my_custom_run_42"
+        assert run_dir.exists()
+
+
+class TestBoundedFreshnessTraceability:
+    def test_units_dropped_field_present_in_bounded_freshness_summary(self, tmp_path: Path):
+        config = _mock_config(tmp_path)
+        config.rate_control.policy = "bounded_freshness"
+        config.rate_control.buffer_size = 2
+        run_id = run_pipeline(config)
+        summary = _summary(config, run_id)
+        assert "units_dropped" in summary
+        assert summary["units_dropped"] >= 0
+        total = summary["units_processed"] + summary["units_failed"] + summary["units_dropped"]
+        assert total <= 3  # source count from _mock_config

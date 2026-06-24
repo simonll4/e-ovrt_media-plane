@@ -49,9 +49,8 @@ class TransportAdapter:
     def close(self) -> None: ...
 ```
 
-El backend `memory` implementa esta interfaz. `ipc` y `network` son interfaces declaradas
-que lanzan `NotImplementedError`. Los contratos `NetworkRequest`, `NetworkResponse` y
-`NetworkHeartbeat` fijan el vocabulario de la implementación futura de red.
+Los backends `memory` y `network` (ZeroMQ REQ/REP) implementan esta interfaz.
+`fp16` como `payload_format` está declarado pero aún no implementado.
 
 ## Detecciones y eventos
 

@@ -62,9 +62,9 @@ eovrt-media run --config configs/runs/mock.yaml
 make run-mock
 ```
 
-La config `mock.yaml` usa el catálogo `dataset_v1`, cuya ruta es
-`data/samples/images/dataset_v1`. Cree o monte ese directorio con imágenes válidas antes
-de ejecutar la corrida. Si la fuente no existe, el CLI falla al inicio con `FileNotFoundError`.
+La config `mock.yaml` usa el catálogo `demo_v2` (CHV demo v2, repo hermano
+`../e-ovrt_datasets`). No requiere pesos de modelos; valida el pipeline completo con
+el detector mock. Asegúrese de que el repo hermano esté presente como sibling en disco.
 
 ### Con Grounding DINO
 
@@ -82,15 +82,46 @@ eovrt-media run --config configs/runs/yoloe.yaml
 make run-yoloe
 ```
 
-### Sobre video local
+### Con stride (muestreo por paso)
 
 ```bash
 eovrt-media run --config configs/runs/yoloe_video.yaml
 ```
 
-Espera `data/samples/videos/sample.mp4`; el stride se controla con
-`rate_control.stride` y el límite de unidades con `run.max_units`. La sección `sampling`
-ya no es válida y el loader informa cómo migrarla.
+Procesa CHV demo v2 con `stride: 5` (1 de cada 5 imágenes). El stride se controla
+con `rate_control.stride` y el límite de unidades con `run.max_units`. La sección
+`sampling` ya no es válida; el loader informa cómo migrarla.
+
+### Topología dos nodos (Nodo A edge + Nodo B GPU)
+
+```bash
+# Nodo A: ingesta + normalización + ZeroMQ REP
+eovrt-media run-producer --config configs/runs/<archivo>.yaml
+
+# Nodo B: inferencia + artefactos + ZeroMQ REQ
+eovrt-media run-consumer --config configs/runs/<archivo>.yaml
+```
+
+El config del run debe declarar `topology.mode: two_node`; el loader deriva
+automáticamente `transport.backend: network`. Ver
+[docs/deployment/two-node-docker.md](deployment/two-node-docker.md) para el
+despliegue con Docker Compose.
+
+### Cámara RTSP con YOLOE en GPU (single-host)
+
+Guarde las configuraciones operativas locales en `configs/runs/local/`; este directorio
+está ignorado por Git. La URI RTSP no debe versionarse ni incluirse en tickets. Para la
+cámara, use el modelo `yoloe/yoloe-26s` con `device: cuda:0`, `source.type: rtsp` y
+`rate_control.policy: bounded_freshness`.
+
+```bash
+python scripts/probe_rtsp.py --config configs/runs/local/ezviz_yoloe_rtsp.yaml --frames 30
+eovrt-media run --config configs/runs/local/ezviz_yoloe_rtsp.yaml
+```
+
+Todo el directorio `runs/<run_id>/` puede contener la URI RTSP, incluidos
+`run_config.yaml`, `effective_config.yaml`, `detections.jsonl`, `metrics.jsonl` y
+`errors.jsonl`; manténgalo local o sanitícelo antes de compartirlo.
 
 ## Leer resultados
 
@@ -113,8 +144,8 @@ runs/<run_id>/
 backpressure, `run_descriptor`, desglose por label/prompt y VRAM máxima. `metrics.jsonl`
 usa `media.metric.v2` e incluye latencia de normalización.
 
-El directorio `previews/` se crea si está habilitado en outputs; el renderizado de previews
-desde el nuevo payload normalizado sigue pendiente.
+Con `save_previews: true`, el pipeline renderiza previews anotadas para fuentes de imagen.
+La renderización de previews de frames de vídeo sigue pendiente.
 
 ### Ver resumen
 
@@ -144,6 +175,74 @@ make compare-runs
 ```
 
 Imprime una tabla comparativa (modelo, device, unidades, detecciones, latencias, FPS, VRAM pico) y el desglose de detecciones por label de cada corrida.
+
+## Evaluar percepción (BENCH)
+
+Tras ejecutar una corrida sobre imágenes del BENCH, calcule AP@0.5 por clase y CR-01 recall:
+
+```bash
+eovrt-media evaluate --run runs/<run_id>
+```
+
+El comando auto-descubre los archivos del BENCH desde el repo hermano `../e-ovrt_datasets`.
+Si los paths difieren, páselos explícitamente:
+
+```bash
+eovrt-media evaluate \
+  --run runs/<run_id> \
+  --bench-coco ../e-ovrt_datasets/datasets/processed/coco/bench/construction_site_safety_bench.json \
+  --person-gt  ../e-ovrt_datasets/datasets/processed/coco/bench/person_gt.json
+```
+
+Imprime una tabla Rich con AP@0.5 y conteos por clase, CR-01 recall, y persiste
+`runs/<run_id>/eval_perception.json` (`type: "perception"`).
+
+Los configs de experimento BENCH viven en `configs/runs/experiments/bench_v2/`
+(uno por modelo × split val/test). Ejecute con el modelo deseado y luego evalúe:
+
+```bash
+eovrt-media run --config configs/runs/experiments/bench_v2/b2_y_e4_yoloe_26s_val.yaml
+eovrt-media evaluate --run runs/<run_id_generado>
+```
+
+## Knobs de rendimiento
+
+### Inferencia — fp16 y warmup
+
+Cada entrada del catálogo de modelo (`configs/models/<familia>/<variante>.yaml`) acepta
+un bloque `runtime` opcional:
+
+```yaml
+runtime:
+  half_precision: true   # fp16 (autocast en GDINO, half= en YOLOE); ignorado en CPU
+  warmup: true           # inferencia dummy al cargar; reduce latencia del primer frame
+```
+
+**Defaults:** `half_precision: true`, `warmup: true` cuando el bloque se omite.
+El constructor del adaptador usa `false`/`false` si se instancia directamente (seguro en CPU).
+
+**fp16 en CPU es un no-op** — el flag se ignora automáticamente cuando `device` no es CUDA.
+
+**Reproducibilidad del BENCH:** fp16 puede mover levemente los scores de confianza y,
+con ello, el AP@0.5. Las corridas canónicas del BENCH deben fijar `half_precision`
+explícitamente en el config del experimento para que los resultados sean reproducibles.
+
+### Transporte de red — compresión JPEG
+
+La topología dos nodos acepta un bloque de compresión en la sección `transport`:
+
+```yaml
+transport:
+  compression:
+    codec: jpeg    # jpeg | raw  (default: jpeg para el transporte de red)
+    quality: 90    # 1–100; solo aplica si codec=jpeg
+```
+
+El codec viaja en el header del wire (autodescriptivo), por lo que el consumidor no
+necesita configuración. El payload FP32 cae automáticamente a `raw` con un warning.
+
+El camino single-host (`transport.backend: memory`) **no se ve afectado** — las
+corridas DBE reproducibles nunca pasan por compresión lossy.
 
 ## Linting y tests
 

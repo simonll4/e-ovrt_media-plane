@@ -23,7 +23,7 @@ from eovrt_media.config.schemas import PromptsFile, RunConfig
 
 
 _PULLEABLE_TYPES = {"image_folder", "video_file", "video", "video_frame"}
-_LIVE_TYPES = {"camera", "rtsp"}
+_LIVE_TYPES = {"camera", "rtsp", "oak_d"}
 
 
 def _raise_sampling_migration_error() -> None:
@@ -80,8 +80,8 @@ def _validate_deployment(config: RunConfig) -> None:
         )
     if config.topology.mode not in {"single_host", "two_node"}:
         raise ValueError("topology.mode debe ser 'single_host' o 'two_node'.")
-    if config.transport.backend not in {"memory", "ipc", "network"}:
-        raise ValueError("transport.backend debe ser memory, ipc o network.")
+    if config.transport.backend not in {"memory", "network"}:
+        raise ValueError("transport.backend debe ser memory o network.")
     if config.transport.payload_format not in {"uint8_rgb", "fp32", "fp16"}:
         raise ValueError("transport.payload_format debe ser uint8_rgb, fp32 o fp16.")
 
@@ -105,26 +105,22 @@ def _validate_deployment(config: RunConfig) -> None:
     if config.topology.mode == "single_host" and config.transport.backend == "network":
         raise ValueError(
             "topology.mode=single_host no permite transport.backend=network. "
-            "Usar backend=memory o ipc para un solo host."
+            "Usar backend=memory para un solo host."
         )
     if config.transport.endpoint and config.transport.backend != "network":
         raise ValueError("transport.endpoint solo aplica a transport.backend=network.")
 
-    if config.topology.mode == "two_node":
-        raise NotImplementedError(
-            "topology.mode=two_node está declarado pero no implementado en este build."
-        )
-    if config.transport.backend == "ipc":
-        raise NotImplementedError(
-            "transport.backend=ipc está declarado pero no implementado en este build."
-        )
     if config.transport.payload_format == "fp16":
         raise NotImplementedError(
             "transport.payload_format=fp16 está declarado pero no implementado."
         )
-    if config.source.type.lower() in _LIVE_TYPES:
+    if config.source.type.lower() == "camera":
         raise NotImplementedError(
-            f"source.type={config.source.type!r} está declarado pero no implementado."
+            "source.type=camera está declarado pero no implementado."
+        )
+    if config.source.type.lower() == "oak_d":
+        raise NotImplementedError(
+            "source.type=oak_d (OAK-D Pro PoE) está declarado pero no implementado."
         )
 
 

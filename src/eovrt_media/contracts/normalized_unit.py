@@ -43,6 +43,7 @@ class NormalizedUnit(BaseModel):
     run_id: str | None = None
     unit_id: str
     source_id: str | None = None
+    source_path: str | None = None
     frame_index: int | None = None
     timestamp_ms: float | None = None
 
@@ -57,27 +58,3 @@ class NormalizedUnit(BaseModel):
 
 class END:
     """Sentinel de fin de canal — el productor lo emite al agotar la fuente."""
-
-
-# Contratos del protocolo de red (declarados, backend network no implementado)
-@dataclass
-class NetworkRequest:
-    """Mensaje REQUEST: Nodo B → Nodo A (listo para siguiente frame)."""
-
-    request_id: str
-
-
-@dataclass
-class NetworkResponse:
-    """Mensaje RESPONSE: Nodo A → Nodo B (frame del buffer)."""
-
-    request_id: str
-    unit: NormalizedUnit
-
-
-@dataclass
-class NetworkHeartbeat:
-    """Mensaje HEARTBEAT: bidireccional, keep-alive."""
-
-    node_id: str
-    timestamp_ms: float

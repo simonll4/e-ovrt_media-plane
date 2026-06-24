@@ -39,6 +39,8 @@ def create_adapter(model_config: ModelSection) -> BaseDetectorAdapter:
             box_threshold=model_config.box_threshold,
             text_threshold=model_config.text_threshold,
             local_dir=model_config.local_dir,
+            half_precision=model_config.runtime.half_precision,
+            warmup=model_config.runtime.warmup,
         )
 
     elif adapter_name in ("yoloe", "yoloe_ultralytics"):
@@ -48,6 +50,8 @@ def create_adapter(model_config: ModelSection) -> BaseDetectorAdapter:
             confidence_threshold=model_config.confidence_threshold,
             iou_threshold=model_config.iou_threshold,
             image_size=model_config.image_size,
+            half_precision=model_config.runtime.half_precision,
+            warmup=model_config.runtime.warmup,
         )
 
     else:

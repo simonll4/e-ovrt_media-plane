@@ -74,6 +74,7 @@ def normalize_spatial(
     return NormalizedUnit(
         unit_id=unit.unit_id,
         source_id=getattr(unit, "source_id", None),
+        source_path=unit.path or unit.source_path,
         frame_index=getattr(unit, "frame_index", None),
         timestamp_ms=getattr(unit, "timestamp_ms", None),
         orig_width=unit.width,

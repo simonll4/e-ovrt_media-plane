@@ -4,21 +4,26 @@ version = "0.1.0"
 description = "Experimental media plane for E-OVRT-VDP"
 requires-python = ">=3.11"
 dependencies = [
-    "torch",
-    "torchvision",
-    "transformers",
-    "accelerate",
     "pillow",
     "opencv-python",
     "pydantic",
     "pyyaml",
     "typer",
     "rich",
-    "huggingface_hub",
-    "ultralytics",
+    "pyzmq",
+    "msgpack",
 ]
 
 [project.optional-dependencies]
+edge = []
+gpu = [
+    "torch",
+    "torchvision",
+    "transformers",
+    "accelerate",
+    "huggingface_hub",
+    "ultralytics",
+]
 dev = [
     "pytest",
     "ruff",

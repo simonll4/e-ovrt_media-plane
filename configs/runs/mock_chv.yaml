@@ -1,4 +1,4 @@
-# Smoke test del pipeline con detector mock (sin pesos) sobre CHV
+# Smoke test del pipeline con detector mock (sin pesos) sobre CHV completo
 run:
   scenario: DBE
   name: dbe_mock_chv
@@ -12,5 +12,5 @@ model:
   ref: mock
 
 prompts:
-  ref: cr01_cr02_v1
+  ref: cr01_cr02_v2_short
   active_ids: [person, helmet, vest]

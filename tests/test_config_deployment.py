@@ -78,16 +78,18 @@ class TestConfigValidation:
 
 
 class TestConfigGating:
-    def test_two_node_topology_is_gated(self, tmp_path: Path):
-        with pytest.raises(NotImplementedError, match="two_node.*implementado"):
-            _minimal_config(
-                tmp_path,
-                topology={"mode": "two_node"},
-                transport={"backend": "network", "endpoint": "tcp://localhost:5555"},
-            )
+    def test_two_node_with_network_is_valid(self, tmp_path: Path):
+        cfg = _minimal_config(
+            tmp_path,
+            topology={"mode": "two_node"},
+            transport={"backend": "network", "endpoint": "tcp://127.0.0.1:5555"},
+        )
+        assert cfg.topology.mode == "two_node"
+        assert cfg.transport.backend == "network"
+        assert cfg.transport.heartbeat_timeout_ms == 5000
 
-    def test_ipc_backend_is_gated(self, tmp_path: Path):
-        with pytest.raises(NotImplementedError, match="ipc.*implementado"):
+    def test_ipc_backend_is_invalid(self, tmp_path: Path):
+        with pytest.raises(ValueError, match="backend debe ser"):
             _minimal_config(tmp_path, transport={"backend": "ipc"})
 
     def test_fp16_payload_format_is_gated(self, tmp_path: Path):
@@ -107,3 +109,28 @@ class TestSamplingMigration:
         config_path = _write_config(tmp_path, {"sampling": {"every_n": 2}})
         with pytest.raises(ValueError, match="sampling.*rate_control"):
             load_run_config(config_path)
+
+
+class TestRtspSourceConfig:
+    def test_rtsp_derives_live_and_bounded_freshness(self, tmp_path: Path):
+        cfg = _minimal_config(
+            tmp_path,
+            source={"type": "rtsp", "path": "rtsp://cam/stream", "url": "rtsp://cam/stream"},
+        )
+        assert cfg.source.kind == "live"
+        assert cfg.rate_control.policy == "bounded_freshness"
+
+    def test_rtsp_fields_have_defaults(self, tmp_path: Path):
+        cfg = _minimal_config(
+            tmp_path,
+            source={"type": "rtsp", "path": "rtsp://cam/stream", "url": "rtsp://cam/stream"},
+        )
+        assert cfg.source.reconnect_retries == 5
+        assert cfg.source.reconnect_delay_ms == 1000
+
+    def test_oak_d_source_type_is_gated(self, tmp_path: Path):
+        with pytest.raises(NotImplementedError, match="oak_d.*implementad"):
+            _minimal_config(
+                tmp_path,
+                source={"type": "oak_d", "path": "oak://device"},
+            )

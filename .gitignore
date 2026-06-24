@@ -9,6 +9,8 @@ venv/
 
 # Env
 .env
+# Configuraciones operativas con endpoints o credenciales locales
+configs/runs/local/
 
 # Modelos y datasets pesados
 mobileclip*.ts

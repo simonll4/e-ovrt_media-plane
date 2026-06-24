@@ -8,7 +8,7 @@ from eovrt_media.config import load_prompts_file, load_run_config, PromptsFile
 
 
 CONFIGS_DIR = Path(__file__).parent.parent / "configs"
-PROMPTS_PATH = CONFIGS_DIR / "prompts" / "cr01_cr02_v1.yaml"
+PROMPTS_PATH = CONFIGS_DIR / "prompts" / "cr01_cr02_v2_short.yaml"
 GDINO_CONFIG = CONFIGS_DIR / "runs" / "gdino.yaml"
 YOLOE_CONFIG = CONFIGS_DIR / "runs" / "yoloe.yaml"
 
@@ -19,8 +19,8 @@ class TestPromptsFile:
     def test_load_prompts(self):
         prompts = load_prompts_file(PROMPTS_PATH)
         assert isinstance(prompts, PromptsFile)
-        assert prompts.version == "cr01_cr02_v1"
-        assert len(prompts.items) == 4
+        assert prompts.version == "cr01_cr02_v2_short"
+        assert len(prompts.items) == 3
 
     def test_prompt_ids(self):
         prompts = load_prompts_file(PROMPTS_PATH)
@@ -32,18 +32,17 @@ class TestPromptsFile:
     def test_get_active_texts(self):
         prompts = load_prompts_file(PROMPTS_PATH)
         texts = prompts.get_active_texts(["person", "helmet"])
-        assert texts == ["person", "safety helmet"]
+        assert texts == ["person", "helmet"]
 
     def test_get_active_texts_invalid_id(self):
         prompts = load_prompts_file(PROMPTS_PATH)
         with pytest.raises(ValueError, match="no encontrado"):
             prompts.get_active_texts(["nonexistent"])
 
-    def test_prompt_aliases(self):
+    def test_prompt_texts_are_short_labels(self):
         prompts = load_prompts_file(PROMPTS_PATH)
         helmet = next(item for item in prompts.items if item.id == "helmet")
-        assert "hard hat" in helmet.aliases
-        assert "construction helmet" in helmet.aliases
+        assert helmet.text == "helmet"
 
 
 class TestRunConfig:
@@ -52,7 +51,7 @@ class TestRunConfig:
     def test_load_grounding_dino_config(self):
         config = load_run_config(GDINO_CONFIG)
         assert config.run.scenario == "DBE"
-        assert config.run.name == "dbe_grounding_dino_cr01_cr02"
+        assert config.run.name == "dbe_grounding_dino_demo_v2"
         assert config.model.adapter in ("grounding_dino", "grounding_dino_hf")
         assert config.source.type == "image_folder"
 

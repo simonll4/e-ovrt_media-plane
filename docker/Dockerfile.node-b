@@ -1,0 +1,14 @@
+# Nodo B — inferencia + postproceso + artefactos. Requiere GPU NVIDIA.
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu24.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-pip python3-venv libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY pyproject.toml ./
+COPY src ./src
+RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -e ".[gpu]"
+ENV PATH="/opt/venv/bin:${PATH}"
+
+ENTRYPOINT ["eovrt-media", "run-consumer"]
+CMD ["--config", "/configs/two_node_b.yaml"]

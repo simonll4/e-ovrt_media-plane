@@ -15,6 +15,24 @@ class BaseSource(ABC):
     def __iter__(self) -> Iterator[VisualUnit]:
         """Itera sobre la fuente produciendo instancias de VisualUnit."""
 
+    def stop(self) -> None:
+        """Señala a la fuente que deje de iterar tras la unidad actual.
+
+        No-op para fuentes finitas (archivos, carpetas). Las fuentes vivas
+        (RtspSource, OakDSource) deben sobreescribir este método para
+        interrumpir limpiamente el bucle de captura.
+        """
+
     @abstractmethod
     def __len__(self) -> int:
-        """Devuelve la cantidad total de unidades visuales disponibles."""
+        """Devuelve la cantidad total de unidades visuales disponibles.
+
+        Contrato para fuentes vivas (longitud indefinida):
+        Las implementaciones de fuentes en vivo (e.g. RtspSource, OakDSource)
+        DEBEN hacer ``raise TypeError(...)`` en lugar de retornar
+        un número.  Retornar -1 viola el contrato ``__len__ >= 0`` de Python
+        (ValueError en CPython 3.9+); retornar ``sys.maxsize`` provoca
+        MemoryError en ``list()``.  El ``TypeError`` es la única forma
+        compatible con CPython para señalar "sin longitud definida" y aun así
+        permitir que ``list(source)`` funcione mediante iteración pura.
+        """

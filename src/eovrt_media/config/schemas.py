@@ -116,6 +116,11 @@ class SourceSection(BaseModel):
     split: str | None = None
     vocabulary: list[str] | None = None
 
+    # Fuente viva (RTSP / cámaras IP)
+    url: str | None = None
+    reconnect_retries: int = 5
+    reconnect_delay_ms: int = 1000
+
 
 class SamplingConfig(BaseModel):
     """Sección 'sampling' de la configuración."""
@@ -137,18 +142,35 @@ class RateControlConfig(BaseModel):
     max_staleness_ms: float | None = None
 
 
+class CompressionConfig(BaseModel):
+    """Compresión del payload en el transporte de red."""
+
+    codec: str = "jpeg"  # jpeg | raw
+    quality: int = 90  # 1-100, solo si codec=jpeg
+
+
 class TransportConfig(BaseModel):
     """Sección ``transport``: backend del canal productor-consumidor."""
 
     backend: str = "memory"
     payload_format: str = "uint8_rgb"
     endpoint: str | None = None
+    heartbeat_interval_ms: int = 1000
+    heartbeat_timeout_ms: int = 5000
+    compression: CompressionConfig = Field(default_factory=CompressionConfig)
 
 
 class TopologyConfig(BaseModel):
     """Sección ``topology``: disposición de nodos del despliegue."""
 
     mode: str = "single_host"
+
+
+class ModelRuntimeConfig(BaseModel):
+    """Knobs de runtime del modelo (rendimiento)."""
+
+    half_precision: bool = True  # fp16 cuando device=cuda; ignorado en cpu
+    warmup: bool = True  # inferencia dummy al cargar
 
 
 class ModelSection(BaseModel):
@@ -170,6 +192,7 @@ class ModelSection(BaseModel):
     name: str | None = None
     adapter: str | None = None
     device: str = "cpu"
+    runtime: ModelRuntimeConfig = Field(default_factory=ModelRuntimeConfig)
 
     # Grounding DINO fields
     model_id: str | None = None

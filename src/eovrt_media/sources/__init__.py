@@ -2,10 +2,14 @@
 
 from eovrt_media.sources.base import BaseSource
 from eovrt_media.sources.image_folder_source import ImageFolderSource
+from eovrt_media.sources.oak_d_source import OakDSource
+from eovrt_media.sources.rtsp_source import RtspSource
 from eovrt_media.sources.video_file_source import VideoFileSource
 
 __all__ = [
     "BaseSource",
     "ImageFolderSource",
+    "OakDSource",
+    "RtspSource",
     "VideoFileSource",
 ]

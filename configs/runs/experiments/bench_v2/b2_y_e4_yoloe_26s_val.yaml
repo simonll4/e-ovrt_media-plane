@@ -1,0 +1,16 @@
+# B2-Y-E4-VAL — YOLOE-26s @ 640px, BENCH v2 val split
+run:
+  scenario: DBE
+  name: b2_y_e4_yoloe_26s_val
+  description: "B2-Y-E4-VAL: YOLOE-26s @ 640px en GPU sobre BENCH v2 val (114 imgs). Prompts bench_v2: person/helmet/vest/bare_head."
+
+source:
+  ref: bench_v2_val
+
+model:
+  ref: yoloe/yoloe-26s
+  device: cuda
+
+prompts:
+  ref: cr01_cr02_bench_v2
+  active_ids: [person, helmet, vest, bare_head]
