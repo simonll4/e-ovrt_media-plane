@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 
 import numpy as np
-import torch
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +11,8 @@ logger = logging.getLogger(__name__)
 def resolve_device(requested: str, cuda_available: bool | None = None) -> str:
     """Normaliza el device: degrada a cpu si se pide cuda y no hay GPU."""
     if cuda_available is None:
+        import torch
+
         cuda_available = torch.cuda.is_available()
     if requested.startswith("cuda") and not cuda_available:
         logger.warning("device=%s solicitado sin CUDA disponible; usando cpu", requested)

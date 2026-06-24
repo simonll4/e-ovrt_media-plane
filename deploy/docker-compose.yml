@@ -1,0 +1,40 @@
+# Despliegue de dos nodos del plano de medios.
+# Nodo A (edge) y Nodo B (GPU) comparten una red puente para el canal ZeroMQ.
+# Variables: copiar .env.example -> .env. Para test local, los defaults apuntan
+# a los *.example.yaml y al dataset cross-repo montado en /datasets.
+services:
+  node-a:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.node-a
+    command: ["--config", "${NODE_A_CONFIG:-/app/deploy-configs/two_node_a.example.yaml}"]
+    networks: [media-plane]
+    volumes:
+      - ../configs:/app/configs:ro
+      - ./configs:/app/deploy-configs:ro
+      - ../../e-ovrt_datasets/datasets/raw:/datasets:ro
+    expose: ["5555"]
+
+  node-b:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.node-b
+    command: ["--config", "${NODE_B_CONFIG:-/app/deploy-configs/two_node_b.example.yaml}"]
+    networks: [media-plane]
+    volumes:
+      - ../configs:/app/configs:ro
+      - ./configs:/app/deploy-configs:ro
+      - ../models:/app/models:ro
+      - ../runs:/app/runs
+    depends_on: [node-a]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+networks:
+  media-plane:
+    driver: bridge

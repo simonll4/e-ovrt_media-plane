@@ -6,8 +6,6 @@ from typing import TYPE_CHECKING
 
 from eovrt_media.models.base import BaseDetectorAdapter
 from eovrt_media.models.mock_detector import MockDetectorAdapter
-from eovrt_media.models.grounding_dino_adapter import GroundingDinoHFAdapter
-from eovrt_media.models.yoloe_adapter import YOLOEUltralyticsAdapter
 
 if TYPE_CHECKING:
     from eovrt_media.config import ModelSection
@@ -33,6 +31,8 @@ def create_adapter(model_config: ModelSection) -> BaseDetectorAdapter:
         return MockDetectorAdapter()
 
     elif adapter_name in ("grounding_dino", "grounding_dino_hf"):
+        from eovrt_media.models.grounding_dino_adapter import GroundingDinoHFAdapter
+
         return GroundingDinoHFAdapter(
             model_id=model_config.model_id or "IDEA-Research/grounding-dino-tiny",
             device=model_config.device,
@@ -44,6 +44,8 @@ def create_adapter(model_config: ModelSection) -> BaseDetectorAdapter:
         )
 
     elif adapter_name in ("yoloe", "yoloe_ultralytics"):
+        from eovrt_media.models.yoloe_adapter import YOLOEUltralyticsAdapter
+
         return YOLOEUltralyticsAdapter(
             weights=model_config.weights or "yoloe-26s-seg.pt",
             device=model_config.device,
@@ -64,7 +66,5 @@ def create_adapter(model_config: ModelSection) -> BaseDetectorAdapter:
 __all__ = [
     "BaseDetectorAdapter",
     "MockDetectorAdapter",
-    "GroundingDinoHFAdapter",
-    "YOLOEUltralyticsAdapter",
     "create_adapter",
 ]

@@ -1,0 +1,16 @@
+.venv/
+venv/
+runs/
+models/
+.git/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.superpowers/
+docs/
+tests/
+*.egg-info/
+dist/
+build/

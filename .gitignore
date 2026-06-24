@@ -51,3 +51,7 @@ runs/*
 *.egg-info/
 dist/
 build/
+
+# Configs de deploy con endpoints/IPs reales (los *.example.yaml sí se versionan)
+deploy/configs/*.yaml
+!deploy/configs/*.example.yaml

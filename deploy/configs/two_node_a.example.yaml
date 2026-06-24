@@ -1,0 +1,29 @@
+### Nodo A (edge) — ejemplo para test local two-node en compose.
+### Bindea el REP server a 0.0.0.0 para que node-b conecte vía la red bridge.
+### El dataset se monta en /datasets (ver docker-compose.yml).
+run:
+  scenario: EBE
+  name: ebe_node_a
+  description: "Nodo A: ingesta + normalización + servidor ZeroMQ (test local)."
+
+source:
+  type: image_folder
+  path: /datasets/construction_site_safety/valid/images
+
+model:
+  ref: yoloe/yoloe-26s
+
+prompts:
+  ref: cr01_cr02_bench_v2
+  active_ids: [person, helmet, vest, bare_head]
+
+topology:
+  mode: two_node
+
+transport:
+  backend: network
+  endpoint: "tcp://0.0.0.0:5555"
+  payload_format: uint8_rgb
+  compression:
+    codec: jpeg
+    quality: 90

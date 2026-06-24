@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-import torch
-
 
 def get_gpu_memory_allocated_mb() -> float:
     """Retorna la memoria GPU reservada/utilizada por PyTorch en megabytes.
 
     Si CUDA no está disponible o no se está utilizando GPU, retorna 0.0.
     """
+    try:
+        import torch
+    except ImportError:
+        return 0.0
+
     if torch.cuda.is_available():
         try:
             return torch.cuda.memory_allocated() / (1024.0 * 1024.0)
@@ -23,6 +26,11 @@ def reset_gpu_peak_memory() -> None:
 
     Llamar al inicio de la corrida para que el pico refleje solo esta ejecución.
     """
+    try:
+        import torch
+    except ImportError:
+        return
+
     if torch.cuda.is_available():
         try:
             torch.cuda.reset_peak_memory_stats()
@@ -36,6 +44,11 @@ def get_gpu_memory_peak_mb() -> float:
     Es la "VRAM máxima observada" de la corrida (desde el último reset).
     Si CUDA no está disponible, retorna 0.0.
     """
+    try:
+        import torch
+    except ImportError:
+        return 0.0
+
     if torch.cuda.is_available():
         try:
             return torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)

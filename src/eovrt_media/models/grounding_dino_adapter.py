@@ -8,9 +8,7 @@ from contextlib import nullcontext
 from pathlib import Path
 
 import numpy as np
-import torch
 from PIL import Image
-from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
 
 from eovrt_media.contracts.detection import RawDetection
 from eovrt_media.contracts.normalized_unit import NormalizedUnit
@@ -70,6 +68,8 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
 
     def load(self) -> None:
         """Carga el processor y modelo en el dispositivo configurado."""
+        from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
+
         self.device = resolve_device(self.device)
         source = self.local_dir if self.local_dir and Path(self.local_dir).exists() else self.model_id
         logger.info(f"Cargando Grounding DINO desde: {source} → {self.device}")
@@ -94,6 +94,8 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
         Returns:
             Lista de RawDetection con bounding boxes en píxeles.
         """
+        import torch
+
         if self.model is None or self.processor is None:
             raise RuntimeError("Modelo no cargado. Llamar load() primero.")
 
@@ -169,6 +171,8 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
 
     def close(self) -> None:
         """Libera el modelo de memoria."""
+        import torch
+
         self.model = None
         self.processor = None
         if torch.cuda.is_available():
