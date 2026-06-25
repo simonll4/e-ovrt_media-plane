@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict
 class PayloadFormat(str, Enum):
     UINT8_RGB = "uint8_rgb"  # impl
     FP32 = "fp32"            # impl
-    FP16 = "fp16"            # declarado, no implementado
+    FP16 = "fp16"            # impl
 
 
 @dataclass

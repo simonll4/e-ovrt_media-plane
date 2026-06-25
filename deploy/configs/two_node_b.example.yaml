@@ -27,6 +27,7 @@ topology:
 transport:
   backend: network
   endpoint: "tcp://node-a:5555"
+  heartbeat_endpoint: "tcp://node-a:5556"
   payload_format: uint8_rgb
   compression:
     codec: jpeg

@@ -52,6 +52,7 @@ eliminada del árbol porque:
 - **A monitorear:** `OakDSource` es un stub que lanza `NotImplementedError` hasta
   integrar el SDK DepthAI. Cuando se integre, deberá seguir el mismo patrón de
   `RtspSource` (pixel_data en VisualUnit, stop() para interrumpir el loop).
-- **FP16:** el formato de payload `fp16` está declarado como enum pero su
-  conversión y transporte están pendientes. Es una optimización de ancho de banda
-  para el canal two-node, no un requisito del flujo EBE básico.
+- **FP16:** el formato de payload `fp16` está implementado de extremo a extremo:
+  normalización a `[0, 1]`, serialización raw preservando `float16` y transporte
+  two-node. JPEG permanece limitado a `uint8_rgb`; una configuración JPEG+FP16
+  selecciona raw de forma explícita.

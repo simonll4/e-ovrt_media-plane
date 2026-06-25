@@ -40,6 +40,7 @@ def test_two_node_loopback_produces_detections(tmp_path):
     cfg.topology.mode = "two_node"
     cfg.transport.backend = "network"
     cfg.transport.endpoint = _loopback_endpoint()
+    cfg.transport.heartbeat_endpoint = _loopback_endpoint()
     cfg.outputs.base_dir = str(tmp_path / "runs")
     cfg.outputs.run_dir = str(tmp_path / "runs")
     cfg.outputs.save_previews = False

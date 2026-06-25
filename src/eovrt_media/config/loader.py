@@ -22,8 +22,9 @@ import yaml
 from eovrt_media.config.schemas import PromptsFile, RunConfig
 
 
-_PULLEABLE_TYPES = {"image_folder", "video_file", "video", "video_frame"}
-_LIVE_TYPES = {"camera", "rtsp", "oak_d"}
+_SUPPORTED_SOURCE_TYPES = ("image_folder", "video_file", "rtsp", "oak_d")
+_PULLEABLE_TYPES = {"image_folder", "video_file"}
+_LIVE_TYPES = {"rtsp", "oak_d"}
 
 
 def _raise_sampling_migration_error() -> None:
@@ -42,7 +43,17 @@ def _derive_defaults(raw: dict[str, Any]) -> None:
     if not isinstance(source, dict):
         return
 
-    source_type = str(source.get("type", "image_folder")).lower()
+    source_type = str(source.get("type", "image_folder")).lower().strip()
+    if source_type not in _SUPPORTED_SOURCE_TYPES:
+        migration = (
+            " Migrar source.type=camera a rtsp o oak_d."
+            if source_type == "camera"
+            else ""
+        )
+        raise ValueError(
+            f"source.type={source_type} no está soportado. Valores válidos: "
+            f"{', '.join(_SUPPORTED_SOURCE_TYPES)}.{migration}"
+        )
     if "kind" not in source:
         if source_type in _PULLEABLE_TYPES:
             source["kind"] = "pulleable"
@@ -109,15 +120,17 @@ def _validate_deployment(config: RunConfig) -> None:
         )
     if config.transport.endpoint and config.transport.backend != "network":
         raise ValueError("transport.endpoint solo aplica a transport.backend=network.")
+    if config.transport.heartbeat_endpoint and config.transport.backend != "network":
+        raise ValueError(
+            "transport.heartbeat_endpoint solo aplica a transport.backend=network."
+        )
+    if config.transport.backend == "network" and not config.transport.endpoint:
+        raise ValueError("transport.backend=network requiere transport.endpoint.")
+    if config.transport.backend == "network" and not config.transport.heartbeat_endpoint:
+        raise ValueError(
+            "transport.backend=network requiere transport.heartbeat_endpoint."
+        )
 
-    if config.transport.payload_format == "fp16":
-        raise NotImplementedError(
-            "transport.payload_format=fp16 está declarado pero no implementado."
-        )
-    if config.source.type.lower() == "camera":
-        raise NotImplementedError(
-            "source.type=camera está declarado pero no implementado."
-        )
     if config.source.type.lower() == "oak_d":
         raise NotImplementedError(
             "source.type=oak_d (OAK-D Pro PoE) está declarado pero no implementado."

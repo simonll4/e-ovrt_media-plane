@@ -62,7 +62,16 @@ rate_control:
 
 transport:
   backend: memory           # memory y network (ZeroMQ) implementados
-  payload_format: uint8_rgb # uint8_rgb/fp32 implementados; fp16 pendiente
+  payload_format: uint8_rgb # uint8_rgb, fp32 y fp16 implementados
+
+  # Campos requeridos cuando backend=network (dos nodos):
+  # endpoint: "tcp://0.0.0.0:5555"          # bind del productor / connect del consumidor
+  # heartbeat_endpoint: "tcp://0.0.0.0:5556" # canal PUSH/PULL de liveness (obligatorio)
+  # heartbeat_interval_ms: 1000              # cadencia de pulso del consumidor (ms)
+  # heartbeat_timeout_ms: 5000              # umbral de liveness del productor (ms)
+  # compression:
+  #   codec: jpeg   # jpeg | raw (jpeg solo para payload_format=uint8_rgb)
+  #   quality: 90   # calidad JPEG 1-100
 
 topology:
   mode: single_host         # single_host y two_node implementados
@@ -72,8 +81,8 @@ Los defaults se derivan antes de validar: una fuente `pulleable` usa
 `deterministic`, una `live` usa `bounded_freshness`; `single_host` usa `memory`
 y `two_node` usa `network`.
 
-Los valores declarados pero no disponibles (`oak_d`, `fp16`) fallan de forma
-explícita al cargar la config. Las entradas de `datasets/`
+La única fuente declarada pero no disponible, `oak_d`, falla de forma explícita
+al cargar la config. Las entradas de `datasets/`
 incluyen `dataset_id`, `view`, `split`, `vocabulary` y `kind`; esos campos se
 persisten en `run_provenance.json`.
 
@@ -86,7 +95,9 @@ umbrales por defecto. Los pesos en sí viven en
 Convención de nombre para finetunes: `<variante>-ft-<tag>.yaml`.
 
 **`datasets/<nombre>.yaml`** — una fuente de datos: `type`
-(`image_folder` | `video_file`), `path` y opcionales.
+(`image_folder` | `video_file` | `rtsp` | `oak_d`), `path` y opcionales.
+`rtsp` está implementado (fuente live, política `bounded_freshness`).
+`oak_d` está declarado pero pendiente de implementación (falla explícita al cargar).
 
 **`prompts/<nombre>.yaml`** — un `prompt_set` versionado con `id`, `items`
 (id, texto, aliases, rol). Versionar cambios de vocabulario como un set nuevo

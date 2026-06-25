@@ -23,8 +23,6 @@ class UnitTimingResult:
     """Mapeo granular de tiempos requerido por la MEMORIA."""
 
     unit_id: str
-    read_ms: float = 0.0
-    preprocess_ms: float = 0.0
     normalize_ms: float = 0.0
     inference_ms: float = 0.0
     postprocess_ms: float = 0.0
@@ -39,14 +37,6 @@ class UnitTimer:
         self.unit_id = unit_id
         self._start = time.perf_counter()
 
-        self.read_start = None
-        self.read_end = None
-
-        self.preprocess_start = None
-        self.preprocess_end = None
-
-        self.normalize_start = None
-        self.normalize_end = None
         self._normalize_ms = 0.0
 
         self.inference_start = None
@@ -57,24 +47,6 @@ class UnitTimer:
 
         self.write_start = None
         self.write_end = None
-
-    def start_read(self) -> None:
-        self.read_start = time.perf_counter()
-
-    def end_read(self) -> None:
-        self.read_end = time.perf_counter()
-
-    def start_preprocess(self) -> None:
-        self.preprocess_start = time.perf_counter()
-
-    def end_preprocess(self) -> None:
-        self.preprocess_end = time.perf_counter()
-
-    def start_normalize(self) -> None:
-        self.normalize_start = time.perf_counter()
-
-    def end_normalize(self) -> None:
-        self.normalize_end = time.perf_counter()
 
     def record_normalize_ms(self, duration_ms: float) -> None:
         """Registra normalización medida en el hilo productor."""
@@ -103,17 +75,13 @@ class UnitTimer:
         now = time.perf_counter()
         total_ms = (now - self._start) * 1000.0
 
-        read = (self.read_end - self.read_start) * 1000.0 if (self.read_start and self.read_end) else 0.0
-        prep = (self.preprocess_end - self.preprocess_start) * 1000.0 if (self.preprocess_start and self.preprocess_end) else 0.0
-        norm = (self.normalize_end - self.normalize_start) * 1000.0 if (self.normalize_start and self.normalize_end) else self._normalize_ms
+        norm = self._normalize_ms
         inf = (self.inference_end - self.inference_start) * 1000.0 if (self.inference_start and self.inference_end) else 0.0
         post = (self.postprocess_end - self.postprocess_start) * 1000.0 if (self.postprocess_start and self.postprocess_end) else 0.0
         write = (self.write_end - self.write_start) * 1000.0 if (self.write_start and self.write_end) else 0.0
 
         return UnitTimingResult(
             unit_id=self.unit_id,
-            read_ms=round(read, 2),
-            preprocess_ms=round(prep, 2),
             normalize_ms=round(norm, 2),
             inference_ms=round(inf, 2),
             postprocess_ms=round(post, 2),

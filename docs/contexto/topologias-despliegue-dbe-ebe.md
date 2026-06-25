@@ -269,7 +269,7 @@ Flujo de señales (LAN cableada Ethernet):
 - **Arranque**: Nodo B envía el primer REQUEST al iniciar. Nodo A no envía nada hasta recibirlo.
 - **Nodo B lento por burst** (imagen compleja, modelo cargando): Nodo A sigue normalizando y aplicando head drop. Cuando Nodo B pida, recibirá un frame reciente del buffer.
 - **Buffer vacío al REQUEST**: si Nodo B pide antes de que Nodo A tenga un frame listo (arranque, pausa de fuente), el sender espera hasta que haya uno.
-- **Heartbeat**: independiente del flujo de frames, ambos nodos intercambian un keep-alive periódico para distinguir Nodo B lento de Nodo B desconectado.
+- **Heartbeat**: independiente del flujo de frames, Nodo B emite un keep-alive periódico por un canal PUSH/PULL dedicado para que Nodo A distinga un consumidor lento de uno desconectado.
 
 ### Protocolo de transporte entre nodos
 
@@ -277,9 +277,14 @@ Flujo de señales (LAN cableada Ethernet):
 |---|---|---|
 | `REQUEST` | Nodo B → Nodo A | "listo para el siguiente frame" |
 | `VisualUnit` | Nodo A → Nodo B | frame del buffer, en el `payload_format` configurado |
-| `HEARTBEAT` | bidireccional | keep-alive periódico |
+| `HEARTBEAT` | Nodo B → Nodo A | keep-alive periódico por el canal PUSH/PULL dedicado |
 
-Protocolo implementado: **ZeroMQ REQ/REP**. Nodo A hace bind en REP; Nodo B conecta en REQ. Serialización: `[4B header_len big-endian][msgpack meta][numpy bytes raw]`. Mensajes de control: `REQUEST`, `END`, `HEARTBEAT`. La elección no afecta los contratos ni la lógica conceptual de los componentes.
+Protocolo implementado: **ZeroMQ REQ/REP para datos y PUSH/PULL para liveness**.
+Nodo A hace bind en REP y PULL; Nodo B conecta REQ y PUSH. La serialización de
+unidades usa `[4B header_len big-endian][msgpack meta][numpy bytes raw]` y preserva
+`uint8_rgb`, `fp32` o `fp16`. `REQUEST` y `END` pertenecen al canal de datos;
+`HEARTBEAT`, al canal de control. La elección no afecta los contratos ni la lógica
+conceptual de los componentes.
 
 ---
 
@@ -312,13 +317,15 @@ Protocolo implementado: **ZeroMQ REQ/REP**. Nodo A hace bind en REP; Nodo B cone
   `pixel_data` embebe el frame BGR en `VisualUnit` para que `image_loader` no reabra el stream.
   `bounded_freshness` descarta frames obsoletos bajo carga. Validado con cámara EZVIZ real
   (1920×1080, 9 fps observados).
-- **Dos nodos — DBE/EBE**: implementado. `NetworkTransportAdapter` usa ZeroMQ REQ/REP;
-  serialización msgpack + numpy raw; heartbeat via actividad de requests. Nodo A (`run_node_a`)
-  vincula el servidor REP; Nodo B (`run_node_b`) conecta el cliente REQ y produce los artefactos.
+- **Dos nodos — DBE/EBE**: implementado. `NetworkTransportAdapter` usa ZeroMQ REQ/REP
+  para datos y PUSH/PULL dedicado para heartbeat; la serialización msgpack + numpy raw
+  conserva payloads `uint8_rgb`, `fp32` y `fp16`. Nodo A (`run_node_a`) vincula REP/PULL;
+  Nodo B (`run_node_b`) conecta REQ/PUSH y produce artefactos, incluidos previews desde payload.
   Contenedores Docker disponibles: `Dockerfile.node-a` (edge, sin GPU) y `Dockerfile.node-b`
-  (CUDA), orquestados con `docker-compose.yml`.
+  (CUDA), orquestados con los manifiestos Compose local y por host.
 
-`ipc` y `payload_format=fp16` no hacen fallback silencioso: el loader o el factory fallan
-explícitamente. La política de rate control y el formato de payload siguen siendo configurables
-mediante YAML. El detalle operativo y los límites conocidos viven en
+Los modos soportados son `memory` y `network`; ZeroMQ permite usar endpoints TCP o `ipc://`
+sin introducir otro backend. La política de rate control y el formato de payload siguen siendo
+configurables mediante YAML. La única fuente declarada y diferida es OAK-D Pro PoE. El detalle
+operativo y los límites conocidos viven en
 [implementation-status.md](../implementation-status.md).

@@ -155,8 +155,9 @@ class TransportConfig(BaseModel):
     backend: str = "memory"
     payload_format: str = "uint8_rgb"
     endpoint: str | None = None
-    heartbeat_interval_ms: int = 1000
-    heartbeat_timeout_ms: int = 5000
+    heartbeat_endpoint: str | None = None
+    heartbeat_interval_ms: int = Field(default=1000, gt=0)
+    heartbeat_timeout_ms: int = Field(default=5000, gt=0)
     compression: CompressionConfig = Field(default_factory=CompressionConfig)
 
 

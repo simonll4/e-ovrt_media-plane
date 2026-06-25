@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import numpy as np
 from PIL import Image
 
 from eovrt_media.contracts.detection import RawDetection
@@ -16,6 +16,10 @@ from eovrt_media.models.runtime_utils import (
     resolve_device,
     should_use_half,
 )
+from eovrt_media.preprocessing import prepare_model_input
+
+if TYPE_CHECKING:
+    import torch
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +96,9 @@ class YOLOEUltralyticsAdapter(BaseDetectorAdapter):
                 if pe is not None:
                     self.model.model.pe = pe.half()
 
-    def predict(self, image: Image.Image | Path, prompts: list[str]) -> list[RawDetection]:
+    def predict(
+        self, image: Image.Image | Path | torch.Tensor, prompts: list[str]
+    ) -> list[RawDetection]:
         """Ejecuta inferencia con YOLOE.
 
         Args:
@@ -150,10 +156,7 @@ class YOLOEUltralyticsAdapter(BaseDetectorAdapter):
 
     def forward(self, unit: NormalizedUnit, prompts: list[str]) -> list[RawDetection]:
         """Ejecuta la inferencia desde el payload normalizado del canal."""
-        payload = unit.payload
-        if payload.dtype != np.uint8:
-            payload = np.clip(payload * 255.0, 0, 255).astype(np.uint8)
-        return self.predict(Image.fromarray(payload), prompts)
+        return self.predict(prepare_model_input(unit, self.input_spec, self.device), prompts)
 
     @property
     def input_spec(self) -> ModelInputSpec:

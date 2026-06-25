@@ -58,11 +58,14 @@ class TestNormalizeSpatial:
         assert result.orig_height == 600
         assert result.unit_id == "u1"
 
-    def test_fp16_raises(self, tmp_path):
+    def test_fp16_payload_format(self, tmp_path):
         unit = _make_visual_unit(tmp_path)
         spec = ModelInputSpec(target_size=(640, 640))
-        with pytest.raises(NotImplementedError, match="fp16"):
-            normalize_spatial(unit, spec, PayloadFormat.FP16)
+        result = normalize_spatial(unit, spec, PayloadFormat.FP16)
+        assert result.payload.dtype == np.float16
+        assert result.payload.min() >= 0.0
+        assert result.payload.max() <= 1.0
+        assert result.payload_format == PayloadFormat.FP16
 
     def test_fp32_payload_format(self, tmp_path):
         unit = _make_visual_unit(tmp_path)

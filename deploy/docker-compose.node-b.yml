@@ -1,0 +1,19 @@
+# Despliegue real en el host GPU. El endpoint remoto vive en el YAML de Nodo B.
+services:
+  node-b:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.node-b
+    command: ["--config", "${NODE_B_CONFIG:-/app/deploy-configs/two_node_b.example.yaml}"]
+    volumes:
+      - ../configs:/app/configs:ro
+      - ./configs:/app/deploy-configs:ro
+      - ../models:/app/models:ro
+      - ../runs:/app/runs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

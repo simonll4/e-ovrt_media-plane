@@ -22,18 +22,18 @@ logger = logging.getLogger(__name__)
 # Mensajes de control (prefijo reservado que nunca aparece en un header válido)
 REQUEST = b"\x00CTRL:REQUEST"
 END_MSG = b"\x00CTRL:END"
-HEARTBEAT = b"\x00CTRL:HEARTBEAT"
 
 _CONTROL_PREFIX = b"\x00CTRL:"
 
 _DTYPE_BY_FORMAT = {
     PayloadFormat.UINT8_RGB: np.uint8,
     PayloadFormat.FP32: np.float32,
+    PayloadFormat.FP16: np.float16,
 }
 
 
 def is_control(data: bytes) -> bool:
-    """True si el mensaje es de control (REQUEST/END/HEARTBEAT)."""
+    """True si el mensaje es de control (REQUEST/END)."""
     return data.startswith(_CONTROL_PREFIX)
 
 

@@ -1,0 +1,12 @@
+# Despliegue real en el host edge. Publica ZeroMQ para el Nodo B remoto.
+services:
+  node-a:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.node-a
+    command: ["--config", "${NODE_A_CONFIG:-/app/deploy-configs/two_node_a.example.yaml}"]
+    volumes:
+      - ../configs:/app/configs:ro
+      - ./configs:/app/deploy-configs:ro
+      - ../../e-ovrt_datasets/datasets/raw:/datasets:ro
+    ports: ["5555:5555", "5556:5556"]

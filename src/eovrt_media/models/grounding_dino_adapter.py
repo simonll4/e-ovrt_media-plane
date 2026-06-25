@@ -14,6 +14,7 @@ from eovrt_media.contracts.detection import RawDetection
 from eovrt_media.contracts.normalized_unit import NormalizedUnit
 from eovrt_media.models.base import BaseDetectorAdapter, ModelInputSpec
 from eovrt_media.models.runtime_utils import make_warmup_image, resolve_device, should_use_half
+from eovrt_media.preprocessing import prepare_model_input
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +95,6 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
         Returns:
             Lista de RawDetection con bounding boxes en píxeles.
         """
-        import torch
-
         if self.model is None or self.processor is None:
             raise RuntimeError("Modelo no cargado. Llamar load() primero.")
 
@@ -109,6 +108,25 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
         text = ". ".join(prompts) + "."
 
         inputs = self.processor(images=image, text=text, return_tensors="pt").to(self.device)
+
+        return self._run_inference(
+            inputs,
+            prompts,
+            target_size=(
+                image.shape[:2]
+                if isinstance(image, np.ndarray)
+                else (image.size[1], image.size[0])
+            ),
+        )
+
+    def _run_inference(
+        self,
+        inputs,
+        prompts: list[str],
+        target_size: tuple[int, int],
+    ) -> list[RawDetection]:
+        """Ejecuta y decodifica una entrada ya preparada para Grounding DINO."""
+        import torch
 
         amp = (
             torch.autocast("cuda", dtype=torch.float16)
@@ -125,11 +143,7 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
                 inputs.input_ids,
                 threshold=self.box_threshold,
                 text_threshold=self.text_threshold,
-                target_sizes=[
-                    [image.shape[0], image.shape[1]]
-                    if isinstance(image, np.ndarray)
-                    else [image.size[1], image.size[0]]
-                ],  # [height, width]
+                target_sizes=[list(target_size)],  # [height, width]
             )[0]
 
         detections = []
@@ -154,10 +168,13 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
 
     def forward(self, unit: NormalizedUnit, prompts: list[str]) -> list[RawDetection]:
         """Ejecuta la inferencia desde el payload normalizado del canal."""
-        payload = unit.payload
-        if payload.dtype != np.uint8:
-            payload = np.clip(payload * 255.0, 0, 255).astype(np.uint8)
-        return self.predict(payload, prompts)
+        if self.model is None or self.processor is None:
+            raise RuntimeError("Modelo no cargado. Llamar load() primero.")
+
+        text = ". ".join(prompts) + "."
+        inputs = self.processor(text=text, return_tensors="pt").to(self.device)
+        inputs["pixel_values"] = prepare_model_input(unit, self.input_spec, self.device)
+        return self._run_inference(inputs, prompts, unit.payload.shape[:2])
 
     @property
     def input_spec(self) -> ModelInputSpec:

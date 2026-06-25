@@ -20,6 +20,7 @@ def test_create_transport_threads_codec_to_network(monkeypatch):
         backend="network",
         role="producer",
         endpoint="tcp://127.0.0.1:5599",
+        heartbeat_endpoint="tcp://127.0.0.1:5600",
         codec="jpeg",
         quality=80,
     )

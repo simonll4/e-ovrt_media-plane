@@ -137,15 +137,16 @@ runs/<run_id>/
 ├── errors.jsonl             # Errores recuperables
 ├── summary.json             # Resumen v2 y descriptor de despliegue
 ├── run_provenance.json      # Dataset, vocabulario y fingerprint de la fuente
-└── previews/                # Directorio reservado para previews
+└── previews/                # Previews anotados, cuando save_previews=true
 ```
 
 `summary.json` incluye latencias avg/p50/p95/p99, FPS efectivo, descartes, espera de
 backpressure, `run_descriptor`, desglose por label/prompt y VRAM máxima. `metrics.jsonl`
 usa `media.metric.v2` e incluye latencia de normalización.
 
-Con `save_previews: true`, el pipeline renderiza previews anotadas para fuentes de imagen.
-La renderización de previews de frames de vídeo sigue pendiente.
+Con `save_previews: true`, el consumidor renderiza previews anotados directamente desde
+`NormalizedUnit.payload`. Funciona con imágenes, vídeo, RTSP y en Nodo B sin acceso a la ruta
+original del productor; las cajas se dibujan en el espacio del payload normalizado.
 
 ### Ver resumen
 

@@ -144,15 +144,10 @@ class RunArtifactWriter:
         p99_lat = 0.0
 
         if tracker is not None:
-            # LatencyTracker viejo o nuevo
-            if hasattr(tracker, "avg_latency_ms"):
-                avg_lat = tracker.avg_latency_ms()
-            if hasattr(tracker, "p50_latency_ms"):
-                p50_lat = tracker.p50_latency_ms()
-            if hasattr(tracker, "p95_latency_ms"):
-                p95_lat = tracker.p95_latency_ms()
-            if hasattr(tracker, "p99_latency_ms"):
-                p99_lat = tracker.p99_latency_ms()
+            avg_lat = tracker.avg_latency_ms()
+            p50_lat = tracker.p50_latency_ms()
+            p95_lat = tracker.p95_latency_ms()
+            p99_lat = tracker.p99_latency_ms()
 
         config = self.context.config
         descriptor = RunDescriptor(

@@ -7,7 +7,7 @@ from eovrt_media.contracts.normalized_unit import (
     NormalizedUnit, PayloadFormat, ResizeTransform,
 )
 from eovrt_media.transport.serialization import (
-    REQUEST, END_MSG, HEARTBEAT,
+    REQUEST, END_MSG,
     serialize_unit, deserialize_unit, is_control,
 )
 
@@ -15,6 +15,8 @@ from eovrt_media.transport.serialization import (
 def _make_unit(fmt: PayloadFormat) -> NormalizedUnit:
     if fmt == PayloadFormat.FP32:
         payload = np.random.rand(640, 640, 3).astype(np.float32)
+    elif fmt == PayloadFormat.FP16:
+        payload = np.random.rand(640, 640, 3).astype(np.float16)
     else:
         payload = (np.random.rand(640, 640, 3) * 255).astype(np.uint8)
     return NormalizedUnit(
@@ -55,10 +57,18 @@ def test_roundtrip_fp32():
     assert np.allclose(restored.payload, unit.payload)
 
 
+def test_roundtrip_fp16():
+    unit = _make_unit(PayloadFormat.FP16)
+    restored = deserialize_unit(serialize_unit(unit))
+    assert restored.payload_format == PayloadFormat.FP16
+    assert restored.payload.dtype == np.float16
+    assert restored.payload.shape == unit.payload.shape
+    assert np.allclose(restored.payload, unit.payload, atol=1e-3)
+
+
 def test_control_messages_recognized():
     assert is_control(REQUEST)
     assert is_control(END_MSG)
-    assert is_control(HEARTBEAT)
 
 
 def test_serialized_unit_is_not_control():
@@ -88,3 +98,10 @@ def test_jpeg_falls_back_to_raw_for_fp32():
     restored = deserialize_unit(serialize_unit(unit, codec="jpeg", quality=90))
     assert restored.payload.dtype == np.float32
     assert np.allclose(restored.payload, unit.payload)
+
+
+def test_jpeg_falls_back_to_raw_for_fp16():
+    unit = _make_unit(PayloadFormat.FP16)
+    restored = deserialize_unit(serialize_unit(unit, codec="jpeg", quality=90))
+    assert restored.payload.dtype == np.float16
+    assert np.allclose(restored.payload, unit.payload, atol=1e-3)

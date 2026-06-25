@@ -29,6 +29,7 @@ def run_node_a(config: RunConfig, console: Console | None = None) -> None:
         buffer_size=rate_control.buffer_size,
         max_staleness_ms=rate_control.max_staleness_ms,
         endpoint=config.transport.endpoint,
+        heartbeat_endpoint=config.transport.heartbeat_endpoint,
         heartbeat_interval_ms=config.transport.heartbeat_interval_ms,
         heartbeat_timeout_ms=config.transport.heartbeat_timeout_ms,
         codec=config.transport.compression.codec,
@@ -77,6 +78,7 @@ def run_node_b(config: RunConfig, console: Console | None = None) -> str:
         backend="network",
         role="consumer",
         endpoint=config.transport.endpoint,
+        heartbeat_endpoint=config.transport.heartbeat_endpoint,
         heartbeat_interval_ms=config.transport.heartbeat_interval_ms,
         heartbeat_timeout_ms=config.transport.heartbeat_timeout_ms,
     )

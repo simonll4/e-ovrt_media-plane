@@ -45,12 +45,6 @@ def normalize_spatial(
     Returns:
         NormalizedUnit con el payload redimensionado y el transform aplicado.
     """
-    if payload_format == PayloadFormat.FP16:
-        raise NotImplementedError(
-            "payload_format=fp16 is declared but not implemented; "
-            "implement it together with the backend network."
-        )
-
     # ``load_image`` centraliza tanto imágenes como extracción de frames de vídeo.
     img_rgb = np.asarray(load_image(unit))
 
@@ -70,6 +64,8 @@ def normalize_spatial(
 
     if payload_format == PayloadFormat.FP32:
         payload = payload.astype(np.float32) / 255.0
+    elif payload_format == PayloadFormat.FP16:
+        payload = payload.astype(np.float16) / np.float16(255.0)
 
     return NormalizedUnit(
         unit_id=unit.unit_id,

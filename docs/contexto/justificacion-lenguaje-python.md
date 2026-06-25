@@ -31,7 +31,7 @@ generaliza a prácticamente todo el stack del plano de medios**:
 | `numpy` (operaciones de arrays) | C vectorizado | Sí |
 | `OpenCV` / `Pillow` (decode, resize) | C (libjpeg-turbo, etc.) | Sí |
 | `torchvision.ops.nms` (postproceso) | C++/CUDA | Sí |
-| `pyzmq` (transporte red, diferido) | libzmq en C + hilo de I/O propio | Sí |
+| `pyzmq` (transporte de red) | libzmq en C + hilo de I/O propio | Sí |
 | `msgpack` / `orjson` (serialización) | C / Rust | Sí |
 
 Conclusión: el cómputo crítico **no está en Python**. Python arma estructuras, decide control de flujo
@@ -47,7 +47,7 @@ y llama a las bibliotecas. La "lentitud del lenguaje" afecta solo a ese glue, qu
 | Rate control / canal (backend memoria) | glue Python (queue, construcción de objetos) | µs por frame (ver §3). |
 | Contratos Pydantic v2 | validación implementada en Rust | Bajo; en hot path se puede usar `model_construct()`. |
 | Sinks (JSONL) | json/orjson en C + I/O de disco | Domina el disco, no Python. |
-| Transporte de red (diferido) | libzmq en C + msgpack en C | **No.** |
+| Transporte de red | libzmq en C + msgpack en C | **No.** |
 
 La regla transversal: **cuando algo es caro, delega a código nativo y libera el GIL.** Lo que queda
 bajo el intérprete es plomería de microsegundos.
@@ -65,12 +65,11 @@ redimensiona el siguiente frame con OpenCV/numpy (GIL liberado). El solapamiento
 (construir el `NormalizedUnit`, `queue.put`/`get`), del orden de microsegundos. A ~5 fps —e incluso a
 tasas mucho mayores— es despreciable.
 
-**La salida de emergencia ya está diseñada.** Si en algún escenario el trabajo Python-puro del
-productor creciera hasta competir por el GIL (caso extremo, muy alto fps en un host), el backend de
-transporte **`ipc`** —ya declarado como interfaz en el andamiaje— ejecuta productor y consumidor como
-**dos procesos** comunicados por shared-memory, **esquivando el GIL por completo**, sin modificar
-contratos ni la lógica de los roles. La elección de lenguaje y la arquitectura son consistentes: no
-hay un callejón sin salida.
+**La salida multiproceso está implementada.** La topología `two_node` ejecuta productor y
+consumidor como procesos o contenedores separados y los comunica mediante el backend `network`
+de ZeroMQ. Aunque el endpoint habitual es TCP, ZeroMQ admite también `ipc://`; ambas variantes
+esquivan el GIL entre procesos sin modificar contratos ni la lógica de los roles. La elección de
+lenguaje y la arquitectura son consistentes: no hay un callejón sin salida.
 
 ## 4. Cuándo Python sería la elección equivocada (y por qué no es nuestro caso)
 
@@ -113,8 +112,8 @@ Python es adecuado y recomendado para el plano de medios:
 1. El cómputo crítico (inferencia, decode/resize, NMS, transporte) corre en bibliotecas nativas que
    liberan el GIL; Python solo orquesta.
 2. El objetivo de caudal es modesto y el tiempo real es blando, no duro.
-3. La concurrencia productor/consumidor funciona en hilos porque los hot paths liberan el GIL, y el
-   backend `ipc` (procesos + shared-memory) queda como escape diseñado de antemano.
+3. La concurrencia productor/consumidor funciona en hilos porque los hot paths liberan el GIL, y la
+   topología `two_node` ya ofrece aislamiento en procesos mediante ZeroMQ cuando se requiere.
 4. Cambiar de lenguaje sacrificaría el ecosistema de IA/CV sin ganancia real, porque el sistema es
    GPU-bound.
 

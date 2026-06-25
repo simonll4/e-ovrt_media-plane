@@ -15,6 +15,7 @@ def create_transport(
     buffer_size: int = 2,
     max_staleness_ms: float | None = None,
     endpoint: str | None = None,
+    heartbeat_endpoint: str | None = None,
     **kwargs,
 ) -> TransportAdapter:
     if backend == "memory":
@@ -27,9 +28,12 @@ def create_transport(
     if backend == "network":
         if not endpoint:
             raise ValueError("backend=network requiere transport.endpoint configurado.")
+        if not heartbeat_endpoint:
+            raise ValueError("backend=network requiere transport.heartbeat_endpoint configurado.")
         return NetworkTransportAdapter(
             role=kwargs.get("role", "consumer"),
             endpoint=endpoint,
+            heartbeat_endpoint=heartbeat_endpoint,
             policy=policy,
             buffer_size=buffer_size,
             max_staleness_ms=max_staleness_ms,

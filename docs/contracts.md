@@ -33,7 +33,7 @@ al tamaño original antes de persistirse como `Detection`.
 | Metadata | campos de `VisualUnit` | Identidad y referencia temporal conservadas. |
 | `orig_width`, `orig_height` | `int` | Tamaño antes del resize. |
 | `payload` | `numpy.ndarray` | Píxeles RGB normalizados espacialmente. |
-| `payload_format` | `uint8_rgb \| fp32 \| fp16` | `uint8_rgb` y `fp32` implementados; `fp16` bloqueado. |
+| `payload_format` | `uint8_rgb \| fp32 \| fp16` | Los tres formatos están implementados; FP16 se normaliza a `[0, 1]` y conserva `float16` en el wire raw. |
 | `target_size` | `tuple[int, int]` | Alto y ancho del payload. |
 | `transform` | `ResizeTransform` | Escalas y padding para volver del espacio modelo al original. |
 
@@ -49,8 +49,9 @@ class TransportAdapter:
     def close(self) -> None: ...
 ```
 
-Los backends `memory` y `network` (ZeroMQ REQ/REP) implementan esta interfaz.
-`fp16` como `payload_format` está declarado pero aún no implementado.
+Los backends `memory` y `network` implementan esta interfaz. En red, los datos usan
+ZeroMQ REQ/REP y la liveness usa un canal PUSH/PULL dedicado. El wire raw soporta
+`uint8_rgb`, `fp32` y `fp16`; JPEG sólo codifica payloads `uint8_rgb`.
 
 ## Detecciones y eventos
 

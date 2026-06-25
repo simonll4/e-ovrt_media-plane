@@ -37,7 +37,7 @@ class DetectionEventTiming(BaseModel):
     """Desglose de tiempos medidos en milisegundos."""
 
     read_ms: float = 0.0
-    preprocess_ms: float = 0.0
+    normalize_ms: float = 0.0
     inference_ms: float = 0.0
     postprocess_ms: float = 0.0
     write_ms: float = 0.0

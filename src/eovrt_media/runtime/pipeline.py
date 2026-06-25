@@ -26,7 +26,7 @@ from eovrt_media.runtime.run_context import RunContext
 from eovrt_media.sinks import RunArtifactWriter
 from eovrt_media.sources import BaseSource, ImageFolderSource, VideoFileSource
 from eovrt_media.transport import RateGate, create_transport
-from eovrt_media.visualize import draw_detections
+from eovrt_media.visualize import draw_detections_rgb
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +146,7 @@ def run_consumer_loop(
     drain_errors: bool = True,
 ) -> None:
     """Consume del transporte hasta END: inferencia → postproceso → escritura."""
+    preview_attempts = 0
     while True:
         item = transport.request()
         if drain_errors:
@@ -179,6 +180,25 @@ def run_consumer_loop(
                 progress.update(task, advance=1)
             continue
         timer.end_inference()
+
+        if (
+            config.outputs.save_previews
+            and preview_attempts < config.outputs.preview_max
+        ):
+            preview_path = run_context.run_dir / "previews" / f"{item.unit_id}.preview.jpg"
+            preview_attempts += 1
+            try:
+                draw_detections_rgb(item.payload, raw_detections, preview_path)
+            except Exception as exc:
+                artifact_writer.write_error(
+                    ErrorEvent(
+                        run_id=run_context.run_id,
+                        unit_id=item.unit_id,
+                        stage="preview",
+                        message=str(exc),
+                        recoverable=True,
+                    )
+                )
 
         timer.start_postprocess()
         try:
@@ -232,7 +252,7 @@ def run_consumer_loop(
                     prompts={"prompt_set_id": prompt_version},
                     detections=detections,
                     timing={
-                        "preprocess_ms": granular.normalize_ms,
+                        "normalize_ms": granular.normalize_ms,
                         "inference_ms": granular.inference_ms,
                         "postprocess_ms": granular.postprocess_ms,
                         "write_ms": granular.write_ms,
@@ -241,17 +261,6 @@ def run_consumer_loop(
                     source_path=item.source_id,
                 )
             )
-            if (
-                config.outputs.save_previews
-                and detections
-                and item.source_path
-                and item.frame_index is None
-                and run_context.units_processed < config.outputs.preview_max
-            ):
-                preview_path = (
-                    run_context.run_dir / "previews" / f"{item.unit_id}.preview.jpg"
-                )
-                draw_detections(item.source_path, detections, preview_path)
             artifact_writer.write_metric(
                 MetricSample(
                     run_id=run_context.run_id,

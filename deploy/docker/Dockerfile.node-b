@@ -2,15 +2,18 @@
 FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip python3-venv libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*
+    git python3 python3-pip python3-venv libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY pyproject.toml ./
 COPY src ./src
 RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -e ".[gpu]"
-RUN apt-get update && apt-get install -y --no-install-recommends git \
-    && rm -rf /var/lib/apt/lists/*
-RUN /opt/venv/bin/pip install --no-cache-dir "git+https://github.com/ultralytics/CLIP.git"
+RUN /opt/venv/bin/pip install --no-cache-dir \
+    "git+https://github.com/ultralytics/CLIP.git@1d071f91693d6ea610252ed16a9dfc60cc0a0825"
+# YOLOE descarga MobileCLIP de forma perezosa al configurar prompts. Materializarlo
+# en /app durante el build evita acceso de red en el primer arranque del Nodo B.
+RUN /opt/venv/bin/python -c 'import torch; from ultralytics.nn.text_model import MobileCLIPTS; MobileCLIPTS(torch.device("cpu"), weight="mobileclip2_b.ts")'
+RUN test -s /app/mobileclip2_b.ts
 ENV PATH="/opt/venv/bin:${PATH}"
 
 ENTRYPOINT ["eovrt-media", "run-consumer"]
