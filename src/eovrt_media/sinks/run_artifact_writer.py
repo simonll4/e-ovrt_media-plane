@@ -174,9 +174,8 @@ class RunArtifactWriter:
         summary = RunSummary(
             run_id=self.context.run_id,
             scenario=self.context.config.run.scenario,
-            model_adapter=self.context.config.model.adapter,
-            model_name=self.context.config.model.name,
-            prompt_version=(
+            model_name=self.context.config.model.name or self.context.config.model.adapter,
+            prompt_set_id=(
                 self.context.config.prompts_file.resolved_version
                 if self.context.config.prompts_file
                 else "unknown"

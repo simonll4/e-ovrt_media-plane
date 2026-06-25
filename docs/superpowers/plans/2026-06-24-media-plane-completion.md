@@ -129,10 +129,10 @@ Use ignored local deploy configs selecting `payload_format: fp16` and explicit d
 ## Execution record — 2026-06-24
 
 - FP16 normalization, raw serialization and network configuration are covered by the focused
-  suites. The complete local suite passed with **204 tests**.
+  suites. The complete local suite passed.
 - Dedicated heartbeat, direct tensor inputs and payload previews passed their focused suites
   (28, 17 and 14 tests respectively).
-- Final validation passed: **204 tests**, Ruff, the three Compose manifests, both Docker image
+- Final validation passed: full suite, Ruff, the three Compose manifests, both Docker image
   builds and `git diff --check` completed without errors.
 - Docker FP16 E2E: `run_20260624_224818_ebe_yoloe_deterministic` ran on `cuda:0` with
   `payload_format: fp16`; it processed 1 unit, failed 0, produced 9 detections and one preview,

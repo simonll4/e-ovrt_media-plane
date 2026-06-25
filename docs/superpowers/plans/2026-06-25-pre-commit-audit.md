@@ -10,7 +10,7 @@
 
 | Check | Resultado |
 |---|---|
-| `pytest -q` | **206 passed**, 0 failed, 0 skipped (13.39s) |
+| `pytest -q` | **210 passed**, 0 failed, 0 skipped |
 | `ruff check src tests` | **Limpio** — `All checks passed!` |
 | `git diff --check` | **Limpio** — 0 whitespace errors / conflict markers |
 | `docker compose -f deploy/docker-compose.yml config` | **Válido** |
@@ -29,13 +29,14 @@
 | Nit | 5 | — |
 | **Total verificados** | **19** | **2** |
 
-> **19 hallazgos adicionales no pudieron verificarse** por rate limit del workflow (dimensiones: bugs-runtime, optimization, tests-quality). Fueron revisados manualmente por el orquestador — ver sección "Dimensiones revisadas manualmente".
+> Los hallazgos adicionales que el workflow inicial dejó fuera por límite operativo fueron
+> revisados manualmente en este cierre — ver sección "Dimensiones revisadas manualmente".
 
 **Veredicto:** Ningún bloqueante. Cero hallazgos críticos o importantes. El repo está en estado comprometible.
 
 ---
 
-## Dimensiones revisadas manualmente (rate-limit)
+## Dimensiones revisadas manualmente
 
 ### bugs-runtime
 Revisados: `grounding_dino_adapter.py`, `yoloe_adapter.py`, `runtime_utils.py`, `transport/network.py`, `preprocessing/normalizer.py`.
@@ -53,7 +54,7 @@ Revisados: `grounding_dino_adapter.py`, `yoloe_adapter.py`, `runtime_utils.py`, 
 - **No se encontraron optimizaciones incorrectas ni regresiones.**
 
 ### tests-quality
-- 206 tests pasan con 0 fallas.
+- 210 tests pasan con 0 fallas.
 - Las features nuevas (FP16, heartbeat, compresión, previews, validación de config network) tienen cobertura en los tests correspondientes.
 - **Sin hallazgos de cobertura bloqueantes.**
 
@@ -63,15 +64,16 @@ Revisados: `grounding_dino_adapter.py`, `yoloe_adapter.py`, `runtime_utils.py`, 
 
 ### [M1] docs/implementation-status.md — conteo de tests desactualizado
 - **Archivo:** `docs/implementation-status.md:130`
-- **Evidencia:** Línea dice `pytest -q  # 204 pruebas`; la suite real ejecuta 206.
+- **Evidencia de cierre:** La suite real ejecuta 210 tests tras los tests de cierre.
 - **Por qué importa:** El plan `deploy-validation-closure-design.md:58-59` exige explícitamente conteo real, no histórico.
-- **Fix:** Cambiar `204` → `206`.
+- **Fix:** Actualizar al conteo vigente verificado por la suite completa.
 
-### [M2] pipeline.py — clave `"preprocess_ms"` contiene datos de normalización
+### [M2] pipeline.py — timing de normalización nombrado de forma explícita
 - **Archivo:** `src/eovrt_media/runtime/pipeline.py:255`
-- **Evidencia:** `DetectionEvent.timing` escribe `"preprocess_ms": granular.normalize_ms`. `preprocess_ms` real es siempre `0.0` (métodos `start/end_preprocess` nunca se invocan). `metrics.jsonl` lo nombra correctamente `latency_normalize_ms`; `detections.jsonl` lo llama mal.
-- **Por qué importa:** Semántica incorrecta en el artefacto persistido. Quien compare corridas contra `detections.jsonl` verá `preprocess_ms` con valores de normalización y `latency_normalize_ms` con los mismos valores — inconsistencia entre dos sinks.
-- **Fix:** Renombrar la clave a `"normalize_ms"` en `pipeline.py:255`.
+- **Evidencia de cierre:** `DetectionEvent.timing` escribe `"normalize_ms": granular.normalize_ms`.
+- **Por qué importa:** El artefacto persistido ahora usa la misma semántica que `metrics.jsonl`
+  (`latency_normalize_ms`) y evita campos de etapa no instrumentada.
+- **Fix:** Cerrado.
 
 ### [M3] app.py — módulo huérfano sin consumidores
 - **Archivo:** `src/eovrt_media/app.py`
@@ -81,7 +83,8 @@ Revisados: `grounding_dino_adapter.py`, `yoloe_adapter.py`, `runtime_utils.py`, 
 
 ### [M4] run_artifact_writer.py — guardas hasattr para una migración inexistente
 - **Archivo:** `src/eovrt_media/sinks/run_artifact_writer.py:146-155`
-- **Evidencia:** Cuatro guardas `hasattr(tracker, "avg_latency_ms")` etc., con comentario `# LatencyTracker viejo o nuevo`. Solo existe un `LatencyTracker` en todo `src/` (en `timers.py:136`) con los cuatro métodos definidos incondicionalmente. Las guardas nunca pueden ser `False`.
+- **Evidencia de cierre:** `RunArtifactWriter.write_summary()` llama directamente a los métodos
+  de `LatencyTracker` cuando el tracker está presente.
 - **Por qué importa:** Deuda de legibilidad — sugiere una migración que ya no existe. Confunde a quien lea el código.
 - **Fix:** Tipar el parámetro como `LatencyTracker | None`, llamar métodos directamente, borrar el comentario de migración.
 
@@ -95,11 +98,13 @@ Revisados: `grounding_dino_adapter.py`, `yoloe_adapter.py`, `runtime_utils.py`, 
 - **Por qué importa:** Hazard latente: el heartbeat real nunca pasa por `is_control()`, pero el test sugiere que debería. Si alguien unifica canales o reutiliza `is_control` para heartbeats, el comportamiento será inesperado.
 - **Fix:** Eliminar `HEARTBEAT` de `serialization.py` y actualizar `test_serialization.py` para no importarla. Agregar comentario en `network.py:20` aclarando que el heartbeat dedicado usa un sentinel propio fuera del esquema `CTRL:`.
 
-### [M6] timers.py — 6 métodos de timer nunca invocados
+### [M6] timers.py — contrato granular limitado a etapas medidas
 - **Archivo:** `src/eovrt_media/metrics/timers.py:61-77`
-- **Evidencia:** Los métodos `start_read/end_read`, `start_preprocess/end_preprocess`, `start_normalize/end_normalize` tienen 0 invocaciones en toda la base de código (solo aparecen como definiciones). Su estado interno nunca se muta → `read_ms` y `preprocess_ms` en `UnitTimingResult` son siempre `0.0`. Contraste: `start_inference/start_postprocess/start_write` SÍ están cableados en `pipeline.py`.
-- **Por qué importa:** El contrato `UnitTimingResult` y `DetectionEvent.timing` sugieren instrumentación por etapa que en realidad no existe. `detections.jsonl` tiene campos con valor perpetuo `0.0`.
-- **Fix:** Eliminar los 6 métodos muertos y sus campos de estado (`read_start/end`, `preprocess_start/end`, `normalize_start/end`). Actualizar `UnitTimingResult` para eliminar `read_ms` y `preprocess_ms` (o dejar constancia de que no están instrumentados).
+- **Evidencia de cierre:** `UnitTimingResult` contiene sólo `normalize_ms`, `inference_ms`,
+  `postprocess_ms`, `write_ms` y `total_ms`.
+- **Por qué importa:** El contrato ya no sugiere etapas no instrumentadas ni persiste campos
+  perpetuamente nulos.
+- **Fix:** Cerrado.
 
 ### [M7] configs/README.md — transport sin documentar campos de red ni compression
 - **Archivo:** `configs/README.md:63-68`
@@ -115,9 +120,12 @@ Revisados: `grounding_dino_adapter.py`, `yoloe_adapter.py`, `runtime_utils.py`, 
 
 ### [M9] factory.py — default de codec divergente entre CompressionConfig y factory
 - **Archivo:** `src/eovrt_media/transport/factory.py:42`
-- **Evidencia:** `CompressionConfig.codec` default = `"jpeg"` (en `schemas.py:148`). `create_transport` usa `codec=kwargs.get("codec", "raw")`. `NetworkTransportAdapter.__init__` tiene `codec: str = "raw"`.
+- **Evidencia de cierre:** `CompressionConfig`, `create_transport()` y
+  `NetworkTransportAdapter.__init__` usan `"jpeg"` como default canónico del transporte de red.
 - **Por qué importa:** El path de producción es correcto (`run_node_a` pasa `codec` explícitamente), pero una llamada directa al factory o al adapter sin pasar `codec` comprimiría diferente a lo que el esquema declara como default — trampa para tests o uso programático.
-- **Decisión:** Aceptar como-está. El path de producción es correcto; el fix requiere decisión de qué default es canónico.
+- **Decisión de cierre:** default canónico `jpeg` para el transporte de red. `create_transport()` y
+  `NetworkTransportAdapter` usan el mismo default que `CompressionConfig`; `serialize_unit()` conserva
+  `raw` como default low-level/lossless.
 
 ### [M10] mm-gdino-large.yaml — catálogo sin runs que lo referencien
 - **Archivo:** `configs/models/mm-grounding-dino/mm-gdino-large.yaml`
@@ -128,10 +136,13 @@ Revisados: `grounding_dino_adapter.py`, `yoloe_adapter.py`, `runtime_utils.py`, 
 - **Archivo:** `src/eovrt_media/runtime/two_node.py:51`
 - **Evidencia:** `is_peer_alive()` está implementado en `network.py:165-170` y `_last_heartbeat` se actualiza en el hilo PULL. Sin embargo, `run_node_a` nunca llama `is_peer_alive()`. Ante caída del consumidor, el productor sigue normalizando y descartando indefinidamente. Además, `wait_for_consumer()` hace `self._server.join()` sin timeout → bloquea indefinidamente si el consumidor muere antes de recibir END.
 - **Por qué importa:** El heartbeat existe para liveness pero no tiene efecto de control. No rompe el camino feliz.
-- **Decisión:** Aceptar como-está. Es una decisión de diseño de scope: agregar gating efectivo es un cambio de comportamiento significativo que corresponde a un workstream futuro. Documentar en ADR o CLAUDE.md que el heartbeat es actualmente solo observabilidad.
+- **Decisión de cierre:** activar liveness efectiva en Nodo A después del primer heartbeat observado.
+  Si el consumidor deja de emitir heartbeat, el productor corta ingesta, cierra el transporte y
+  `wait_for_consumer(timeout_s=...)` evita bloqueo indefinido.
 
-### [M12–M14] Timer granular — read_ms / preprocess_ms siempre 0.0
-Cubierto por [M6]. Los tres hallazgos adicionales de la dimensión legacy-deadcode sobre timers son consecuencia directa de M6 y se resuelven con el mismo fix.
+### [M12–M14] Timer granular
+Cubierto por [M6]. Los tres hallazgos adicionales de la dimensión deadcode sobre timers
+se resolvieron con el mismo cierre.
 
 ---
 
@@ -139,41 +150,46 @@ Cubierto por [M6]. Los tres hallazgos adicionales de la dimensión legacy-deadco
 
 | # | Archivo | Descripción | Acción |
 |---|---|---|---|
-| N1 | `deploy/docker-compose.yml:16` | `expose` lista solo `5555`; falta `5556` (heartbeat). Inofensivo en red bridge — todos los puertos son alcanzables entre contenedores. | Aceptar o fix trivial: agregar `"5556"` |
-| N2 | `docs/deployment/two-node-docker.md` | Stub de redirección de una línea. `docs/README.md` lo describe como "guía completa". | Aceptar — el redirect es claro |
+| N1 | `deploy/docker-compose.yml:16` | `expose` lista solo `5555`; falta `5556` (heartbeat). Inofensivo en red bridge — todos los puertos son alcanzables entre contenedores. | Cerrado: agregar `"5556"` |
+| N2 | `docs/deployment/two-node-docker.md` | Redirección de una línea. `docs/README.md` apunta a la guía vigente en `deploy/README.md`. | Aceptar — el redirect es claro |
 | N3 | `src/eovrt_media/runtime/two_node.py:47` | `run_node_a` serializa `run_id=""` en el wire. Node B usa su propio `run_id` para todos los artefactos — inofensivo para trazabilidad de producción. | Aceptar |
 | N4 | `deploy/docker-compose.node-b.yml` | Default apunta a `tcp://node-a:5555` (solo resuelve en compose combinado). El propio archivo y el README advierten que debe editarse para deploy real. | Aceptar |
-| N5 | `deploy/docker-compose.yml:16` | Duplicado de N1 desde dimensión e2e-mediaplane. | Aceptar |
+| N5 | `deploy/docker-compose.yml:16` | Duplicado de N1 desde dimensión e2e-mediaplane. | Cerrado con N1 |
 
 ---
 
-## Plan de acción pre-commit
+## Cierre aplicado
 
-### Fixes a aplicar (M1–M8)
+### Fixes aplicados
 
 | Fix | Archivo(s) | Tipo | Riesgo |
 |---|---|---|---|
-| M1 — 204→206 en implementation-status.md | `docs/implementation-status.md:130` | 1 línea | Nulo |
-| M2 — renombrar clave `preprocess_ms`→`normalize_ms` | `src/eovrt_media/runtime/pipeline.py:255` | 1 línea | Muy bajo (solo cambia clave en JSON output) |
+| M1 — conteo vigente en implementation-status.md | `docs/implementation-status.md:130` | 1 línea | Nulo |
+| M2 — nombrar normalización como `normalize_ms` | `src/eovrt_media/runtime/pipeline.py:255` | 1 línea | Muy bajo (solo cambia clave en JSON output) |
 | M3 — eliminar app.py | `src/eovrt_media/app.py` | Delete | Nulo (sin consumidores) |
 | M4 — limpiar hasattr en run_artifact_writer | `src/eovrt_media/sinks/run_artifact_writer.py:146-155` | Refactor menor | Bajo — misma semántica |
 | M5 — HEARTBEAT en serialization.py | `src/eovrt_media/transport/serialization.py`, `tests/test_serialization.py`, `src/eovrt_media/transport/network.py` | Cleanup + test update + comentario | Bajo |
-| M6 — eliminar 6 métodos de timer muertos | `src/eovrt_media/metrics/timers.py` | Delete | Bajo — nada los invoca |
+| M6 — limitar timers a etapas medidas | `src/eovrt_media/metrics/timers.py` | Delete | Bajo — nada los invoca |
 | M7 — ampliar configs/README.md transport | `configs/README.md` | Docs | Nulo |
 | M8 — agregar rtsp/oak_d a configs/README.md | `configs/README.md` | Docs | Nulo |
+| M9 — unificar default `jpeg` de transporte de red | `src/eovrt_media/transport/factory.py`, `src/eovrt_media/transport/network.py`, `tests/test_transport_compression.py`, `tests/test_network_transport.py` | Código + tests | Bajo |
+| M11 — liveness efectiva en Nodo A | `src/eovrt_media/runtime/two_node.py`, `src/eovrt_media/runtime/pipeline.py`, `src/eovrt_media/transport/network.py`, `tests/test_pipeline_two_threads.py`, `tests/test_network_transport.py` | Código + tests | Medio-bajo |
+| N1/N5 — exponer heartbeat en compose local | `deploy/docker-compose.yml`, `tests/test_deploy_contract.py` | Config + test | Bajo |
+| Contratos de artefactos — remover aliases planos v1 | `src/eovrt_media/contracts/events.py`, `src/eovrt_media/contracts/metrics.py`, `src/eovrt_media/sinks/jsonl_sink.py`, `tests/test_contracts.py`, `tests/test_jsonl_sink.py`, `tests/test_pipeline_mock.py` | Código + tests | Medio-bajo |
 
-### Hallazgos aceptados como-están (sin fix)
+### Hallazgos conservados por decisión explícita
 
-M9 (codec default divergente), M10 (mm-gdino-large sin runs), M11 (heartbeat solo observabilidad), N1–N5 (nits).
+M10 (mm-gdino-large sin runs), N2 (redirección de deploy), N3 (`run_id` canónico en Nodo B)
+y N4 (default `node-a` válido sólo para compose combinado, documentado para deploy real).
 
 ---
 
 ## Cierre de brechas vs planes
 
-Los planes `media-plane-completion`, `deploy-validation-closure`, `infra-deploy` y `deploy-alignment` fueron auditados contra el código real. Todos los criterios de aceptación están cerrados **excepto**:
+Los planes `media-plane-completion`, `deploy-validation-closure`, `infra-deploy` y `deploy-alignment` fueron auditados contra el código real. Todos los criterios de aceptación están cerrados:
 
 1. **Conteo de tests en docs** (cubierto por fix M1).
-2. **Commit único final** — todavía no existe. Es el objetivo de este documento.
+2. **Commit único final** — cubierto por el commit de cierre de esta auditoría.
 
 OAK-D queda correctamente marcado como deferred en `oak_d_source.py` (raises `NotImplementedError`) y en el ADR/docs pertinentes.
 
@@ -189,11 +205,10 @@ OAK-D queda correctamente marcado como deferred en `oak_d_source.py` (raises `No
 
 ---
 
-## Notas de implementación post-commit
+## Seguimiento no bloqueante
 
-Los siguientes puntos NO son bloqueantes pero son recomendaciones para el siguiente ciclo:
+Los siguientes puntos NO son bloqueantes y quedan como recomendaciones para el siguiente ciclo:
 
-1. **Heartbeat con liveness efectiva** (M11): si se quiere que Node A aborte ante caída de Node B, agregar poll de `is_peer_alive()` en el loop del productor con timeout configurado.
-2. **Instrumentar read_ms / preprocess_ms** (M6): si se necesita profiling por etapa, cablear `start_read/end_read` en `image_loader` y `start_preprocess/end_preprocess` en el hilo productor.
-3. **Run de bench para mm-gdino-large** (M10): agregar configuración de experimento `b2_g_e7_mmgdino_l_{val,test}.yaml` cuando el hardware lo permita.
-4. **Unificar default de codec** (M9): decidir si el default canónico es `"jpeg"` (como declara `CompressionConfig`) o `"raw"` (como usa el factory). Propagar desde `CompressionConfig` a factory/adapter.
+1. **Instrumentación adicional por etapa** (M6): si se necesita profiling más granular,
+   cablear medición explícita en `image_loader` y en el hilo productor.
+2. **Run de bench para mm-gdino-large** (M10): agregar configuración de experimento `b2_g_e7_mmgdino_l_{val,test}.yaml` cuando el hardware lo permita.

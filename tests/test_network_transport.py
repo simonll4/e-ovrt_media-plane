@@ -11,6 +11,7 @@ import pytest
 from eovrt_media.contracts.normalized_unit import (
     END, NormalizedUnit, PayloadFormat, ResizeTransform,
 )
+from eovrt_media.config.schemas import TransportConfig
 from eovrt_media.transport.factory import create_transport
 from eovrt_media.transport.network import NetworkTransportAdapter
 
@@ -88,6 +89,20 @@ def test_producer_consumer_roundtrip(endpoint, heartbeat_endpoint):
         "frame_000000", "frame_000001", "frame_000002",
     ]
     assert received[0].payload.shape == (640, 640, 3)
+
+
+def test_network_adapter_default_codec_matches_transport_schema(
+    isolated_endpoint, heartbeat_endpoint
+):
+    producer = NetworkTransportAdapter(
+        role="producer",
+        endpoint=isolated_endpoint,
+        heartbeat_endpoint=heartbeat_endpoint,
+    )
+
+    assert producer.codec == TransportConfig().compression.codec
+
+    producer.shutdown()
 
 
 def test_producer_consumer_roundtrip_fp16(isolated_endpoint, heartbeat_endpoint):
@@ -234,3 +249,22 @@ def test_consumer_shutdown_does_not_wait_for_an_unreachable_heartbeat_peer():
 
     assert time.monotonic() - started < 1.0
     assert consumer._heartbeat_thread.is_alive() is False
+
+
+def test_wait_for_consumer_timeout_returns_false_when_no_consumer_requests(
+    isolated_endpoint, heartbeat_endpoint
+):
+    producer = NetworkTransportAdapter(
+        role="producer",
+        endpoint=isolated_endpoint,
+        heartbeat_endpoint=heartbeat_endpoint,
+    )
+    producer.close()
+
+    started = time.monotonic()
+    finished = producer.wait_for_consumer(timeout_s=0.05)
+
+    producer.shutdown()
+
+    assert finished is False
+    assert time.monotonic() - started < 0.5

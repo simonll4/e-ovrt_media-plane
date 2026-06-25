@@ -6,6 +6,7 @@ import logging
 import queue
 import threading
 import time
+from collections.abc import Callable
 
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
@@ -79,12 +80,16 @@ def run_producer_loop(
     run_id: str,
     errors_queue: queue.SimpleQueue,
     timings: dict[str, float],
+    should_continue: Callable[[], bool] | None = None,
 ) -> None:
     """Ingesta, filtra, normaliza y ofrece unidades al canal."""
     try:
         for source_index, unit in enumerate(source):
             if not rate_gate.should_pass(source_index):
                 continue
+            if should_continue is not None and not should_continue():
+                logger.warning("Productor detenido por pérdida de liveness del consumidor.")
+                break
             try:
                 normalize_started = time.perf_counter()
                 normalized = normalize_spatial(unit, spec, payload_format)
@@ -139,7 +144,7 @@ def run_consumer_loop(
     config,
     prompt_texts,
     prompt_items,
-    prompt_version,
+    prompt_set_id,
     timings: dict[str, float],
     progress=None,
     task=None,
@@ -249,7 +254,7 @@ def run_consumer_loop(
                         "model_id": config.model.model_id,
                         "device": config.model.device,
                     },
-                    prompts={"prompt_set_id": prompt_version},
+                    prompts={"prompt_set_id": prompt_set_id},
                     detections=detections,
                     timing={
                         "normalize_ms": granular.normalize_ms,
@@ -258,7 +263,6 @@ def run_consumer_loop(
                         "write_ms": granular.write_ms,
                         "total_ms": granular.total_ms,
                     },
-                    source_path=item.source_id,
                 )
             )
             artifact_writer.write_metric(
@@ -327,7 +331,7 @@ def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
             progress_total = None
         prompt_texts = config.get_prompt_texts()
         prompt_items = config.get_prompt_items()
-        prompt_version = config.prompts_file.resolved_version if config.prompts_file else "unknown"
+        prompt_set_id = config.prompts_file.resolved_version if config.prompts_file else "unknown"
 
         normalizer = DetectionNormalizer(
             min_confidence=config.postprocess.min_confidence,
@@ -385,7 +389,7 @@ def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
                     config=config,
                     prompt_texts=prompt_texts,
                     prompt_items=prompt_items,
-                    prompt_version=prompt_version,
+                    prompt_set_id=prompt_set_id,
                     timings=timings,
                     progress=progress,
                     task=task,

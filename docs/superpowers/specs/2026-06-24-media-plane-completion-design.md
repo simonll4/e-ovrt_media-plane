@@ -1,7 +1,7 @@
 # Diseño: cierre funcional del media plane
 
 **Fecha:** 2026-06-24  
-**Estado:** implementado y verificado (204 pruebas + Docker FP16 E2E)
+**Estado:** implementado y verificado (suite vigente + Docker FP16 E2E)
 
 ## Propósito
 

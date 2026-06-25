@@ -166,7 +166,7 @@ Do not run `docker compose down -v`, delete images, remove volumes, or delete an
 ## Execution record — 2026-06-24
 
 - Static validation: the three Compose manifests rendered; `tests/test_deploy_contract.py`
-  passed (3 tests); the complete suite passed (187 tests); Ruff and `git diff --check`
+  passed; the complete suite passed; Ruff and `git diff --check`
   were clean.
 - Docker prerequisites: Docker Engine 29.5.3 with `overlayfs`; Docker exposed an NVIDIA
   GeForce RTX 4060 to `nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04`.

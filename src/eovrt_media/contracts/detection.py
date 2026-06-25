@@ -38,5 +38,5 @@ class Detection(BaseModel):
     )
     area_px: float | None = None
     
-    # Campo de compatibilidad antigua (puede no persistirse si se desea puro MEMORIA)
+    # Nombre del modelo que generó esta detección, cuando está disponible.
     model_name: str | None = None

@@ -186,7 +186,7 @@ def inspect_run(
     console.print("\n[bold cyan]Run Summary[/bold cyan]")
     console.print(f"  Run ID:           {summary.get('run_id', 'N/A')}")
     console.print(f"  Scenario:         {summary.get('scenario', 'N/A')}")
-    console.print(f"  Model Adapter:    {summary.get('model_adapter', 'N/A')}")
+    console.print(f"  Model:            {summary.get('model_name', 'N/A')}")
     console.print(f"  Device:           {summary.get('device', 'N/A')}")
     console.print(f"  Prompt Set:       {summary.get('prompt_set_id', 'N/A')}")
     console.print(f"  Source Type:      {summary.get('source_type', 'N/A')}")
@@ -281,9 +281,9 @@ def compare_runs(
     for s in summaries:
         table.add_row(
             str(s.get("run_id", "?")),
-            str(s.get("model_adapter") or s.get("model_name") or "?"),
+            str(s.get("model_name", "?")),
             str(s.get("device", "?")),
-            str(s.get("prompt_set_id") or s.get("prompt_version") or "?"),
+            str(s.get("prompt_set_id", "?")),
             str(s.get("units_processed", "?")),
             str(s.get("units_failed", "?")),
             str(s.get("total_detections", "?")),

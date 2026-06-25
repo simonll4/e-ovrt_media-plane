@@ -72,12 +72,16 @@ def test_jsonl_sink_flow(tmp_path):
     assert ev_loaded["run_id"] == "run_123"
     assert ev_loaded["unit_id"] == "unit_001"
     assert ev_loaded["source"]["source_id"] == "test.jpg"
+    assert "read_ms" not in ev_loaded["timing"]
     assert len(ev_loaded["detections"]) == 1
 
     met_loaded = json.loads(lines[1])
     assert met_loaded["run_id"] == "run_123"
     assert met_loaded["latency_total_ms"] == 10.5
     assert met_loaded["detections_count"] == 1
+    assert "total_ms" not in met_loaded
+    assert "inference_ms" not in met_loaded
+    assert "detection_count" not in met_loaded
 
     err_loaded = json.loads(lines[2])
     assert err_loaded["run_id"] == "run_123"

@@ -1,6 +1,6 @@
 # Optimización de rendimiento del Media Plane — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Registro:** plan ejecutado; los steps implementados quedan marcados con `- [x]`.
 
 **Goal:** Acelerar la inferencia (fp16 + warmup) y reducir el ancho de banda del transporte de red (compresión JPEG) sin tocar contratos ni el modelo de frescura.
 
@@ -18,7 +18,7 @@
 - Frontera Media/Control Plane intacta; contratos (`NormalizedUnit`, etc.) sin cambios de campos.
 - Defaults de constructor de adaptador conservadores (`half_precision=False`, `warmup=False`); el factory pasa los valores del config.
 - `serialize_unit` mantiene `codec="raw"` por default (compatibilidad con callers y tests existentes); solo el productor de red pide `jpeg` vía config.
-- La suite completa (165 tests) debe seguir verde tras cada tarea.
+- La suite vigente debe seguir verde tras cada tarea.
 
 ---
 
@@ -34,7 +34,7 @@
   - `serialize_unit(unit: NormalizedUnit, codec: str = "raw", quality: int = 90) -> bytes`
   - `deserialize_unit(data: bytes) -> NormalizedUnit` (lee `payload_codec` del header; default `"raw"` si ausente)
 
-- [ ] **Step 1: Escribir los tests que fallan**
+- [x] **Step 1: Escribir los tests que fallan**
 
 Agregar a `tests/test_serialization.py`:
 
@@ -63,12 +63,12 @@ def test_jpeg_falls_back_to_raw_for_fp32():
     assert np.allclose(restored.payload, unit.payload)
 ```
 
-- [ ] **Step 2: Correr los tests para verificar que fallan**
+- [x] **Step 2: Correr los tests para verificar que fallan**
 
 Run: `pytest tests/test_serialization.py -v`
 Expected: FAIL — `serialize_unit() got an unexpected keyword argument 'codec'`.
 
-- [ ] **Step 3: Implementar el codec**
+- [x] **Step 3: Implementar el codec**
 
 Reemplazar el contenido de `serialize_unit` y `deserialize_unit` en `src/eovrt_media/transport/serialization.py`, y agregar imports/logger al tope del archivo (debajo de `import struct`):
 
@@ -162,12 +162,12 @@ def deserialize_unit(data: bytes) -> NormalizedUnit:
     )
 ```
 
-- [ ] **Step 4: Correr los tests para verificar que pasan**
+- [x] **Step 4: Correr los tests para verificar que pasan**
 
 Run: `pytest tests/test_serialization.py -v`
-Expected: PASS (incluidos los 4 tests existentes, que usan `codec="raw"` por default).
+Expected: PASS (incluidos los tests existentes que validan el default low-level/lossless).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/eovrt_media/transport/serialization.py tests/test_serialization.py
@@ -190,10 +190,10 @@ git commit -m "feat(transport): codec JPEG autodescriptivo en el wire (fallback 
 - Produces:
   - `CompressionConfig(codec: str = "jpeg", quality: int = 90)`
   - `TransportConfig.compression: CompressionConfig`
-  - `NetworkTransportAdapter(..., codec: str = "raw", quality: int = 90)`
+  - `NetworkTransportAdapter(..., codec: str = "jpeg", quality: int = 90)`
   - `create_transport(..., codec=..., quality=...)` (vía `**kwargs`)
 
-- [ ] **Step 1: Escribir los tests que fallan**
+- [x] **Step 1: Escribir los tests que fallan**
 
 Crear `tests/test_transport_compression.py`:
 
@@ -227,12 +227,12 @@ def test_create_transport_threads_codec_to_network(monkeypatch):
     assert captured["quality"] == 80
 ```
 
-- [ ] **Step 2: Correr los tests para verificar que fallan**
+- [x] **Step 2: Correr los tests para verificar que fallan**
 
 Run: `pytest tests/test_transport_compression.py -v`
 Expected: FAIL — `TransportConfig` no tiene atributo `compression`; `FakeNet` no recibe `codec`.
 
-- [ ] **Step 3: Implementar config + cableado**
+- [x] **Step 3: Implementar config + cableado**
 
 En `src/eovrt_media/config/schemas.py`, agregar antes de `class TransportConfig`:
 
@@ -253,7 +253,7 @@ Y dentro de `class TransportConfig`, agregar el campo:
 En `src/eovrt_media/transport/network.py`, en `NetworkTransportAdapter.__init__`, agregar los parámetros (después de `max_staleness_ms`):
 
 ```python
-        codec: str = "raw",
+        codec: str = "jpeg",
         quality: int = 90,
 ```
 
@@ -273,8 +273,8 @@ En el mismo archivo, en `_serve`, cambiar la línea de envío del frame:
 En `src/eovrt_media/transport/factory.py`, en la rama `backend == "network"`, agregar a la construcción de `NetworkTransportAdapter`:
 
 ```python
-            codec=kwargs.get("codec", "raw"),
-            quality=kwargs.get("quality", 90),
+            codec=kwargs.get("codec", _NETWORK_COMPRESSION_DEFAULTS.codec),
+            quality=kwargs.get("quality", _NETWORK_COMPRESSION_DEFAULTS.quality),
 ```
 
 En `src/eovrt_media/runtime/two_node.py`, en `run_node_a`, agregar a la llamada `create_transport(...)` del productor:
@@ -284,12 +284,13 @@ En `src/eovrt_media/runtime/two_node.py`, en `run_node_a`, agregar a la llamada 
         quality=config.transport.compression.quality,
 ```
 
-- [ ] **Step 4: Correr los tests para verificar que pasan**
+- [x] **Step 4: Correr los tests para verificar que pasan**
 
 Run: `pytest tests/test_transport_compression.py tests/test_network_transport.py -v`
-Expected: PASS (los tests de red existentes siguen verdes; usan el default `raw`).
+Expected: PASS. El default canónico de transporte de red es `jpeg`; `serialize_unit`
+mantiene `raw` como default low-level/lossless.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/eovrt_media/config/schemas.py src/eovrt_media/transport/network.py src/eovrt_media/transport/factory.py src/eovrt_media/runtime/two_node.py tests/test_transport_compression.py
@@ -317,7 +318,7 @@ git commit -m "feat(transport): config transport.compression y cableado JPEG en 
   - `ModelSection.runtime: ModelRuntimeConfig`
   - Adaptadores `GroundingDinoHFAdapter` y `YOLOEUltralyticsAdapter` con `half_precision: bool = False`, `warmup: bool = False` en su `__init__` (atributos `self.half_precision`, `self.warmup`).
 
-- [ ] **Step 1: Escribir los tests que fallan**
+- [x] **Step 1: Escribir los tests que fallan**
 
 Crear `tests/test_runtime_utils.py`:
 
@@ -385,12 +386,12 @@ def test_factory_passes_runtime_to_gdino():
     assert adapter.warmup is True
 ```
 
-- [ ] **Step 2: Correr los tests para verificar que fallan**
+- [x] **Step 2: Correr los tests para verificar que fallan**
 
 Run: `pytest tests/test_runtime_utils.py tests/test_model_factory_runtime.py -v`
 Expected: FAIL — módulo `runtime_utils` inexistente; `ModelSection` sin `runtime`.
 
-- [ ] **Step 3: Implementar helpers, config y factory**
+- [x] **Step 3: Implementar helpers, config y factory**
 
 Crear `src/eovrt_media/models/runtime_utils.py`:
 
@@ -487,12 +488,12 @@ Para `yoloe`:
             warmup=model_config.runtime.warmup,
 ```
 
-- [ ] **Step 4: Correr los tests para verificar que pasan**
+- [x] **Step 4: Correr los tests para verificar que pasan**
 
 Run: `pytest tests/test_runtime_utils.py tests/test_model_factory_runtime.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/eovrt_media/models/runtime_utils.py src/eovrt_media/config/schemas.py src/eovrt_media/models/__init__.py src/eovrt_media/models/grounding_dino_adapter.py src/eovrt_media/models/yoloe_adapter.py tests/test_runtime_utils.py tests/test_model_factory_runtime.py
@@ -511,7 +512,7 @@ git commit -m "feat(models): config runtime (half_precision/warmup) + helpers de
 - Consumes: `resolve_device`, `should_use_half`, `make_warmup_image` (Task 3); `self.half_precision`, `self.warmup` (Task 3).
 - Produces: comportamiento — `load()` resuelve device y opcionalmente hace warmup; `predict()` envuelve el forward en autocast fp16 cuando corresponde.
 
-- [ ] **Step 1: Escribir el test que falla**
+- [x] **Step 1: Escribir el test que falla**
 
 Crear `tests/test_gdino_runtime.py`:
 
@@ -538,12 +539,12 @@ def test_gdino_load_resolves_cuda_to_cpu_without_gpu(monkeypatch):
     assert adapter.device == "cpu"
 ```
 
-- [ ] **Step 2: Correr el test para verificar que falla**
+- [x] **Step 2: Correr el test para verificar que falla**
 
 Run: `pytest tests/test_gdino_runtime.py -v`
 Expected: FAIL — `adapter.device` sigue siendo `"cuda"` (load aún no resuelve device).
 
-- [ ] **Step 3: Implementar autocast + warmup + device en GDINO**
+- [x] **Step 3: Implementar autocast + warmup + device en GDINO**
 
 En `src/eovrt_media/models/grounding_dino_adapter.py`, agregar import al tope (después de `import warnings`):
 
@@ -602,16 +603,16 @@ por:
             outputs = self.model(**inputs)
 ```
 
-- [ ] **Step 4: Correr los tests para verificar que pasan**
+- [x] **Step 4: Correr los tests para verificar que pasan**
 
 Run: `pytest tests/test_gdino_runtime.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Validación manual (GPU/BENCH) — anotar, no automatizable en CI**
+- [x] **Step 5: Validación manual (GPU/BENCH) — anotar, no automatizable en CI**
 
 En la máquina con RTX 4060: correr un experimento DBE single-host con `runtime.half_precision: true` y comparar `summary.json` (p50/p95/p99, fps_effective) contra una corrida `half_precision: false`. Confirmar contra el BENCH que el AP no se degrada de forma significativa (fijar `half_precision` en la corrida canónica). Documentar el antes/después.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/eovrt_media/models/grounding_dino_adapter.py tests/test_gdino_runtime.py
@@ -630,7 +631,7 @@ git commit -m "perf(gdino): autocast fp16 + warmup + resolución de device"
 - Consumes: `resolve_device`, `should_use_half`, `make_warmup_image` (Task 3); `self.half_precision`, `self.warmup`.
 - Produces: comportamiento — `load()` resuelve device y opcionalmente hace warmup; `predict()` pasa `half=True` a Ultralytics cuando corresponde.
 
-- [ ] **Step 1: Escribir los tests que fallan**
+- [x] **Step 1: Escribir los tests que fallan**
 
 Crear `tests/test_yoloe_runtime.py`:
 
@@ -664,12 +665,12 @@ def test_yoloe_no_half_on_cpu():
     assert adapter.model.predict.call_args.kwargs["half"] is False
 ```
 
-- [ ] **Step 2: Correr los tests para verificar que fallan**
+- [x] **Step 2: Correr los tests para verificar que fallan**
 
 Run: `pytest tests/test_yoloe_runtime.py -v`
 Expected: FAIL — `KeyError: 'half'` (predict_kwargs aún no incluye `half`).
 
-- [ ] **Step 3: Implementar half + warmup + device en YOLOE**
+- [x] **Step 3: Implementar half + warmup + device en YOLOE**
 
 En `src/eovrt_media/models/yoloe_adapter.py`, agregar el import de helpers (junto a los otros `from eovrt_media...`):
 
@@ -705,16 +706,16 @@ En `predict()`, dentro de `predict_kwargs`, agregar la clave `half` (después de
             "half": should_use_half(self.device, self.half_precision),
 ```
 
-- [ ] **Step 4: Correr los tests para verificar que pasan**
+- [x] **Step 4: Correr los tests para verificar que pasan**
 
 Run: `pytest tests/test_yoloe_runtime.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Validación manual (GPU/BENCH) — anotar**
+- [x] **Step 5: Validación manual (GPU/BENCH) — anotar**
 
 Igual que Task 4: comparar `summary.json` con `half_precision` on/off en la RTX 4060 y validar AP del BENCH sin regresión. Documentar antes/después.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/eovrt_media/models/yoloe_adapter.py tests/test_yoloe_runtime.py
@@ -737,7 +738,7 @@ git commit -m "perf(yoloe): half=True fp16 + warmup + validación de device"
 - Consumes: `NormalizedUnit.payload` (numpy uint8/float, RGB).
 - Produces: `GroundingDinoHFAdapter.predict()` y `forward()` aceptan `np.ndarray` sin pasar por `Image.fromarray`.
 
-- [ ] **Step 1: Escribir el test que falla (GDINO acepta numpy en predict)**
+- [x] **Step 1: Escribir el test que falla (GDINO acepta numpy en predict)**
 
 Agregar a `tests/test_gdino_runtime.py` (asegurar `import numpy as np` y `import pytest` al tope):
 
@@ -751,12 +752,12 @@ def test_gdino_predict_accepts_numpy():
         adapter.predict(np.zeros((8, 8, 3), dtype=np.uint8), ["person"])
 ```
 
-- [ ] **Step 2: Correr el test para verificar que falla**
+- [x] **Step 2: Correr el test para verificar que falla**
 
 Run: `pytest tests/test_gdino_runtime.py::test_gdino_predict_accepts_numpy -v`
 Expected: FAIL — `TypeError: Tipo de imagen no soportado: <class 'numpy.ndarray'>` (el guard de tipo rechaza numpy antes de llegar al processor).
 
-- [ ] **Step 3: Implementar numpy directo en GDINO**
+- [x] **Step 3: Implementar numpy directo en GDINO**
 
 En `src/eovrt_media/models/grounding_dino_adapter.py`, en `predict()`, reemplazar el bloque de validación de imagen:
 
@@ -807,16 +808,16 @@ Y reemplazar `forward()` (pasar el payload numpy sin `Image.fromarray`):
 
 (YOLOE no se toca en esta tarea — ver nota de riesgo arriba.)
 
-- [ ] **Step 4: Correr los tests para verificar que pasan**
+- [x] **Step 4: Correr los tests para verificar que pasan**
 
 Run: `pytest tests/test_gdino_runtime.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Validación manual (BENCH) — anotar, gate de regresión**
+- [x] **Step 5: Validación manual (BENCH) — anotar, gate de regresión**
 
 Correr el BENCH single-host antes/después de esta tarea para GDINO. Si el AP@0.5 cae de forma significativa (más allá del ruido de fp16 ya medido), **revertir esta tarea** (`git revert`). Documentar el resultado.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/eovrt_media/models/grounding_dino_adapter.py tests/test_gdino_runtime.py
@@ -827,12 +828,12 @@ git commit -m "perf(gdino): aceptar numpy RGB en predict/forward (evita copia PI
 
 ## Cierre
 
-- [ ] **Suite completa + lint**
+- [x] **Suite completa + lint**
 
 Run: `make test && make lint`
-Expected: toda la suite verde (165 previos + nuevos); `ruff` limpio.
+Expected: toda la suite vigente verde; `ruff` limpio.
 
-- [ ] **Documentación**
+- [x] **Documentación**
 
 Actualizar `docs/usage.md` / la sección de evaluación: documentar `model.runtime.half_precision`/`warmup` y `transport.compression`, y la nota de reproducibilidad (fijar `half_precision` en corridas canónicas de BENCH). Commit aparte:
 

@@ -85,9 +85,14 @@ class TestDetectionEvent:
         event = DetectionEvent(
             run_id="20260609_001",
             unit_id="img_000001",
-            source_path="test.jpg",
-            model_adapter="grounding_dino_hf",
-            prompt_version="cr01_cr02_v1",
+            source={
+                "source_id": "test.jpg",
+                "source_type": "image",
+                "width": 640,
+                "height": 480,
+            },
+            model={"name": "grounding_dino_hf", "device": "cpu"},
+            prompts={"prompt_set_id": "cr01_cr02_v1"},
             detections=[
                 Detection(
                     label="person",
@@ -98,25 +103,33 @@ class TestDetectionEvent:
                     model_name="grounding_dino_hf",
                 )
             ],
-            timing_ms={"total": 112.4, "inference": 101.7},
+            timing={"total_ms": 112.4, "inference_ms": 101.7},
         )
         assert len(event.detections) == 1
-        assert event.timing_ms["inference"] == 101.7
+        assert event.timing.inference_ms == 101.7
+        assert event.timing.total_ms == 112.4
 
     def test_jsonl_serialization(self):
         event = DetectionEvent(
             run_id="test_run",
             unit_id="img_000001",
-            source_path="test.jpg",
-            model_adapter="mock",
-            prompt_version="v1",
+            source={
+                "source_id": "test.jpg",
+                "source_type": "image",
+                "width": 640,
+                "height": 480,
+            },
+            model={"name": "mock", "device": "cpu"},
+            prompts={"prompt_set_id": "v1"},
             detections=[],
-            timing_ms={"total": 10.0, "inference": 5.0},
+            timing={"total_ms": 10.0, "inference_ms": 5.0},
         )
-        line = event.model_dump_json()
+        line = event.model_dump_json(exclude_none=True)
         parsed = json.loads(line)
         assert parsed["run_id"] == "test_run"
         assert isinstance(parsed["detections"], list)
+        assert "timing_ms" not in parsed
+        assert "model_adapter" not in parsed
 
 
 class TestRunSummary:
@@ -124,8 +137,8 @@ class TestRunSummary:
         summary = RunSummary(
             run_id="20260609_001",
             scenario="DBE",
-            model_adapter="grounding_dino_hf",
-            prompt_version="cr01_cr02_v1",
+            model_name="grounding_dino_hf",
+            prompt_set_id="cr01_cr02_v1",
             source_count=12,
             units_processed=12,
             units_failed=0,

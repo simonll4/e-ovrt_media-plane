@@ -27,7 +27,7 @@ class JSONLSink:
         """Escribe un DetectionEvent como una línea JSON."""
         if self._file is None:
             raise RuntimeError("Sink no abierto. Llamar open() primero.")
-        line = event.model_dump_json()
+        line = event.model_dump_json(exclude_none=True)
         self._file.write(line + "\n")
         self._file.flush()
 
@@ -35,7 +35,7 @@ class JSONLSink:
         """Escribe un MetricSample como una línea JSON."""
         if self._file is None:
             raise RuntimeError("Sink no abierto. Llamar open() primero.")
-        line = metric.model_dump_json()
+        line = metric.model_dump_json(exclude_none=True)
         self._file.write(line + "\n")
         self._file.flush()
 
@@ -64,5 +64,5 @@ class SummarySink:
         """Escribe el RunSummary como JSON formateado."""
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.output_path, "w", encoding="utf-8") as f:
-            json.dump(summary.model_dump(), f, indent=2, ensure_ascii=False)
+            json.dump(summary.model_dump(exclude_none=True), f, indent=2, ensure_ascii=False)
         logger.info(f"Resumen guardado en: {self.output_path}")

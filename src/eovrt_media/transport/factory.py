@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from eovrt_media.config.schemas import CompressionConfig
 from eovrt_media.transport.base import TransportAdapter
 from eovrt_media.transport.memory import MemoryTransportAdapter
 from eovrt_media.transport.network import NetworkTransportAdapter
+
+
+_NETWORK_COMPRESSION_DEFAULTS = CompressionConfig()
 
 
 def create_transport(
@@ -39,7 +43,7 @@ def create_transport(
             max_staleness_ms=max_staleness_ms,
             heartbeat_interval_ms=kwargs.get("heartbeat_interval_ms", 1000),
             heartbeat_timeout_ms=kwargs.get("heartbeat_timeout_ms", 5000),
-            codec=kwargs.get("codec", "raw"),
-            quality=kwargs.get("quality", 90),
+            codec=kwargs.get("codec", _NETWORK_COMPRESSION_DEFAULTS.codec),
+            quality=kwargs.get("quality", _NETWORK_COMPRESSION_DEFAULTS.quality),
         )
     raise ValueError(f"backend desconocido: {backend!r}. Opciones: memory, network.")

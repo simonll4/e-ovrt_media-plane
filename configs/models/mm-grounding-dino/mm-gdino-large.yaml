@@ -1,6 +1,8 @@
 # Catálogo de modelos — MM-Grounding-DINO large "all" (OpenMMLab, pesos originales)
 # Variante Swin-L insignia de la familia (22k descargas en HF Hub). Verificar
 # que entre en VRAM local (RTX 4060, 8 GB) antes de correr en cuda.
+# Entrada mantenida aunque no haya run config de bench: `download-models` la
+# materializa como peso operativo disponible.
 family: mm-grounding-dino
 variant: mm-gdino-large
 lineage: original

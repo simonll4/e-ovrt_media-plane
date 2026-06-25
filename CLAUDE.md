@@ -43,11 +43,11 @@ Python pipeline for open-vocabulary object detection (OVD). All behavior is conf
 
 **Execution path (single-host)**: `cli.py` → `runtime/pipeline.py:run_pipeline()` → producer thread (read → rate-gate → normalize) + consumer thread (inference → postprocess → write), coupled via `MemoryTransportAdapter`.
 
-**Execution path (two-node)**: `run-producer` → `runtime/two_node.py:run_node_a()` (ingesta + ZeroMQ REP server); `run-consumer` → `runtime/two_node.py:run_node_b()` (ZeroMQ REQ client + inference + artifacts). Transport: `NetworkTransportAdapter` (ZeroMQ REQ/REP, msgpack serialization, heartbeat via request activity).
+**Execution path (two-node)**: `run-producer` → `runtime/two_node.py:run_node_a()` (ingesta + ZeroMQ REP server); `run-consumer` → `runtime/two_node.py:run_node_b()` (ZeroMQ REQ client + inference + artifacts). Transport: `NetworkTransportAdapter` (ZeroMQ REQ/REP, msgpack serialization, heartbeat PUSH/PULL dedicado).
 
 **Key abstractions**:
 - `BaseDetectorAdapter` (`models/base.py`) — plugin interface for inference; register new adapters in `models/__init__.py:create_adapter()`
-- `BaseSource` (`sources/base.py`) — yields `VisualUnit` objects; implementations: `ImageFolderSource`, `VideoFileSource`, `RtspSource` (live RTSP with wall-clock timestamps and reconnect), `OakDSource` (OAK-D Pro PoE stub, raises `NotImplementedError`)
+- `BaseSource` (`sources/base.py`) — yields `VisualUnit` objects; implementations: `ImageFolderSource`, `VideoFileSource`, `RtspSource` (live RTSP with wall-clock timestamps and reconnect), `OakDSource` (OAK-D Pro PoE deferred, raises `NotImplementedError`)
 - `RunContext` (`runtime/run_context.py`) — stateful execution context (run_id, unit counts, timing); owns the output directory
 - `RunArtifactWriter` (`sinks/run_artifact_writer.py`) — persists to `runs/<run_id>/`: `detections.jsonl`, `metrics.jsonl`, `errors.jsonl`, `summary.json`, `previews/`
 

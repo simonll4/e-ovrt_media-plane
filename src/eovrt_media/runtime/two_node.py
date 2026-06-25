@@ -37,6 +37,11 @@ def run_node_a(config: RunConfig, console: Console | None = None) -> None:
     )
     errors_queue: queue.SimpleQueue = queue.SimpleQueue()
     timings: dict[str, float] = {"backpressure_wait_ms": 0.0}
+    wait_timeout_s = config.transport.heartbeat_timeout_ms / 1000.0
+
+    def consumer_is_available() -> bool:
+        return not transport.has_seen_peer() or transport.is_peer_alive()
+
     try:
         run_producer_loop(
             source,
@@ -44,11 +49,17 @@ def run_node_a(config: RunConfig, console: Console | None = None) -> None:
             adapter.input_spec,
             PayloadFormat(config.transport.payload_format),
             transport,
+            # Nodo B crea el run_id canónico porque es dueño de artefactos y sinks.
             run_id="",
             errors_queue=errors_queue,
             timings=timings,
+            should_continue=consumer_is_available,
         )
-        transport.wait_for_consumer()
+        if not transport.wait_for_consumer(timeout_s=wait_timeout_s):
+            raise RuntimeError(
+                "Nodo B no consumió END antes del timeout de heartbeat "
+                f"({config.transport.heartbeat_timeout_ms} ms)."
+            )
     finally:
         transport.shutdown()
 
@@ -63,7 +74,7 @@ def run_node_b(config: RunConfig, console: Console | None = None) -> str:
 
     prompt_texts = config.get_prompt_texts()
     prompt_items = config.get_prompt_items()
-    prompt_version = config.prompts_file.resolved_version if config.prompts_file else "unknown"
+    prompt_set_id = config.prompts_file.resolved_version if config.prompts_file else "unknown"
 
     normalizer = DetectionNormalizer(
         min_confidence=config.postprocess.min_confidence,
@@ -93,7 +104,7 @@ def run_node_b(config: RunConfig, console: Console | None = None) -> str:
             config,
             prompt_texts,
             prompt_items,
-            prompt_version,
+            prompt_set_id,
             timings={},
             progress=None,
             task=None,

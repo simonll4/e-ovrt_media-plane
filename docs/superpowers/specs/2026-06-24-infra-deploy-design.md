@@ -44,7 +44,7 @@ server con GPU).
 deploy/
   README.md                    Guía única de deploy (índice + quickstart + tabla .env)
   docker-compose.yml           Integración local: two-node en red bridge
-  docker-compose.node-a.yml    Host edge: sólo productor, publica TCP/5555
+  docker-compose.node-a.yml    Host edge: sólo productor, publica TCP/5555 y TCP/5556
   docker-compose.node-b.yml    Host GPU: sólo consumidor, sin dependencias locales
   .env.example                 Plantilla de variables (qué config monta cada nodo)
   docker/
@@ -58,7 +58,7 @@ deploy/
 ```
 
 `docker/` en la raíz se elimina tras migrar su contenido. `docs/deployment/two-node-docker.md`
-se reemplaza por un stub de una línea que apunta a `deploy/README.md`.
+se reemplaza por una redirección de una línea que apunta a `deploy/README.md`.
 
 ## 4. Manifiestos Compose: rutas y parametrización
 
@@ -68,7 +68,7 @@ context. Es el único manifiesto que define la red bridge y `depends_on`, porque
 servicios corren en la misma máquina.
 
 El deploy real usa manifiestos independientes: `docker-compose.node-a.yml` define sólo
-el productor y publica `5555:5555`; `docker-compose.node-b.yml` define sólo el
+el productor y publica `5555:5555` y `5556:5556`; `docker-compose.node-b.yml` define sólo el
 consumidor con GPU. Este último no contiene `depends_on`, no inicia un productor local
 y su endpoint se configura hacia el host edge en YAML.
 
@@ -82,7 +82,7 @@ services:
     networks: [media-plane]
     volumes:
       - ./configs:/configs:ro
-    expose: ["5555"]
+    expose: ["5555", "5556"]
 
   node-b:
     build:

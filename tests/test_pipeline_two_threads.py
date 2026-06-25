@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import queue
 import threading
 from pathlib import Path
 
@@ -10,9 +11,13 @@ import numpy as np
 from eovrt_media.config import load_run_config
 from eovrt_media.contracts import VisualUnit
 from eovrt_media.contracts.detection import RawDetection
+from eovrt_media.contracts.normalized_unit import PayloadFormat
+from eovrt_media.models.base import ModelInputSpec
 from eovrt_media.models.mock_detector import MockDetectorAdapter
 from eovrt_media.runtime import run_pipeline
+from eovrt_media.runtime.pipeline import run_producer_loop
 from eovrt_media.sources.base import BaseSource
+from eovrt_media.transport import RateGate
 
 
 CONFIGS_DIR = Path(__file__).parent.parent / "configs"
@@ -38,6 +43,55 @@ def _mock_config(tmp_path: Path):
 
 
 class TestProducerConsumerPipeline:
+    def test_producer_loop_stops_when_liveness_predicate_turns_false(self):
+        class ThreeUnitSource(BaseSource):
+            def __iter__(self):
+                for index in range(3):
+                    yield VisualUnit(
+                        unit_id=f"unit-{index}",
+                        source_id="camera-1",
+                        source_type="video_frame",
+                        frame_index=index,
+                        timestamp_ms=float(index),
+                        width=8,
+                        height=8,
+                        pixel_data=np.zeros((8, 8, 3), dtype=np.uint8),
+                    )
+
+            def __len__(self):
+                return 3
+
+        class CapturingTransport:
+            def __init__(self):
+                self.offered = []
+                self.closed = False
+
+            def offer(self, unit):
+                self.offered.append(unit.unit_id)
+
+            def close(self):
+                self.closed = True
+
+        transport = CapturingTransport()
+        checks = iter([True, False])
+        errors = queue.SimpleQueue()
+
+        run_producer_loop(
+            source=ThreeUnitSource(),
+            rate_gate=RateGate(stride=1),
+            spec=ModelInputSpec(target_size=(8, 8)),
+            payload_format=PayloadFormat.UINT8_RGB,
+            transport=transport,
+            run_id="run-live",
+            errors_queue=errors,
+            timings={},
+            should_continue=lambda: next(checks),
+        )
+
+        assert transport.offered == ["unit-0"]
+        assert transport.closed is True
+        assert errors.empty()
+
     def test_pipeline_writes_preview_from_payload_when_no_detections(
         self, tmp_path: Path, monkeypatch
     ):

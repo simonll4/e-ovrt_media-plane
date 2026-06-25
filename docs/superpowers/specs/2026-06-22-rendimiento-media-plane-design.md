@@ -2,7 +2,7 @@
 
 - **Fecha:** 2026-06-22
 - **Alcance de este ciclo:** rendimiento de inferencia (WS1) y de transporte de red (WS2).
-- **Fuera de alcance (ciclos propios):** robustez (estado de corrida, frescura granular), organización (limpieza de campos legacy, salidas configurables, tests de throughput), cierre del núcleo validable (video anotado, diagnósticos de postproceso).
+- **Fuera de alcance (ciclos propios):** robustez (estado de corrida, frescura granular), organización (limpieza de compatibilidad de esquemas, salidas configurables, tests de throughput), cierre del núcleo validable (video anotado, diagnósticos de postproceso).
 - **Hardware objetivo:** GPU NVIDIA RTX 4060 laptop (CUDA, 8 GB VRAM).
 
 ## 1. Objetivo
@@ -50,7 +50,7 @@ default seguro, no-op sin CUDA, cada cambio validado contra el BENCH.
   `torch.autocast("cuda", dtype=torch.float16)` cuando `device` es CUDA y el flag está activo.
   No-op en CPU.
 - **Warmup:** en `load()`, ejecutar una inferencia dummy (imagen negra del `target_size` del
-  `input_spec` + prompts placeholder) para pagar JIT/init fuera del primer frame real.
+  `input_spec` + prompts de calentamiento) para pagar JIT/init fuera del primer frame real.
 - **Reducción de copia:** pasar el `np.ndarray` directo a `processor(images=...)` (acepta numpy)
   en lugar de `Image.fromarray(...)`. Validar que el resultado de detección no cambie.
 
@@ -141,7 +141,7 @@ valores a `serialize_unit`.
   - En CPU (CI) `half_precision` es no-op → test de la ruta de degradación.
   - `load()` con `warmup: true` ejecuta la inferencia dummy sin error.
   - device CUDA solicitado sin GPU → warning + degradación a CPU (YOLOE).
-- **Regresión:** toda la suite actual (165 tests) debe seguir verde.
+- **Regresión:** toda la suite vigente debe seguir verde.
 - **Precisión:** validación manual contra el BENCH (single-host, fp16 fijado) para confirmar que
   los cambios de inferencia no degradan el AP de forma significativa.
 

@@ -33,7 +33,7 @@ class PromptSet(BaseModel):
 
 
 class PromptsFile(BaseModel):
-    """Archivo completo de prompts que soporta formato antiguo y nuevo (MEMORIA)."""
+    """Archivo completo de prompts que soporta formato simple y formato MEMORIA."""
 
     version: str | None = None
     items: list[PromptItem] | None = None
@@ -255,10 +255,6 @@ class OutputsConfig(BaseModel):
     save_previews: bool = True
     preview_max: int = 20
 
-    # Campos de compatibilidad antigua
-    save_jsonl: bool | None = None
-    save_summary: bool | None = None
-
     @model_validator(mode="before")
     @classmethod
     def sync_outputs(cls, data: Any) -> Any:
@@ -267,13 +263,6 @@ class OutputsConfig(BaseModel):
                 data["base_dir"] = data["run_dir"]
             elif "base_dir" in data and "run_dir" not in data:
                 data["run_dir"] = data["base_dir"]
-            
-            # Sync con campos antiguos
-            if "save_jsonl" in data:
-                val = data["save_jsonl"]
-                data["save_detections_jsonl"] = data.get("save_detections_jsonl", val)
-                data["save_metrics_jsonl"] = data.get("save_metrics_jsonl", val)
-                data["save_errors_jsonl"] = data.get("save_errors_jsonl", val)
         return data
 
 

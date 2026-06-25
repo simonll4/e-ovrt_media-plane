@@ -59,8 +59,7 @@ ZeroMQ REQ/REP y la liveness usa un canal PUSH/PULL dedicado. El wire raw soport
 área, reproyecta con `ResizeTransform`, calcula `bbox_norm_xyxy` y asigna `prompt_id`.
 
 `DetectionEvent` versión `media.detection.v1` persiste una unidad procesada con bloques
-estructurados `source`, `model`, `prompts`, `detections` y `timing`. Conserva campos planos
-por compatibilidad (`source_path`, `model_adapter`, `prompt_version`, `timing_ms`).
+estructurados `source`, `model`, `prompts`, `detections` y `timing`.
 
 ## Métricas, resumen y procedencia
 

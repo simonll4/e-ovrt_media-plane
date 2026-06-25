@@ -21,7 +21,7 @@ por eso no depende de Internet en el primer arranque.
 
 - **Un único commit final**: por pedido del usuario, NO hay commits intermedios. Cada task termina en verificación (tests/lint/validate), no en commit. El último task ejecuta el único `git commit` con todo el workstream.
 - **Sin secretos versionados**: los configs con IPs reales o credenciales nunca se commitean (`deploy/configs/*.yaml` gitignored salvo `*.example.yaml`).
-- **No romper la suite**: `pytest -q` (204 pruebas en la verificación actual) y `ruff check src tests` deben quedar verdes al final.
+- **No romper la suite**: `pytest -q` completo y `ruff check src tests` deben quedar verdes al final.
 - **Repos siblings**: el media-plane asume `../e-ovrt_datasets` como hermano en disco (per CLAUDE.md).
 - **Nodo A sin GPU**: imagen `python:3.11-slim`, extra `edge` (sin torch/transformers/ultralytics). Nodo B con GPU: `nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04`, extra `gpu`.
 
@@ -229,7 +229,7 @@ __all__ = [
 - [x] **Step 6: Run guard test + full suite**
 
 Run: `pytest tests/test_edge_imports_without_torch.py -v && make test && make lint`
-Expected: guard test PASS; suite y Ruff limpios (204 pruebas en la verificación actual).
+Expected: guard test PASS; suite y Ruff limpios.
 
 ---
 
@@ -461,7 +461,7 @@ services:
     volumes:
       - ./configs:/configs:ro
       - ../../e-ovrt_datasets/datasets/raw:/datasets:ro
-    expose: ["5555"]
+    expose: ["5555", "5556"]
 
   node-b:
     build:
@@ -513,11 +513,11 @@ Expected: `compose OK` (sintaxis e interpolación válidas; `docker compose conf
 
 ---
 
-### Task 6: README de deploy y stub del doc viejo
+### Task 6: README de deploy y redirección del doc previo
 
 **Files:**
 - Create: `deploy/README.md`
-- Modify: `docs/deployment/two-node-docker.md` (reemplazar por stub)
+- Modify: `docs/deployment/two-node-docker.md` (reemplazar por redirección)
 
 **Interfaces:**
 - Consumes: estructura de Tasks 3-5.
@@ -615,7 +615,7 @@ del YAML de config. `.env` solo selecciona qué archivo se monta.
 - OAK-D Pro PoE en contenedor queda pendiente hasta disponer del hardware.
 ```
 
-- [x] **Step 2: Reemplazar `docs/deployment/two-node-docker.md` por un stub**
+- [x] **Step 2: Reemplazar `docs/deployment/two-node-docker.md` por una redirección**
 
 ```markdown
 # Despliegue de dos nodos con Docker
@@ -662,7 +662,7 @@ Expected: `units_processed: 114, units_failed: 0, backend: network` (consistente
 - [x] **Step 5: Suite + lint verdes**
 
 Run: `source .venv/bin/activate && make test && make lint`
-Expected: 184 tests passing; ruff limpio.
+Expected: suite vigente passing; ruff limpio.
 
 - [x] **Step 6: Commit único del workstream**
 
@@ -675,7 +675,7 @@ git commit -m "feat(deploy): organizar infra de deploy two-node en deploy/ + laz
 - Estructura deploy/: docker-compose.yml parametrizado por .env, Dockerfiles
   migrados a deploy/docker/, configs de ejemplo two_node_{a,b}, README único
 - .dockerignore en raíz + gitignore para deploy/configs/*.yaml
-- Reemplaza docker/ raíz y docs/deployment/two-node-docker.md (stub)
+- Reemplaza docker/ raíz y docs/deployment/two-node-docker.md (redirección)
 - Validado: build OK, compose up two-node con GPU, 114/114 procesadas sin error"
 ```
 
@@ -692,5 +692,5 @@ git commit -m "feat(deploy): organizar infra de deploy two-node en deploy/ + laz
 - La validación posterior registró Docker Engine 29.5.3, una NVIDIA GeForce RTX 4060 disponible
   para Docker, build de ambas imágenes y el stack local con 114 unidades procesadas, 0 fallidas,
   193 detecciones y `cuda:0`.
-- La verificación local actual de Python pasa con 204 pruebas; los manifests locales y de dos hosts
+- La verificación local actual de Python pasa con la suite completa vigente; los manifests locales y de dos hosts
   incluyen también el endpoint de heartbeat TCP/5556 añadido después de este plan inicial.

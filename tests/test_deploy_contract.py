@@ -21,6 +21,7 @@ def test_local_compose_runs_the_complete_two_node_stack() -> None:
 
     assert set(compose["services"]) == {"node-a", "node-b"}
     assert compose["services"]["node-b"]["depends_on"] == ["node-a"]
+    assert compose["services"]["node-a"]["expose"] == ["5555", "5556"]
 
 
 def test_two_host_manifests_do_not_start_a_remote_peer_locally() -> None:

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 @dataclass
 class TimingResult:
-    """Resultado de timing heredado para compatibilidad."""
+    """Resultado agregado usado por LatencyTracker."""
 
     unit_id: str
     inference_ms: float
@@ -90,7 +90,7 @@ class UnitTimer:
         )
 
     def finish(self, detection_count: int = 0, error: str | None = None) -> TimingResult:
-        """Finaliza y devuelve el resultado legacy (para compatibilidad)."""
+        """Finaliza y devuelve el resultado agregado."""
         res = self.get_granular_result()
         return TimingResult(
             unit_id=self.unit_id,

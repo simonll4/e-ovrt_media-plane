@@ -38,7 +38,7 @@ class NetworkTransportAdapter(TransportAdapter):
         max_staleness_ms: float | None = None,
         heartbeat_interval_ms: int = 1000,
         heartbeat_timeout_ms: int = 5000,
-        codec: str = "raw",
+        codec: str = "jpeg",
         quality: int = 90,
     ) -> None:
         if role not in {"producer", "consumer"}:
@@ -170,11 +170,16 @@ class NetworkTransportAdapter(TransportAdapter):
         elapsed_ms = (time.monotonic() - self._last_heartbeat) * 1000.0
         return elapsed_ms <= self.heartbeat_timeout_ms
 
-    def wait_for_consumer(self) -> None:
+    def has_seen_peer(self) -> bool:
+        """True si el productor ya observó al menos un heartbeat del consumidor."""
+        return self.role == "producer" and self._last_heartbeat is not None
+
+    def wait_for_consumer(self, timeout_s: float | None = None) -> bool:
         """Espera a que el consumidor reciba END y el servidor REP termine."""
         if self.role != "producer":
             raise ValueError("wait_for_consumer solo está disponible para el productor.")
-        self._server.join()
+        self._server.join(timeout=timeout_s)
+        return not self._server.is_alive()
 
     # --- consumidor ---
 

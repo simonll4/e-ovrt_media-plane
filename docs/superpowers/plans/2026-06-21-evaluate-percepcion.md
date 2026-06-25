@@ -1,6 +1,6 @@
 # eovrt-media evaluate — Plan de implementación
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Registro:** plan ejecutado; los steps implementados quedan marcados con `- [x]`.
 
 **Goal:** Agregar el subcomando `eovrt-media evaluate` que evalúa la calidad de percepción de una corrida contra el BENCH v2, produciendo métricas AP@0.5/clase y CR-01 recall de detección, y persiste `eval_perception.json` en el run dir.
 
@@ -44,7 +44,7 @@
   - `ClassResult` — resultado per-clase con campos `class_name: str`, `AP50: float | None`, `n_gt: int`, `n_det: int`
   - `EvalPerceptionResults` — resultado completo, serializable a JSON
 
-- [ ] **Step 1: Escribir el test fallido**
+- [x] **Step 1: Escribir el test fallido**
 
 ```python
 # tests/test_evaluate.py
@@ -93,7 +93,7 @@ def test_eval_perception_results_json_roundtrip():
     assert data["cr01_detection_recall"] is None
 ```
 
-- [ ] **Step 2: Verificar que falla**
+- [x] **Step 2: Verificar que falla**
 
 ```bash
 cd /home/simonll4/projects/e-ovrt_media-plane
@@ -103,7 +103,7 @@ pytest tests/test_evaluate.py -v
 
 Esperado: `ImportError` o `ModuleNotFoundError` (módulo no existe aún).
 
-- [ ] **Step 3: Crear `__init__.py` vacío y `schemas.py`**
+- [x] **Step 3: Crear `__init__.py` vacío y `schemas.py`**
 
 ```python
 # src/eovrt_media/evaluation/__init__.py
@@ -150,10 +150,10 @@ class EvalPerceptionResults(BaseModel):
     evaluated_at: str
 ```
 
-**Nota:** el `__init__.py` importa `run_evaluation` desde `runner.py`, que aún no existe. Para evitar error de import durante este step, crear `runner.py` con un stub mínimo:
+**Nota:** el `__init__.py` importa `run_evaluation` desde `runner.py`, que aún no existe. Para evitar error de import durante este step, crear `runner.py` con una implementación mínima temporal:
 
 ```python
-# src/eovrt_media/evaluation/runner.py  (stub — se implementa en Task 2)
+# src/eovrt_media/evaluation/runner.py  (mínimo temporal — se implementa en Task 2)
 from __future__ import annotations
 from pathlib import Path
 from eovrt_media.evaluation.schemas import EvalPerceptionResults
@@ -168,7 +168,7 @@ def run_evaluation(
     raise NotImplementedError
 ```
 
-- [ ] **Step 4: Verificar que los tests pasan**
+- [x] **Step 4: Verificar que los tests pasan**
 
 ```bash
 pytest tests/test_evaluate.py::test_class_result_fields \
@@ -178,7 +178,7 @@ pytest tests/test_evaluate.py::test_class_result_fields \
 
 Esperado: 3 PASSED.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/eovrt_media/evaluation/ tests/test_evaluate.py
@@ -190,7 +190,7 @@ git commit -m "feat: schemas Pydantic para evaluación de percepción (ClassResu
 ## Task 2: Runner (`evaluation/runner.py`)
 
 **Files:**
-- Modify: `src/eovrt_media/evaluation/runner.py` (reemplazar stub de Task 1)
+- Modify: `src/eovrt_media/evaluation/runner.py` (reemplazar mínimo temporal de Task 1)
 - Test: `tests/test_evaluate.py` (agregar tests de runner)
 
 **Interfaces:**
@@ -204,7 +204,7 @@ git commit -m "feat: schemas Pydantic para evaluación de percepción (ClassResu
 - Produces:
   - `run_evaluation(run_dir, bench_coco, person_gt, iou_threshold) -> EvalPerceptionResults`
 
-- [ ] **Step 1: Escribir fixtures sintéticos y tests del runner**
+- [x] **Step 1: Escribir fixtures sintéticos y tests del runner**
 
 Agregar al final de `tests/test_evaluate.py`:
 
@@ -340,7 +340,7 @@ def test_auto_discover_missing_sibling_raises(tmp_path, monkeypatch):
         run_evaluation(run_dir)  # sin bench_coco ni person_gt → auto-discover falla
 ```
 
-- [ ] **Step 2: Verificar que los tests nuevos fallan (el runner aún es stub)**
+- [x] **Step 2: Verificar que los tests nuevos fallan (el runner aún es mínimo temporal)**
 
 ```bash
 pytest tests/test_evaluate.py::test_run_evaluation_returns_perception_results \
@@ -351,7 +351,7 @@ pytest tests/test_evaluate.py::test_run_evaluation_returns_perception_results \
 
 Esperado: 4 FAILED con `NotImplementedError`.
 
-- [ ] **Step 3: Implementar `runner.py`**
+- [x] **Step 3: Implementar `runner.py`**
 
 ```python
 # src/eovrt_media/evaluation/runner.py
@@ -503,7 +503,7 @@ def run_evaluation(
     return result
 ```
 
-- [ ] **Step 4: Verificar que todos los tests del runner pasan**
+- [x] **Step 4: Verificar que todos los tests del runner pasan**
 
 ```bash
 pytest tests/test_evaluate.py -v
@@ -511,7 +511,7 @@ pytest tests/test_evaluate.py -v
 
 Esperado: todos los tests PASSED (incluyendo los de Task 1).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/eovrt_media/evaluation/runner.py tests/test_evaluate.py
@@ -530,7 +530,7 @@ git commit -m "feat: runner de evaluación de percepción con auto-discover de b
 - Consumes: `run_evaluation(run_dir, bench_coco, person_gt, iou_threshold)` de `runner.py`
 - Produces: comando `eovrt-media evaluate` con salida Rich + `eval_perception.json`
 
-- [ ] **Step 1: Escribir el test del CLI**
+- [x] **Step 1: Escribir el test del CLI**
 
 Agregar al final de `tests/test_evaluate.py`:
 
@@ -563,7 +563,7 @@ def test_cli_evaluate_command(tmp_path):
     assert "AP" in result.output or "person" in result.output
 ```
 
-- [ ] **Step 2: Verificar que el test falla**
+- [x] **Step 2: Verificar que el test falla**
 
 ```bash
 pytest tests/test_evaluate.py::test_cli_evaluate_command -v
@@ -571,7 +571,7 @@ pytest tests/test_evaluate.py::test_cli_evaluate_command -v
 
 Esperado: FAILED — comando `evaluate` no existe aún.
 
-- [ ] **Step 3: Agregar el comando `evaluate` a `cli.py`**
+- [x] **Step 3: Agregar el comando `evaluate` a `cli.py`**
 
 Insertar antes de `if __name__ == "__main__":` al final de `src/eovrt_media/cli.py`:
 
@@ -647,7 +647,7 @@ def evaluate(
     console.print(f"\n[green]✓ Guardado:[/green] {out_path}\n")
 ```
 
-- [ ] **Step 4: Verificar que todos los tests pasan**
+- [x] **Step 4: Verificar que todos los tests pasan**
 
 ```bash
 pytest tests/test_evaluate.py -v
@@ -655,7 +655,7 @@ pytest tests/test_evaluate.py -v
 
 Esperado: todos PASSED.
 
-- [ ] **Step 5: Verificar que ruff está limpio**
+- [x] **Step 5: Verificar que ruff está limpio**
 
 ```bash
 ruff check src/eovrt_media/cli.py src/eovrt_media/evaluation/
@@ -663,7 +663,7 @@ ruff check src/eovrt_media/cli.py src/eovrt_media/evaluation/
 
 Esperado: `All checks passed!`
 
-- [ ] **Step 6: Smoke test manual del comando**
+- [x] **Step 6: Smoke test manual del comando**
 
 ```bash
 eovrt-media evaluate --help
@@ -671,7 +671,7 @@ eovrt-media evaluate --help
 
 Esperado: muestra opciones `--run`, `--bench-coco`, `--person-gt`, `--iou-threshold`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/eovrt_media/cli.py tests/test_evaluate.py
@@ -687,7 +687,7 @@ git commit -m "feat: subcomando eovrt-media evaluate — evaluación de percepci
 
 **Interfaces:** ninguna — solo documentación.
 
-- [ ] **Step 1: Actualizar `docs/implementation-status.md`**
+- [x] **Step 1: Actualizar `docs/implementation-status.md`**
 
 En la tabla "Límites conocidos y trabajo encaminado", agregar la fila:
 
@@ -695,15 +695,15 @@ En la tabla "Límites conocidos y trabajo encaminado", agregar la fila:
 | Evaluación de percepción | **Implementado** | `eovrt-media evaluate --run runs/<id>` — AP@0.5/clase y CR-01 recall de detección. Persiste `eval_perception.json`. |
 ```
 
-- [ ] **Step 2: Correr la suite completa**
+- [x] **Step 2: Correr la suite completa**
 
 ```bash
 pytest -q
 ```
 
-Esperado: todos los tests pasan (los 150 previos + los nuevos de `test_evaluate.py`).
+Esperado: todos los tests pasan (la suite vigente).
 
-- [ ] **Step 3: Verificar ruff**
+- [x] **Step 3: Verificar ruff**
 
 ```bash
 ruff check src tests
@@ -711,7 +711,7 @@ ruff check src tests
 
 Esperado: `All checks passed!`
 
-- [ ] **Step 4: Commit final**
+- [x] **Step 4: Commit final**
 
 ```bash
 git add docs/implementation-status.md
@@ -736,4 +736,4 @@ git commit -m "docs: registrar eovrt-media evaluate en implementation-status"
 - `run_evaluation(run_dir: Path, bench_coco: Path | None, person_gt: Path | None, iou_threshold: float) -> EvalPerceptionResults` — mismo en Task 2 (implementación) y Task 3 (consumidor CLI).
 - `ClassResult.class_name` (no `class`) — alineado con la restricción de que `class` es keyword de Python; el campo `class` devuelto por `evaluate_bench.py` se mapea a `class_name` en el runner (Task 2, Step 3: `raw["class"]` → `class_name=raw["class"]`).
 
-**Sin placeholders:** todos los steps tienen código completo.
+**Sin pendientes de especificación:** todos los steps tienen código completo.

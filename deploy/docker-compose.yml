@@ -13,7 +13,7 @@ services:
       - ../configs:/app/configs:ro
       - ./configs:/app/deploy-configs:ro
       - ../../e-ovrt_datasets/datasets/raw:/datasets:ro
-    expose: ["5555"]
+    expose: ["5555", "5556"]
 
   node-b:
     build:

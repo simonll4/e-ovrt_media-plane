@@ -40,6 +40,7 @@ class TestPipelineMock:
 
         # Override para testing
         config.model.adapter = "mock"
+        config.model.name = "mock"
         config.source.path = str(images_dir)
         config.outputs.base_dir = str(tmp_path / "runs")
         config.outputs.run_dir = str(tmp_path / "runs")
@@ -78,7 +79,9 @@ class TestPipelineMock:
         assert "run_id" in event
         assert "unit_id" in event
         assert "detections" in event
-        assert "timing_ms" in event
+        assert "timing" in event
+        assert "timing_ms" not in event
+        assert "source_path" not in event
         assert isinstance(event["detections"], list)
 
     def test_creates_summary_json(self, mock_config):
@@ -94,7 +97,8 @@ class TestPipelineMock:
 
         assert summary["run_id"] == run_id
         assert summary["scenario"] == "DBE"
-        assert summary["model_adapter"] == "mock"
+        assert summary["model_name"] == "mock"
+        assert "model_adapter" not in summary
         assert summary["units_processed"] == 3
         assert summary["units_failed"] == 0
         assert summary["source_count"] == 3
@@ -116,9 +120,12 @@ class TestPipelineMock:
         assert len(lines) == 3
 
         metric = json.loads(lines[0])
-        assert "inference_ms" in metric
-        assert "total_ms" in metric
-        assert "detection_count" in metric
+        assert "latency_inference_ms" in metric
+        assert "latency_total_ms" in metric
+        assert "detections_count" in metric
+        assert "inference_ms" not in metric
+        assert "total_ms" not in metric
+        assert "detection_count" not in metric
 
     def test_creates_effective_config(self, mock_config):
         """Se guarda la configuración efectiva."""

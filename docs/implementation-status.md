@@ -50,6 +50,8 @@ Nodo A:                                      PULL heartbeat ←─────�
 2. `normalize_spatial()` decodifica imágenes o frames; fuentes vivas (RTSP) usan `pixel_data`
    directamente sin reabrir el stream. Genera `NormalizedUnit` con `ResizeTransform`.
 3. El productor ofrece la unidad al canal; al terminar emite `END` mediante `close()`.
+   En dos nodos, si Nodo A ya observó heartbeats de Nodo B y luego expira
+   `heartbeat_timeout_ms`, el productor corta la ingesta y cierra el transporte.
 4. El consumidor solicita unidades, ejecuta `BaseDetectorAdapter.forward()`, genera previews desde
    el payload normalizado, reproyecta cajas al espacio original y persiste detecciones, métricas y
    errores recuperables.
@@ -127,7 +129,7 @@ La suite incluye pruebas de transporte, configuración, normalización, producto
 trazabilidad y evaluación de percepción. La última verificación local fue:
 
 ```bash
-pytest -q                 # 206 pruebas
+pytest -q                 # 210 pruebas
 ruff check src tests
 ```
 

@@ -21,7 +21,7 @@ desde una cámara IP o cámara de borde. Las alternativas consideradas eran:
 ## Decisión
 
 Se implementó **`RtspSource` heredando directamente de `BaseSource`** (opción 2),
-junto con un stub `OakDSource` del mismo estilo.
+junto con un `OakDSource` diferido del mismo estilo.
 
 `LiveSource` (la clase abstracta intermedia de la opción 1) fue descartada y
 eliminada del árbol porque:
@@ -49,7 +49,7 @@ eliminada del árbol porque:
 - **Positivas:** código más simple, sin herencia intermedia, sin la fricción de
   una clase abstracta vacía. El contrato de `BaseSource` es suficientemente
   expresivo.
-- **A monitorear:** `OakDSource` es un stub que lanza `NotImplementedError` hasta
+- **A monitorear:** `OakDSource` queda diferido y lanza `NotImplementedError` hasta
   integrar el SDK DepthAI. Cuando se integre, deberá seguir el mismo patrón de
   `RtspSource` (pixel_data en VisualUnit, stop() para interrumpir el loop).
 - **FP16:** el formato de payload `fp16` está implementado de extremo a extremo:
