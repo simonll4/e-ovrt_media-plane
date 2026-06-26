@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import json
 import os
 from pathlib import Path
 import socket
+import subprocess
+import sys
+import time
 from typing import Any
+from urllib.parse import urlparse
 
 import yaml
 
@@ -143,3 +148,102 @@ def unused_tcp_endpoint() -> str:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
     return f"tcp://127.0.0.1:{port}"
+
+
+@dataclass(frozen=True)
+class LocalTwoNodeResult:
+    config_path: Path
+    logs_dir: Path
+    node_a_log: Path
+    node_b_log: Path
+    run_dir: Path | None
+    node_a_returncode: int | None
+    node_b_returncode: int | None
+    summary: dict[str, Any] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return self.node_a_returncode == 0 and self.node_b_returncode == 0
+
+    @property
+    def failure_reason(self) -> str:
+        if self.ok:
+            return ""
+        if self.node_b_returncode not in (0, None):
+            return f"Nodo B exited with code {self.node_b_returncode}"
+        if self.node_a_returncode not in (0, None):
+            return f"Nodo A exited with code {self.node_a_returncode}"
+        return "Two-node local run did not complete"
+
+
+def _endpoint_host_port(endpoint: str) -> tuple[str, int]:
+    parsed = urlparse(endpoint)
+    if parsed.scheme != "tcp" or parsed.hostname is None or parsed.port is None:
+        raise ValueError(f"Solo endpoints tcp://host:port son soportados: {endpoint}")
+    return parsed.hostname, parsed.port
+
+
+def wait_for_tcp_endpoint(endpoint: str, *, timeout_s: float) -> bool:
+    """Wait until a TCP endpoint accepts connections."""
+    host, port = _endpoint_host_port(endpoint)
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=0.2):
+                return True
+        except OSError:
+            time.sleep(0.05)
+    return False
+
+
+def scan_log_warnings(log_path: Path) -> list[str]:
+    """Return warning/error lines from a node log."""
+    if not log_path.exists():
+        return []
+    matches: list[str] = []
+    for line in log_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        lowered = line.lower()
+        if "warning" in lowered or "error" in lowered or "traceback" in lowered:
+            matches.append(line)
+    return matches
+
+
+def collect_run_summary(run_dir: Path | None) -> dict[str, Any]:
+    """Read summary.json and count errors.jsonl lines from a completed run."""
+    if run_dir is None:
+        return {}
+    summary_path = run_dir / "summary.json"
+    if not summary_path.exists():
+        return {}
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    errors_path = run_dir / "errors.jsonl"
+    summary["errors_count"] = (
+        len(errors_path.read_text(encoding="utf-8").splitlines())
+        if errors_path.exists()
+        else 0
+    )
+    return summary
+
+
+def _command_for_node(node: str, config_path: Path) -> list[str]:
+    command = "run-producer" if node == "a" else "run-consumer"
+    return [sys.executable, "-m", "eovrt_media.cli", command, "--config", str(config_path)]
+
+
+def _subprocess_env() -> dict[str, str]:
+    env = os.environ.copy()
+    repo_src = Path(__file__).resolve().parents[2]
+    existing = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = f"{repo_src}{os.pathsep}{existing}" if existing else str(repo_src)
+    return env
+
+
+def latest_run_dir(base_dir: Path = Path("runs")) -> Path | None:
+    """Return the newest run directory containing summary.json."""
+    if not base_dir.exists():
+        return None
+    candidates = [path for path in base_dir.iterdir() if (path / "summary.json").exists()]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda path: path.stat().st_mtime)

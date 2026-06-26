@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -7,8 +8,12 @@ import yaml
 
 from eovrt_media.runtime.two_node_local import (
     LocalTwoNodeOptions,
+    LocalTwoNodeResult,
     build_run_config,
+    collect_run_summary,
     resolve_source,
+    scan_log_warnings,
+    wait_for_tcp_endpoint,
     write_generated_config,
 )
 
@@ -111,3 +116,83 @@ def test_write_generated_config_persists_yaml(tmp_path: Path) -> None:
 
     assert path == tmp_path / "bench_val.yaml"
     assert yaml.safe_load(path.read_text()) == raw
+
+
+def test_scan_log_warnings_finds_warning_and_error_lines(tmp_path: Path) -> None:
+    log_path = tmp_path / "node-a.log"
+    log_path.write_text(
+        "info line\nWARNING dropped frame\nerror recoverable failure\n",
+        encoding="utf-8",
+    )
+
+    warnings = scan_log_warnings(log_path)
+
+    assert warnings == ["WARNING dropped frame", "error recoverable failure"]
+
+
+def test_collect_run_summary_reads_summary_and_errors(tmp_path: Path) -> None:
+    run_dir = tmp_path / "runs" / "run_x"
+    run_dir.mkdir(parents=True)
+    (run_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run_x",
+                "units_processed": 4,
+                "units_failed": 1,
+                "units_dropped": 2,
+                "total_detections": 8,
+                "detections_by_label": {"person": 4},
+                "avg_latency_ms": 12.5,
+                "p95_latency_ms": 20.0,
+                "p99_latency_ms": 25.0,
+                "fps_effective": 30.0,
+                "gpu_memory_peak_mb": 512.0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "errors.jsonl").write_text('{"stage": "preview"}\n', encoding="utf-8")
+
+    summary = collect_run_summary(run_dir)
+
+    assert summary["run_id"] == "run_x"
+    assert summary["units_processed"] == 4
+    assert summary["errors_count"] == 1
+    assert summary["detections_by_label"] == {"person": 4}
+
+
+def test_local_two_node_result_success_requires_zero_exit_codes(tmp_path: Path) -> None:
+    result = LocalTwoNodeResult(
+        config_path=tmp_path / "run.yaml",
+        logs_dir=tmp_path,
+        node_a_log=tmp_path / "node-a.log",
+        node_b_log=tmp_path / "node-b.log",
+        run_dir=None,
+        node_a_returncode=0,
+        node_b_returncode=0,
+        summary={},
+        warnings=[],
+    )
+
+    assert result.ok is True
+
+
+def test_local_two_node_result_reports_failed_node(tmp_path: Path) -> None:
+    result = LocalTwoNodeResult(
+        config_path=tmp_path / "run.yaml",
+        logs_dir=tmp_path,
+        node_a_log=tmp_path / "node-a.log",
+        node_b_log=tmp_path / "node-b.log",
+        run_dir=None,
+        node_a_returncode=-15,
+        node_b_returncode=1,
+        summary={},
+        warnings=[],
+    )
+
+    assert result.ok is False
+    assert "Nodo B exited with code 1" in result.failure_reason
+
+
+def test_wait_for_tcp_endpoint_returns_false_for_unused_endpoint() -> None:
+    assert wait_for_tcp_endpoint("tcp://127.0.0.1:1", timeout_s=0.05) is False
