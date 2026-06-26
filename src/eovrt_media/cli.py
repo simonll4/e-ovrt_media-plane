@@ -66,6 +66,81 @@ def run_consumer(
     console.print(f"[green]✓ Corrida completada:[/green] {run_id}")
 
 
+@app.command(name="run-two-node-local")
+def run_two_node_local_command(
+    source: str = typer.Option(
+        ...,
+        "--source",
+        help="Fuente: bench-val, bench-test, demo, video, ezviz.",
+    ),
+    video: Path | None = typer.Option(
+        None,
+        "--video",
+        help="Archivo de video para --source video.",
+    ),
+    rtsp_url: str | None = typer.Option(
+        None,
+        "--rtsp-url",
+        help="URL RTSP para --source ezviz.",
+    ),
+    codec: str = typer.Option("jpeg", "--codec", help="Compresión de red: jpeg o raw."),
+    jpeg_quality: int = typer.Option(90, "--jpeg-quality", min=1, max=100),
+    payload_format: str = typer.Option("uint8_rgb", "--payload-format"),
+    max_units: int | None = typer.Option(None, "--max-units"),
+    device: str = typer.Option("cuda:0", "--device"),
+    model_ref: str = typer.Option("yoloe/yoloe-26s", "--model-ref"),
+    prompts_ref: str | None = typer.Option(None, "--prompts-ref"),
+    save_previews: bool = typer.Option(False, "--save-previews/--no-save-previews"),
+    skip_probe: bool = typer.Option(False, "--skip-probe"),
+    port_base: int | None = typer.Option(None, "--port-base"),
+) -> None:
+    """Ejecutar banco preliminar two-node nativo en localhost."""
+    from eovrt_media.runtime.two_node_local import LocalTwoNodeOptions, run_two_node_local
+
+    try:
+        result = run_two_node_local(
+            LocalTwoNodeOptions(
+                source=source,
+                video=video,
+                rtsp_url=rtsp_url,
+                codec=codec,
+                jpeg_quality=jpeg_quality,
+                payload_format=payload_format,
+                max_units=max_units,
+                device=device,
+                model_ref=model_ref,
+                prompts_ref=prompts_ref,
+                save_previews=save_previews,
+                skip_probe=skip_probe,
+                port_base=port_base,
+            )
+        )
+    except Exception as error:
+        console.print(f"[red]✗ Banco two-node local falló:[/red] {error}")
+        raise typer.Exit(1)
+
+    console.print("\n[bold cyan]Banco two-node local[/bold cyan]")
+    console.print(f"  Config:      {result.config_path}")
+    console.print(f"  Logs:        {result.logs_dir}")
+    if result.run_dir:
+        console.print(f"  Run dir:     {result.run_dir}")
+    if result.summary:
+        console.print(f"  Run ID:      {result.summary.get('run_id', 'N/A')}")
+        console.print(f"  Units:       {result.summary.get('units_processed', 'N/A')}")
+        console.print(f"  Failures:    {result.summary.get('units_failed', 'N/A')}")
+        console.print(f"  Errors:      {result.summary.get('errors_count', 0)}")
+        console.print(f"  FPS:         {result.summary.get('fps_effective', 'N/A')}")
+        console.print(f"  P95 ms:      {result.summary.get('p95_latency_ms', 'N/A')}")
+    if result.warnings:
+        console.print("\n[yellow]Warnings/errors detectados:[/yellow]")
+        for line in result.warnings[:20]:
+            console.print(f"  {line}")
+    if not result.ok:
+        console.print(f"[red]✗ {result.failure_reason}[/red]")
+        raise typer.Exit(1)
+    console.print("[green]✓ Banco two-node local completado.[/green]")
+
+
 @app.command(name="validate-config")
 def validate_config(
     config: Path = typer.Option(
