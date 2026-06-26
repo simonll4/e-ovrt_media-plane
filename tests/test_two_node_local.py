@@ -246,3 +246,64 @@ def test_run_two_node_local_generates_config_and_starts_nodes(
     assert result.node_b_log == result.logs_dir / "node-b.log"
     assert started[0][-3:] == ["run-producer", "--config", str(result.config_path)]
     assert started[1][-3:] == ["run-consumer", "--config", str(result.config_path)]
+
+
+def test_probe_runs_for_ezviz_unless_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from eovrt_media.runtime import two_node_local
+
+    probed = []
+
+    monkeypatch.setattr(two_node_local.subprocess, "Popen", lambda *args, **kwargs: FakeProcess(0))
+    monkeypatch.setattr(two_node_local, "wait_for_tcp_endpoint", lambda endpoint, timeout_s: True)
+    monkeypatch.setattr(two_node_local, "latest_run_dir", lambda base_dir=Path("runs"): None)
+    monkeypatch.setattr(
+        two_node_local,
+        "probe_rtsp_config",
+        lambda config_path, frames=30: probed.append(config_path),
+    )
+
+    options = LocalTwoNodeOptions(
+        source="ezviz",
+        rtsp_url="rtsp://user:secret@cam/live",
+        model_ref="mock",
+        device="cpu",
+        generated_dir=tmp_path / "generated",
+        logs_dir=tmp_path / "logs",
+    )
+
+    two_node_local.run_two_node_local(options)
+
+    assert len(probed) == 1
+
+
+def test_probe_is_skipped_when_requested(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from eovrt_media.runtime import two_node_local
+
+    probed = []
+
+    monkeypatch.setattr(two_node_local.subprocess, "Popen", lambda *args, **kwargs: FakeProcess(0))
+    monkeypatch.setattr(two_node_local, "wait_for_tcp_endpoint", lambda endpoint, timeout_s: True)
+    monkeypatch.setattr(two_node_local, "latest_run_dir", lambda base_dir=Path("runs"): None)
+    monkeypatch.setattr(
+        two_node_local,
+        "probe_rtsp_config",
+        lambda config_path, frames=30: probed.append(config_path),
+    )
+
+    options = LocalTwoNodeOptions(
+        source="ezviz",
+        rtsp_url="rtsp://user:secret@cam/live",
+        model_ref="mock",
+        device="cpu",
+        generated_dir=tmp_path / "generated",
+        logs_dir=tmp_path / "logs",
+        skip_probe=True,
+    )
+
+    two_node_local.run_two_node_local(options)
+
+    assert probed == []

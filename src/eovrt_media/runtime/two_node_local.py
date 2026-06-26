@@ -249,6 +249,13 @@ def latest_run_dir(base_dir: Path = Path("runs")) -> Path | None:
     return max(candidates, key=lambda path: path.stat().st_mtime)
 
 
+def probe_rtsp_config(config_path: Path, *, frames: int = 30) -> None:
+    """Probe an RTSP run config using the existing credential-safe probe script."""
+    from scripts.probe_rtsp import probe
+
+    probe(config_path, frames=frames)
+
+
 def _endpoints_for_options(options: LocalTwoNodeOptions) -> tuple[str, str]:
     if options.port_base is not None:
         return (
@@ -291,6 +298,8 @@ def run_two_node_local(options: LocalTwoNodeOptions) -> LocalTwoNodeResult:
     from eovrt_media.config import load_run_config
 
     load_run_config(config_path)
+    if options.source == "ezviz" and not options.skip_probe:
+        probe_rtsp_config(config_path, frames=30)
 
     session_name = time.strftime("%Y%m%d-%H%M%S")
     logs_dir = options.logs_dir / session_name
