@@ -196,3 +196,53 @@ def test_local_two_node_result_reports_failed_node(tmp_path: Path) -> None:
 
 def test_wait_for_tcp_endpoint_returns_false_for_unused_endpoint() -> None:
     assert wait_for_tcp_endpoint("tcp://127.0.0.1:1", timeout_s=0.05) is False
+
+
+class FakeProcess:
+    def __init__(self, returncode: int = 0) -> None:
+        self.returncode = returncode
+        self.terminated = False
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.returncode
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.terminated = True
+        self.returncode = -15
+
+
+def test_run_two_node_local_generates_config_and_starts_nodes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from eovrt_media.runtime import two_node_local
+
+    started: list[list[str]] = []
+
+    def fake_popen(command, stdout, stderr, cwd, env):
+        started.append(command)
+        return FakeProcess(0)
+
+    monkeypatch.setattr(two_node_local.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(two_node_local, "wait_for_tcp_endpoint", lambda endpoint, timeout_s: True)
+    monkeypatch.setattr(two_node_local, "latest_run_dir", lambda base_dir=Path("runs"): None)
+
+    options = LocalTwoNodeOptions(
+        source="bench-val",
+        model_ref="mock",
+        device="cpu",
+        generated_dir=tmp_path / "generated",
+        logs_dir=tmp_path / "logs",
+    )
+
+    result = two_node_local.run_two_node_local(options)
+
+    assert result.ok is True
+    assert result.config_path.exists()
+    assert result.node_a_log == result.logs_dir / "node-a.log"
+    assert result.node_b_log == result.logs_dir / "node-b.log"
+    assert started[0][-3:] == ["run-producer", "--config", str(result.config_path)]
+    assert started[1][-3:] == ["run-consumer", "--config", str(result.config_path)]

@@ -247,3 +247,104 @@ def latest_run_dir(base_dir: Path = Path("runs")) -> Path | None:
     if not candidates:
         return None
     return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def _endpoints_for_options(options: LocalTwoNodeOptions) -> tuple[str, str]:
+    if options.port_base is not None:
+        return (
+            f"tcp://127.0.0.1:{options.port_base}",
+            f"tcp://127.0.0.1:{options.port_base + 1}",
+        )
+    return unused_tcp_endpoint(), unused_tcp_endpoint()
+
+
+def _open_log(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path.open("w", encoding="utf-8")
+
+
+def _terminate_process(process: subprocess.Popen[Any] | None) -> None:
+    if process is None or process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=5.0)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5.0)
+
+
+def run_two_node_local(options: LocalTwoNodeOptions) -> LocalTwoNodeResult:
+    """Generate config, launch Nodo A and Nodo B, and collect local bench results."""
+    endpoint, heartbeat_endpoint = _endpoints_for_options(options)
+    raw_config = build_run_config(
+        options,
+        endpoint=endpoint,
+        heartbeat_endpoint=heartbeat_endpoint,
+    )
+    config_path = write_generated_config(
+        raw_config,
+        options.generated_dir,
+        stem=f"{options.source.replace('-', '_')}_{options.codec}",
+    )
+
+    from eovrt_media.config import load_run_config
+
+    load_run_config(config_path)
+
+    session_name = time.strftime("%Y%m%d-%H%M%S")
+    logs_dir = options.logs_dir / session_name
+    node_a_log = logs_dir / "node-a.log"
+    node_b_log = logs_dir / "node-b.log"
+    node_a: subprocess.Popen[Any] | None = None
+    node_b: subprocess.Popen[Any] | None = None
+
+    with _open_log(node_a_log) as node_a_stream, _open_log(node_b_log) as node_b_stream:
+        try:
+            node_a = subprocess.Popen(
+                _command_for_node("a", config_path),
+                stdout=node_a_stream,
+                stderr=subprocess.STDOUT,
+                cwd=Path.cwd(),
+                env=_subprocess_env(),
+            )
+            if not wait_for_tcp_endpoint(endpoint, timeout_s=options.startup_timeout_s):
+                _terminate_process(node_a)
+                return LocalTwoNodeResult(
+                    config_path=config_path,
+                    logs_dir=logs_dir,
+                    node_a_log=node_a_log,
+                    node_b_log=node_b_log,
+                    run_dir=None,
+                    node_a_returncode=node_a.returncode,
+                    node_b_returncode=None,
+                    summary={},
+                    warnings=scan_log_warnings(node_a_log),
+                )
+
+            node_b = subprocess.Popen(
+                _command_for_node("b", config_path),
+                stdout=node_b_stream,
+                stderr=subprocess.STDOUT,
+                cwd=Path.cwd(),
+                env=_subprocess_env(),
+            )
+            node_b.wait()
+            node_a.wait(timeout=options.startup_timeout_s)
+        finally:
+            _terminate_process(node_b)
+            _terminate_process(node_a)
+
+    run_dir = latest_run_dir(options.outputs_base_dir)
+    warnings = [*scan_log_warnings(node_a_log), *scan_log_warnings(node_b_log)]
+    return LocalTwoNodeResult(
+        config_path=config_path,
+        logs_dir=logs_dir,
+        node_a_log=node_a_log,
+        node_b_log=node_b_log,
+        run_dir=run_dir,
+        node_a_returncode=node_a.returncode if node_a is not None else None,
+        node_b_returncode=node_b.returncode if node_b is not None else None,
+        summary=collect_run_summary(run_dir),
+        warnings=warnings,
+    )
