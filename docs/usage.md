@@ -107,6 +107,25 @@ automáticamente `transport.backend: network`. Ver
 [docs/deployment/two-node-docker.md](deployment/two-node-docker.md) para el
 despliegue con Docker Compose.
 
+### Banco local nativo two-node
+
+Para probar a fondo el plano de medios en una sola PC sin Docker, usar el banco
+nativo. El comando genera una config local bajo `configs/runs/local/generated/`,
+levanta Nodo A y Nodo B como procesos separados sobre loopback, guarda logs por
+nodo y resume los artefactos de la corrida.
+
+```bash
+eovrt-media run-two-node-local --source bench-val --codec jpeg --max-units 200
+eovrt-media run-two-node-local --source bench-val --codec raw --max-units 200
+eovrt-media run-two-node-local --source video --video data/samples/videos/sample.mp4 --codec jpeg
+EZVIZ_RTSP_URL='rtsp://user:password@camera/stream' \
+  eovrt-media run-two-node-local --source ezviz --max-units 300
+```
+
+`configs/runs/local/` está ignorado por Git; no versionar URIs RTSP ni endpoints
+locales. Para RTSP, el comando ejecuta una sonda corta antes de levantar nodos
+salvo que se pase `--skip-probe`.
+
 ### Cámara RTSP con YOLOE en GPU (single-host)
 
 Guarde las configuraciones operativas locales en `configs/runs/local/`; este directorio
