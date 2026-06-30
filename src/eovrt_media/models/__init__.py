@@ -38,6 +38,7 @@ def create_adapter(model_config: ModelSection) -> BaseDetectorAdapter:
             device=model_config.device,
             box_threshold=model_config.box_threshold,
             text_threshold=model_config.text_threshold,
+            iou_threshold=model_config.iou_threshold,
             local_dir=model_config.local_dir,
             half_precision=model_config.runtime.half_precision,
             warmup=model_config.runtime.warmup,

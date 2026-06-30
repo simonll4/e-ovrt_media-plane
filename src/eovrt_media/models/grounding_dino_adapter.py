@@ -20,6 +20,34 @@ from eovrt_media.preprocessing import prepare_model_input
 logger = logging.getLogger(__name__)
 
 
+def _nms_per_canonical(
+    detections: list[RawDetection], iou_threshold: float | None
+) -> list[RawDetection]:
+    """Aplica NMS greedy **por clase canónica** sobre detecciones ya ligadas.
+
+    Grounding DINO en modo grounding no aplica NMS (solo umbraliza), por lo que emite
+    cajas solapadas duplicadas. Agrupamos por ``label`` canónico (no class-agnostic:
+    person/helmet/vest se solapan legítimamente) y suprimimos solapamientos dentro de
+    cada clase con ``torchvision.ops.batched_nms``. Devuelve los supervivientes en el
+    orden original (estable).
+    """
+    if not detections or iou_threshold is None:
+        return detections
+
+    import torch
+    from torchvision.ops import batched_nms
+
+    boxes = torch.tensor([d.box_xyxy for d in detections], dtype=torch.float32)
+    scores = torch.tensor([d.score for d in detections], dtype=torch.float32)
+    group_of: dict[str, int] = {}
+    idxs = torch.tensor(
+        [group_of.setdefault(d.label, len(group_of)) for d in detections],
+        dtype=torch.int64,
+    )
+    keep = batched_nms(boxes, scores, idxs, float(iou_threshold)).tolist()
+    return [detections[i] for i in sorted(keep)]
+
+
 class GroundingDinoHFAdapter(BaseDetectorAdapter):
     """Adaptador para Grounding DINO via Hugging Face Transformers.
 
@@ -34,6 +62,7 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
         device: str = "cpu",
         box_threshold: float = 0.35,
         text_threshold: float = 0.25,
+        iou_threshold: float | None = 0.5,
         local_dir: str | None = None,
         half_precision: bool = False,
         warmup: bool = False,
@@ -42,6 +71,7 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
         self.device = device
         self.box_threshold = box_threshold
         self.text_threshold = text_threshold
+        self.iou_threshold = iou_threshold
         self.local_dir = local_dir
         self.half_precision = half_precision
         self.warmup = warmup
@@ -154,7 +184,7 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
             if det is not None:
                 detections.append(det)
 
-        return detections
+        return _nms_per_canonical(detections, self.iou_threshold)
 
     def _bind_span(self, detected, score, box, by_text, texts):
         """Resuelve un span de GDINO contra el plan; None si no matchea (se descarta)."""
