@@ -25,6 +25,7 @@ from eovrt_media.postprocessing import DetectionNormalizer
 from eovrt_media.preprocessing import normalize_spatial
 from eovrt_media.runtime.run_context import RunContext
 from eovrt_media.sinks import RunArtifactWriter
+from eovrt_media.sinks.video_annotation_writer import VideoAnnotationWriter
 from eovrt_media.sources import BaseSource, ImageFolderSource, VideoFileSource
 from eovrt_media.transport import RateGate, create_transport
 from eovrt_media.visualize import draw_detections_rgb
@@ -151,6 +152,14 @@ def run_consumer_loop(
 ) -> None:
     """Consume del transporte hasta END: inferencia → postproceso → escritura."""
     preview_attempts = 0
+    video_writer = (
+        VideoAnnotationWriter(
+            run_context.run_dir / "annotated.mp4",
+            fps_override=config.outputs.video_fps,
+        )
+        if config.outputs.save_annotated_video
+        else None
+    )
     while True:
         item = transport.request()
         if drain_errors:
@@ -160,6 +169,8 @@ def run_consumer_loop(
             if producer_errors and progress is not None and task is not None:
                 progress.update(task, advance=producer_errors)
         if item is END:
+            if video_writer is not None:
+                video_writer.close()
             break
 
         timer = tracker.start_unit(item.unit_id)
@@ -199,6 +210,20 @@ def run_consumer_loop(
                         run_id=run_context.run_id,
                         unit_id=item.unit_id,
                         stage="preview",
+                        message=str(exc),
+                        recoverable=True,
+                    )
+                )
+
+        if video_writer is not None:
+            try:
+                video_writer.add(item.payload, raw_detections, item.timestamp_ms)
+            except Exception as exc:
+                artifact_writer.write_error(
+                    ErrorEvent(
+                        run_id=run_context.run_id,
+                        unit_id=item.unit_id,
+                        stage="annotated_video",
                         message=str(exc),
                         recoverable=True,
                     )

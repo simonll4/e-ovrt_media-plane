@@ -5,12 +5,27 @@ from pathlib import Path
 import pytest
 
 from eovrt_media.config import load_prompts_file, load_run_config, PromptsFile
+from eovrt_media.config.schemas import OutputsConfig
 
 
 CONFIGS_DIR = Path(__file__).parent / "fixtures"
 PROMPTS_PATH = CONFIGS_DIR / "prompts" / "cr01_cr02_v2_short.yaml"
 GDINO_CONFIG = CONFIGS_DIR / "runs" / "gdino.yaml"
 YOLOE_CONFIG = CONFIGS_DIR / "runs" / "yoloe.yaml"
+
+
+class TestOutputsConfig:
+    """Tests para los campos de salida de video anotado."""
+
+    def test_annotated_video_defaults(self):
+        cfg = OutputsConfig()
+        assert cfg.save_annotated_video is False
+        assert cfg.video_fps is None
+
+    def test_annotated_video_explicit(self):
+        cfg = OutputsConfig(save_annotated_video=True, video_fps=6.0)
+        assert cfg.save_annotated_video is True
+        assert cfg.video_fps == 6.0
 
 
 class TestPromptsFile:

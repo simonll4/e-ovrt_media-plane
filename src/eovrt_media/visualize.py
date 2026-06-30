@@ -88,12 +88,15 @@ def draw_detections(
     _write_preview(image_bgr, output_path)
 
 
-def draw_detections_rgb(
+def annotate_payload_bgr(
     image_rgb: np.ndarray,
     detections: list[Detection | RawDetection],
-    output_path: str | Path,
-) -> None:
-    """Anota y guarda un payload RGB uint8 o de punto flotante normalizado."""
+) -> np.ndarray:
+    """Convierte un payload RGB (uint8 o float normalizado) a BGR anotado.
+
+    Devuelve un array BGR uint8 con las detecciones dibujadas. Reutilizado tanto por las
+    previews JPG como por el escritor de video anotado.
+    """
     rgb = np.asarray(image_rgb)
     if rgb.ndim != 3 or rgb.shape[2] != 3:
         raise ValueError("El payload para preview debe tener forma HxWx3 RGB")
@@ -102,4 +105,14 @@ def draw_detections_rgb(
     rgb_uint8 = np.clip(rgb, 0, 255).astype(np.uint8)
     image_bgr = cv2.cvtColor(rgb_uint8, cv2.COLOR_RGB2BGR)
     _draw_annotations(image_bgr, detections)
+    return image_bgr
+
+
+def draw_detections_rgb(
+    image_rgb: np.ndarray,
+    detections: list[Detection | RawDetection],
+    output_path: str | Path,
+) -> None:
+    """Anota y guarda un payload RGB uint8 o de punto flotante normalizado."""
+    image_bgr = annotate_payload_bgr(image_rgb, detections)
     _write_preview(image_bgr, output_path)

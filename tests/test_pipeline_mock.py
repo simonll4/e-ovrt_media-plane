@@ -61,6 +61,31 @@ class TestPipelineMock:
         assert run_dir.exists()
         assert run_dir.is_dir()
 
+    def test_annotated_video_created_when_enabled(self, mock_config):
+        """Con save_annotated_video=True se genera annotated.mp4 con todos los frames."""
+        mock_config.outputs.save_annotated_video = True
+        run_id = run_pipeline(mock_config)
+        run_dir = Path(mock_config.output.base_dir) / run_id
+
+        video_path = run_dir / "annotated.mp4"
+        assert video_path.exists() and video_path.stat().st_size > 0
+
+        cap = cv2.VideoCapture(str(video_path))
+        frames = 0
+        while True:
+            ok, _ = cap.read()
+            if not ok:
+                break
+            frames += 1
+        cap.release()
+        assert frames == 3  # una por imagen, sin tope de preview_max
+
+    def test_no_annotated_video_by_default(self, mock_config):
+        """Sin el flag no se genera annotated.mp4 (comportamiento por defecto)."""
+        run_id = run_pipeline(mock_config)
+        run_dir = Path(mock_config.output.base_dir) / run_id
+        assert not (run_dir / "annotated.mp4").exists()
+
     def test_creates_detections_jsonl(self, mock_config):
         """Se genera detections.jsonl con eventos válidos."""
         run_id = run_pipeline(mock_config)

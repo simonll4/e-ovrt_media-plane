@@ -285,6 +285,8 @@ class OutputsConfig(BaseModel):
     save_errors_jsonl: bool = True
     save_previews: bool = True
     preview_max: int = 20
+    save_annotated_video: bool = False
+    video_fps: float | None = None
 
     @model_validator(mode="before")
     @classmethod

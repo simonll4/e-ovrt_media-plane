@@ -19,7 +19,6 @@ from eovrt_media.contracts import (
     RunDescriptor,
     RunSummary,
 )
-from eovrt_media.debugging.events import DebugEventWriter
 from eovrt_media.sinks.jsonl_sink import JSONLSink, SummarySink
 
 if TYPE_CHECKING:
@@ -61,6 +60,10 @@ class RunArtifactWriter:
         self.context = run_context
         self.run_dir = run_context.run_dir
         self.run_dir.mkdir(parents=True, exist_ok=True)
+
+        # Import perezoso: evita un ciclo sinks -> debugging -> runtime -> pipeline -> sinks
+        # al cargar el paquete sinks (debugging/__init__ arrastra runtime).
+        from eovrt_media.debugging.events import DebugEventWriter
 
         self.detections_sink = None
         self.metrics_sink = None

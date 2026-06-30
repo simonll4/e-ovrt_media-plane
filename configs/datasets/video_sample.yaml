@@ -6,4 +6,4 @@ split: sample
 vocabulary: [person, helmet, vest]
 kind: pulleable
 type: video_file
-path: data/samples/videos/sample.mp4
+path: data/samples/videos/recorte-1.mp4
