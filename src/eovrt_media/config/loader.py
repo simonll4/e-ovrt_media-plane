@@ -1,19 +1,23 @@
 """Carga y validación de configuración del plano de medios.
 
-Las run configs pueden componer secciones por referencia a los catálogos
-bajo ``configs/``:
+Las run configs componen secciones por referencia, resueltas contra DOS raíces
+(ver ``find_plane_catalog_root`` / ``find_experiment_root`` y el spec
+2026-06-27-experimental-setup-config-design §5):
 
-- ``model.ref: <familia>/<variante>`` → ``configs/models/<...>.yaml``
-- ``source.ref: <nombre>``           → ``configs/datasets/<nombre>.yaml``
-- ``prompts.ref: <nombre>``          → ``configs/prompts/<nombre>.yaml``
+- ``model.ref: <familia>/<variante>`` → ``<catálogo-plano>/models/<...>.yaml``
+- ``source.ref: <nombre>``           → ``<catálogo-plano>/datasets/<nombre>.yaml``
+- ``prompts.ref: <nombre>``          → ``<raíz-experimento>/prompts/<nombre>.yaml``
+  (con fallback al catálogo del plano para configs co-ubicados/generados)
 
-Los campos declarados inline en la run config pisan los del catálogo, de modo
-que un experimento solo necesita expresar lo que cambia respecto del default.
-El formato inline completo (sin refs) sigue siendo válido.
+El catálogo del plano se autodescubre repo-relative (override ``--catalog-root`` /
+``EOVRT_MEDIA_CATALOG_ROOT``); la raíz del experimento es el dir que contiene
+``prompts/`` (p.ej. el repo ``e-ovrt_experimental-setup``). Los campos inline pisan
+los del catálogo; el formato inline completo (sin refs) sigue siendo válido.
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -147,20 +151,45 @@ def load_prompts_file(path: Path) -> PromptsFile:
     return PromptsFile(**raw)
 
 
-def find_configs_root(config_path: Path) -> Path:
-    """Determina el directorio raíz de catálogos (``configs/``) para un config.
+def find_plane_catalog_root(
+    config_path: Path | None = None, override: str | Path | None = None
+) -> Path:
+    """Raíz del catálogo de capacidades del media-plane (``configs/``).
 
-    Busca un ancestro llamado ``configs``; si el config vive fuera del árbol
-    de configs (p. ej. en tests), usa ``configs/`` junto al archivo o al CWD.
+    Orden de resolución:
+    1. ``override`` explícito (flag CLI ``--catalog-root``).
+    2. variable de entorno ``EOVRT_MEDIA_CATALOG_ROOT``.
+    3. un ancestro ``configs`` del propio ``config_path`` (configs co-ubicados:
+       los del repo y los árboles temporales de tests).
+    4. el ``configs/`` del repo media-plane, relativo al paquete instalado
+       (caso del manifiesto externo en ``e-ovrt_experimental-setup``).
     """
-    resolved = Path(config_path).resolve()
-    for parent in resolved.parents:
-        if parent.name == "configs":
+    if override is not None:
+        return Path(override).resolve()
+    env = os.environ.get("EOVRT_MEDIA_CATALOG_ROOT")
+    if env:
+        return Path(env).resolve()
+    if config_path is not None:
+        resolved = Path(config_path).resolve()
+        for parent in resolved.parents:
+            if parent.name == "configs":
+                return parent
+    # src/eovrt_media/config/loader.py → parents[3] == raíz del repo
+    return Path(__file__).resolve().parents[3] / "configs"
+
+
+def find_experiment_root(manifest_path: Path) -> Path:
+    """Raíz del repo de experimentos: ancestro que contiene ``prompts/``.
+
+    Para manifiestos co-ubicados con ``configs/prompts/`` devuelve ese ``configs``;
+    para manifiestos en ``e-ovrt_experimental-setup`` devuelve la raíz del repo.
+    Si no hay ``prompts/`` en ningún ancestro, cae al directorio del manifiesto.
+    """
+    resolved = Path(manifest_path).resolve()
+    for parent in [resolved.parent, *resolved.parents]:
+        if (parent / "prompts").is_dir():
             return parent
-    sibling = resolved.parent / "configs"
-    if sibling.is_dir():
-        return sibling
-    return Path.cwd() / "configs"
+    return resolved.parent
 
 
 def _load_catalog_entry(configs_root: Path, catalog: str, ref: str) -> dict[str, Any]:
@@ -197,8 +226,15 @@ def _resolve_section_ref(
     raw[section] = {**base, **overrides, "ref": ref}
 
 
-def load_run_config(config_path: Path) -> RunConfig:
-    """Carga una configuración de corrida completa, incluyendo el archivo de prompts."""
+def load_run_config(
+    config_path: Path, catalog_root: str | Path | None = None
+) -> RunConfig:
+    """Carga una configuración de corrida completa, incluyendo el archivo de prompts.
+
+    Resuelve referencias contra dos raíces: ``model``/``source`` contra el
+    catálogo del plano (``find_plane_catalog_root``) y ``prompts`` contra la raíz
+    del experimento (``find_experiment_root``, donde vive el manifiesto).
+    """
     config_path = Path(config_path)
     if not config_path.exists():
         raise FileNotFoundError(f"Archivo de configuración no encontrado: {config_path}")
@@ -210,15 +246,22 @@ def load_run_config(config_path: Path) -> RunConfig:
     if "sampling" in raw:
         _raise_sampling_migration_error()
 
-    configs_root = find_configs_root(config_path)
-    _resolve_section_ref(raw, "model", "models", configs_root)
-    _resolve_section_ref(raw, "source", "datasets", configs_root)
+    plane_root = find_plane_catalog_root(config_path, catalog_root)
+    experiment_root = find_experiment_root(config_path)
+    _resolve_section_ref(raw, "model", "models", plane_root)
+    _resolve_section_ref(raw, "source", "datasets", plane_root)
     _derive_defaults(raw)
 
-    # prompts.ref → ruta dentro del catálogo de prompts (file explícito gana)
+    # prompts.ref → ``prompts/<ref>.yaml`` en la raíz del experimento; si ahí no
+    # existe (configs co-ubicados/generados del plano), cae al catálogo del plano.
+    # ``file`` explícito gana sobre ``ref``.
     prompts_data = raw.get("prompts")
     if isinstance(prompts_data, dict) and prompts_data.get("ref") and not prompts_data.get("file"):
-        prompts_data["file"] = str(configs_root / "prompts" / f"{prompts_data['ref']}.yaml")
+        ref = prompts_data["ref"]
+        candidate = experiment_root / "prompts" / f"{ref}.yaml"
+        if not candidate.exists():
+            candidate = plane_root / "prompts" / f"{ref}.yaml"
+        prompts_data["file"] = str(candidate)
 
     config = RunConfig(**raw)
     config.config_path = config_path

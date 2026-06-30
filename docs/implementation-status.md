@@ -138,7 +138,7 @@ completó el stack local con 114 unidades procesadas, 0 fallidas, 193 deteccione
 El despliegue distribuido debe permitir TCP/5555 (datos) y TCP/5556 (heartbeat) desde Nodo B hacia
 Nodo A.
 
-La corrida `configs/runs/mock.yaml` usa el catálogo `demo_v2` (CHV demo v2, repo hermano
+La corrida `../e-ovrt_experimental-setup/experiments/mock.yaml` usa el catálogo `demo_v2` (CHV demo v2, repo hermano
 `../e-ovrt_datasets`). Requiere que el repo hermano esté presente en disco como sibling.
 Para validación aislada sin el repo hermano, las pruebas de integración generan imágenes
 temporales y ejercitan el flujo completo sin pesos reales (`make test`).
@@ -150,4 +150,4 @@ eovrt-media evaluate --run runs/<run_id>
 ```
 
 Persiste `runs/<run_id>/eval_perception.json` con AP@0.5 por clase y CR-01 recall.
-Los experimentos de evaluación viven en `configs/runs/experiments/bench_v2/`.
+Los experimentos de evaluación viven en `../e-ovrt_experimental-setup/experiments/bench_v2/`.

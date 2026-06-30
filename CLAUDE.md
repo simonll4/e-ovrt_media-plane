@@ -12,14 +12,15 @@ pip install -e ".[dev]"
 # Models
 make download-models                            # fetches GDINO tiny+base, MM-GDINO t/b/l, YOLOE-26 s/m/l/x
 
-# Run
+# Run — los manifiestos de corrida viven en el repo hermano e-ovrt_experimental-setup;
+# correr SIEMPRE desde la raíz del media-plane (los catálogos de datasets usan ../e-ovrt_datasets).
 make run-gdino                                  # Grounding DINO sample run
 make run-yoloe                                  # YOLOE sample run
-eovrt-media run --config configs/runs/<file>.yaml   # direct CLI
+eovrt-media run --config ../e-ovrt_experimental-setup/experiments/<file>.yaml   # direct CLI
 
 # Two-node topology (EBE distributed)
-eovrt-media run-producer --config configs/runs/<file>.yaml  # Nodo A: ingesta + normalización + ZeroMQ REP
-eovrt-media run-consumer --config configs/runs/<file>.yaml  # Nodo B: inferencia + artefactos + ZeroMQ REQ
+eovrt-media run-producer --config ../e-ovrt_experimental-setup/experiments/<file>.yaml  # Nodo A
+eovrt-media run-consumer --config ../e-ovrt_experimental-setup/experiments/<file>.yaml  # Nodo B
 
 # CLI utilities
 eovrt-media validate-config --config <yaml>
@@ -39,7 +40,7 @@ make lint                                       # ruff check src tests
 
 Python pipeline for open-vocabulary object detection (OVD). All behavior is config-driven via YAML; no hardcoded paths or thresholds.
 
-**Config catalogs**: run configs in `configs/runs/` compose catalog entries by reference — `model.ref` → `configs/models/<family>/<variant>.yaml`, `source.ref` → `configs/datasets/<name>.yaml`, `prompts.ref` → `configs/prompts/<name>.yaml`. Inline fields in the run config override catalog values; ref resolution lives in `config/loader.py`. Weights live in `models/<family>/{original,finetuned/<tag>}/`, one catalog entry per weight. See `configs/README.md`.
+**Config catalogs (dos raíces)**: los **manifiestos de corrida** y los **prompt sets** viven en el repo hermano `e-ovrt_experimental-setup` (`experiments/` y `prompts/`). El media-plane conserva los **catálogos de capacidades** `configs/models/` y `configs/datasets/`. Un manifiesto compone por referencia: `model.ref`/`source.ref` → catálogo del plano (autodescubierto repo-relative; override `--catalog-root`/`EOVRT_MEDIA_CATALOG_ROOT`); `prompts.ref` → `experimental-setup/prompts/<name>.yaml` (raíz del experimento, descubierta subiendo hasta el dir con `prompts/`). Inline fields override catalog values; resolución en `config/loader.py` (`find_plane_catalog_root` + `find_experiment_root`). Los tests usan `tests/fixtures/{runs,prompts}/`. Schemas/PromptPlan/adaptadores y el binding por construcción siguen en el media-plane. Ver `docs/superpowers/specs/2026-06-27-experimental-setup-config-design.md`.
 
 **Execution path (single-host)**: `cli.py` → `runtime/pipeline.py:run_pipeline()` → producer thread (read → rate-gate → normalize) + consumer thread (inference → postprocess → write), coupled via `MemoryTransportAdapter`.
 

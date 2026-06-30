@@ -12,7 +12,12 @@ from eovrt_media.contracts.normalized_unit import (
     ResizeTransform,
 )
 import eovrt_media.models.grounding_dino_adapter as gdino_module
+from eovrt_media.config.prompt_plan import PromptPlan
 from eovrt_media.models.grounding_dino_adapter import GroundingDinoHFAdapter
+
+
+def _gdino_plan():
+    return PromptPlan.from_texts(["person"], "gdino")
 
 
 def test_gdino_predict_accepts_numpy():
@@ -21,7 +26,7 @@ def test_gdino_predict_accepts_numpy():
     adapter.processor = MagicMock(side_effect=RuntimeError("reached processor"))
     adapter.model = MagicMock()
     with pytest.raises(RuntimeError, match="reached processor"):
-        adapter.predict(np.zeros((8, 8, 3), dtype=np.uint8), ["person"])
+        adapter.predict(np.zeros((8, 8, 3), dtype=np.uint8), _gdino_plan())
 
 
 def test_gdino_load_resolves_cuda_to_cpu_without_gpu(monkeypatch):
@@ -84,5 +89,5 @@ def test_gdino_forward_uses_shared_tensor_without_pil_conversion(monkeypatch):
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("PIL is not allowed")),
     )
 
-    assert adapter.forward(_float16_unit(), ["person"]) == []
+    assert adapter.forward(_float16_unit(), _gdino_plan()) == []
     assert adapter.model.call_args.kwargs["pixel_values"] is sentinel

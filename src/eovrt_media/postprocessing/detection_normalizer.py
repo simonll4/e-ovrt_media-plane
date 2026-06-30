@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from eovrt_media.contracts import Detection, RawDetection
-from eovrt_media.config import PromptItem
 
 if TYPE_CHECKING:
     from eovrt_media.contracts.normalized_unit import ResizeTransform
@@ -14,8 +13,9 @@ if TYPE_CHECKING:
 class DetectionNormalizer:
     """Clase encargada de normalizar y filtrar detecciones crudas.
 
-    Aplica filtros de confianza y área, calcula coordenadas normalizadas
-    y mapea las etiquetas del modelo a los identificadores de prompts.
+    Aplica filtros de confianza y área y calcula coordenadas normalizadas.
+    El binding a la clase canónica (``label``/``prompt_id``) lo hace el
+    adaptador por construcción; aquí solo se confía en él.
     """
 
     def __init__(
@@ -34,7 +34,6 @@ class DetectionNormalizer:
         width: int,
         height: int,
         model_name: str,
-        prompt_items: list[PromptItem] | None = None,
         transform: ResizeTransform | None = None,
     ) -> list[Detection]:
         """Normaliza una lista de detecciones crudas (RawDetection).
@@ -42,11 +41,10 @@ class DetectionNormalizer:
         Filtra las detecciones con confianza baja o área pequeña.
 
         Args:
-            raw_detections: Lista de detecciones crudas del adaptador.
+            raw_detections: Lista de detecciones crudas del adaptador (ya ligadas).
             width: Ancho de la unidad visual en píxeles (espacio original).
             height: Alto de la unidad visual en píxeles (espacio original).
             model_name: Nombre del modelo/adaptador.
-            prompt_items: Lista de PromptItem para resolver prompt_id.
             transform: Si se proporciona, reproyecta las cajas del espacio-modelo
                 al espacio original antes de calcular coordenadas normalizadas.
 
@@ -84,17 +82,6 @@ class DetectionNormalizer:
             else:
                 bbox_norm = [0.0, 0.0, 0.0, 0.0]
 
-            # 5. Mapear etiqueta a prompt_id
-            prompt_id = raw.prompt_id
-            label_lower = raw.label.lower().strip()
-            
-            if not prompt_id and prompt_items:
-                for item in prompt_items:
-                    candidates = [item.text.lower()] + [alias.lower() for alias in item.aliases]
-                    if label_lower in candidates:
-                        prompt_id = item.id
-                        break
-
             # Generar ID único para la detección en este frame
             det_id = f"det_{idx + 1:06d}"
 
@@ -102,7 +89,10 @@ class DetectionNormalizer:
                 Detection(
                     detection_id=det_id,
                     label=raw.label,
-                    prompt_id=prompt_id,
+                    prompt_id=raw.prompt_id,
+                    source_prompt=raw.source_prompt,
+                    strategy=raw.strategy,
+                    condition_id=raw.condition_id,
                     confidence=round(raw.score, 4),
                     bbox_xyxy=[round(c, 1) for c in box_xyxy],
                     bbox_norm_xyxy=bbox_norm,

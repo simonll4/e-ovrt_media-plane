@@ -13,7 +13,7 @@ from eovrt_media.models.mock_detector import MockDetectorAdapter
 from eovrt_media.runtime import run_pipeline
 
 
-CONFIGS_DIR = Path(__file__).parent.parent / "configs"
+CONFIGS_DIR = Path(__file__).parent / "fixtures"
 
 
 def _create_test_images(folder: Path, count: int = 3) -> None:
@@ -212,8 +212,15 @@ class TestPipelineMock:
         for i in range(3):
             cv2.imwrite(str(images_dir / f"img_{i:03d}.jpg"), np.zeros((100, 200, 3), np.uint8))
 
-        def fixed_forward(self, unit, prompts):
-            return [RawDetection(label=prompts[0], score=0.9, box_xyxy=[200.0, 320.0, 400.0, 440.0])]
+        def fixed_forward(self, unit, plan):
+            phrase = plan.by_index()[0]
+            return [
+                RawDetection(
+                    label=phrase.canonical, prompt_id=phrase.prompt_id,
+                    source_prompt=phrase.text, score=0.9,
+                    box_xyxy=[200.0, 320.0, 400.0, 440.0],
+                )
+            ]
 
         monkeypatch.setattr(MockDetectorAdapter, "forward", fixed_forward)
 

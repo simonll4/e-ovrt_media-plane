@@ -142,8 +142,7 @@ def run_consumer_loop(
     run_context,
     tracker,
     config,
-    prompt_texts,
-    prompt_items,
+    plan,
     prompt_set_id,
     timings: dict[str, float],
     progress=None,
@@ -167,7 +166,7 @@ def run_consumer_loop(
         timer.record_normalize_ms(timings.get(item.unit_id, 0.0))
         timer.start_inference()
         try:
-            raw_detections = adapter.forward(item, prompt_texts)
+            raw_detections = adapter.forward(item, plan)
         except Exception as exc:
             timer.end_inference()
             tracker.finish_unit(timer, error=str(exc))
@@ -212,7 +211,6 @@ def run_consumer_loop(
                 width=item.orig_width,
                 height=item.orig_height,
                 model_name=config.model.name or config.model.adapter or "unknown",
-                prompt_items=prompt_items,
                 transform=item.transform,
             )
         except Exception as exc:
@@ -329,16 +327,16 @@ def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
         except TypeError:
             source_count = -1
             progress_total = None
-        prompt_texts = config.get_prompt_texts()
-        prompt_items = config.get_prompt_items()
-        prompt_set_id = config.prompts_file.resolved_version if config.prompts_file else "unknown"
-
         normalizer = DetectionNormalizer(
             min_confidence=config.postprocess.min_confidence,
             min_box_area_px=config.postprocess.min_box_area_px,
             normalize_boxes=config.postprocess.normalize_boxes,
         )
         adapter = create_adapter(config.model)
+        plan = config.build_prompt_plan(adapter.PROMPT_BACKEND)
+        prompt_set_id = (
+            config.prompts_file.resolved_set_id() if config.prompts_file else "unknown"
+        )
         reset_gpu_peak_memory()
         with console.status("[bold cyan]Cargando modelo..."):
             adapter.load()
@@ -387,8 +385,7 @@ def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
                     run_context=run_context,
                     tracker=tracker,
                     config=config,
-                    prompt_texts=prompt_texts,
-                    prompt_items=prompt_items,
+                    plan=plan,
                     prompt_set_id=prompt_set_id,
                     timings=timings,
                     progress=progress,

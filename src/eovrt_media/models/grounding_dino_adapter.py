@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from eovrt_media.config.prompt_plan import PromptPlan
 from eovrt_media.contracts.detection import RawDetection
 from eovrt_media.contracts.normalized_unit import NormalizedUnit
 from eovrt_media.models.base import BaseDetectorAdapter, ModelInputSpec
@@ -19,33 +20,13 @@ from eovrt_media.preprocessing import prepare_model_input
 logger = logging.getLogger(__name__)
 
 
-def _normalize_label(detected: str, prompts: list[str]) -> str:
-    """Mapea un span parcial de GDINO al prompt original más cercano.
-
-    GDINO hace matching de sub-spans del texto de entrada, por lo que puede
-    devolver "visibility safety" en lugar del prompt completo "high visibility
-    safety vest". Esta función busca el prompt cuyas palabras tienen mayor
-    solapamiento con el span detectado.
-    """
-    detected_lower = detected.lower()
-    for p in prompts:
-        if p.lower() == detected_lower:
-            return p
-    for p in prompts:
-        if detected_lower in p.lower():
-            return p
-    for p in prompts:
-        if p.lower() in detected_lower:
-            return p
-    detected_words = set(detected_lower.split())
-    return max(prompts, key=lambda p: len(detected_words & set(p.lower().split())))
-
-
 class GroundingDinoHFAdapter(BaseDetectorAdapter):
     """Adaptador para Grounding DINO via Hugging Face Transformers.
 
     Usa AutoProcessor + AutoModelForZeroShotObjectDetection.
     """
+
+    PROMPT_BACKEND = "gdino"
 
     def __init__(
         self,
@@ -81,19 +62,19 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
 
         if self.warmup:
             dummy = Image.fromarray(make_warmup_image(self.input_spec.target_size))
-            self.predict(dummy, ["object"])
+            self.predict(dummy, PromptPlan.from_texts(["object"], "gdino"))
 
         logger.info("Grounding DINO cargado correctamente.")
 
-    def predict(self, image: Image.Image | Path, prompts: list[str]) -> list[RawDetection]:
+    def predict(self, image: Image.Image | Path, plan: PromptPlan) -> list[RawDetection]:
         """Ejecuta inferencia con Grounding DINO.
 
         Args:
             image: Imagen PIL o ruta a archivo.
-            prompts: Lista de textos de prompts (e.g., ["person", "safety helmet"]).
+            plan: PromptPlan resuelto; el caption se arma con ``plan.texts()``.
 
         Returns:
-            Lista de RawDetection con bounding boxes en píxeles.
+            Lista de RawDetection ligadas al plan, con boxes en píxeles.
         """
         if self.model is None or self.processor is None:
             raise RuntimeError("Modelo no cargado. Llamar load() primero.")
@@ -104,14 +85,14 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
         elif not isinstance(image, (Image.Image, np.ndarray)):
             raise TypeError(f"Tipo de imagen no soportado: {type(image)}")
 
-        # Construir texto para Grounding DINO: "prompt1. prompt2. prompt3."
-        text = ". ".join(prompts) + "."
+        # Construir caption para Grounding DINO: "prompt1. prompt2. prompt3."
+        text = ". ".join(plan.texts()) + "."
 
         inputs = self.processor(images=image, text=text, return_tensors="pt").to(self.device)
 
         return self._run_inference(
             inputs,
-            prompts,
+            plan,
             target_size=(
                 image.shape[:2]
                 if isinstance(image, np.ndarray)
@@ -122,7 +103,7 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
     def _run_inference(
         self,
         inputs,
-        prompts: list[str],
+        plan: PromptPlan,
         target_size: tuple[int, int],
     ) -> list[RawDetection]:
         """Ejecuta y decodifica una entrada ya preparada para Grounding DINO."""
@@ -137,7 +118,11 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
             outputs = self.model(**inputs)
 
         with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
+            # simplefilter por categoría (no por módulo): el FutureWarning de
+            # post_process ('labels' deprecated → usamos text_labels) se atribuye
+            # de forma inconsistente al módulo, así que el filtro con module= no lo
+            # atrapaba y spameaba el log. La categoría sí lo suprime de forma fiable.
+            warnings.simplefilter("ignore", FutureWarning)
             results = self.processor.post_process_grounded_object_detection(
                 outputs,
                 inputs.input_ids,
@@ -149,32 +134,66 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
         detections = []
         boxes = results["boxes"].cpu().tolist()
         scores = results["scores"].cpu().tolist()
-        # text_labels is the stable key (labels will return int ids in transformers >=4.51)
-        raw_labels = results.get("text_labels", results.get("labels", []))
+        # 'text_labels' es la clave estable. Acceder a 'labels' (deprecada) dispara
+        # un FutureWarning por frame, y como es el default de .get() Python lo evalúa
+        # SIEMPRE de forma eager (incluso con text_labels presente) → spam de logs.
+        # Solo se consulta 'labels' como fallback real cuando falta text_labels.
+        if "text_labels" in results:
+            raw_labels = results["text_labels"]
+        else:
+            raw_labels = results.get("labels", [])
         if hasattr(raw_labels, "tolist"):
             raw_labels = raw_labels.tolist()
 
+        by_text = plan.by_text()
+        texts = plan.texts()
         for box, score, label in zip(boxes, scores, raw_labels):
-            normalized = _normalize_label(str(label).strip(), prompts)
-            detections.append(
-                RawDetection(
-                    label=normalized,
-                    score=float(score),
-                    box_xyxy=[float(c) for c in box],
-                )
+            det = self._bind_span(
+                str(label).strip(), float(score), [float(c) for c in box], by_text, texts
             )
+            if det is not None:
+                detections.append(det)
 
         return detections
 
-    def forward(self, unit: NormalizedUnit, prompts: list[str]) -> list[RawDetection]:
+    def _bind_span(self, detected, score, box, by_text, texts):
+        """Resuelve un span de GDINO contra el plan; None si no matchea (se descarta)."""
+        phrase = by_text.get(detected)
+        if phrase is None:
+            dl = detected.lower()
+            match = (
+                next((t for t in texts if t.lower() == dl), None)
+                or next((t for t in texts if dl in t.lower()), None)
+                or next((t for t in texts if t.lower() in dl), None)
+            )
+            if match is None and texts:
+                dw = set(dl.split())
+                best = max(texts, key=lambda t: len(dw & set(t.lower().split())))
+                if dw & set(best.lower().split()):
+                    match = best
+            phrase = by_text.get(match) if match else None
+        if phrase is None:
+            logger.warning("GDINO span '%s' no resuelto contra el plan; descartado.", detected)
+            return None
+        return RawDetection(
+            label=phrase.canonical,
+            prompt_id=phrase.prompt_id,
+            source_prompt=phrase.text,
+            strategy=phrase.strategy,
+            condition_id=phrase.condition_id,
+            score=score,
+            box_xyxy=box,
+        )
+
+    def forward(self, unit: NormalizedUnit, plan: PromptPlan) -> list[RawDetection]:
         """Ejecuta la inferencia desde el payload normalizado del canal."""
         if self.model is None or self.processor is None:
             raise RuntimeError("Modelo no cargado. Llamar load() primero.")
 
-        text = ". ".join(prompts) + "."
+        text = ". ".join(plan.texts()) + "."
         inputs = self.processor(text=text, return_tensors="pt").to(self.device)
         inputs["pixel_values"] = prepare_model_input(unit, self.input_spec, self.device)
-        return self._run_inference(inputs, prompts, unit.payload.shape[:2])
+        return self._run_inference(inputs, plan, unit.payload.shape[:2])
 
     @property
     def input_spec(self) -> ModelInputSpec:

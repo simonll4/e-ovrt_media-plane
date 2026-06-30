@@ -20,7 +20,7 @@ from eovrt_media.sources.base import BaseSource
 from eovrt_media.transport import RateGate
 
 
-CONFIGS_DIR = Path(__file__).parent.parent / "configs"
+CONFIGS_DIR = Path(__file__).parent / "fixtures"
 
 
 def _create_test_images(folder: Path, count: int = 5) -> None:

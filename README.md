@@ -43,12 +43,13 @@ make run-gdino
 # Con YOLOE-26s (requiere modelos descargados)
 make run-yoloe
 
-# Con CLI directamente
-eovrt-media run --config configs/runs/gdino.yaml
+# Con CLI directamente (manifiestos en el repo hermano e-ovrt_experimental-setup;
+# correr desde la raíz del media-plane)
+eovrt-media run --config ../e-ovrt_experimental-setup/experiments/gdino.yaml
 
 # Topología dos nodos (Nodo A ingesta, Nodo B inferencia)
-eovrt-media run-producer --config configs/runs/<archivo>.yaml
-eovrt-media run-consumer --config configs/runs/<archivo>.yaml
+eovrt-media run-producer --config ../e-ovrt_experimental-setup/experiments/<archivo>.yaml
+eovrt-media run-consumer --config ../e-ovrt_experimental-setup/experiments/<archivo>.yaml
 ```
 
 Los sample runs (`mock`, `gdino`, `yoloe`) apuntan al dataset CHV demo v2 del

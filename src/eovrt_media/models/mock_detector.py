@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import random
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PIL import Image
 
 from eovrt_media.contracts.detection import RawDetection
 from eovrt_media.contracts.normalized_unit import NormalizedUnit
 from eovrt_media.models.base import BaseDetectorAdapter, ModelInputSpec
+
+if TYPE_CHECKING:
+    from eovrt_media.config.prompt_plan import PromptPhrase, PromptPlan
 
 
 class MockDetectorAdapter(BaseDetectorAdapter):
@@ -22,54 +26,46 @@ class MockDetectorAdapter(BaseDetectorAdapter):
     def load(self) -> None:
         """No necesita cargar nada."""
 
-    def predict(self, image: Image.Image | Path, prompts: list[str]) -> list[RawDetection]:
-        """Genera detecciones aleatorias para cada prompt."""
-        # Obtener dimensiones
+    def _bind(self, phrase: PromptPhrase, box: list[float]) -> RawDetection:
+        """Construye una RawDetection ligada a la frase del plan."""
+        return RawDetection(
+            label=phrase.canonical,
+            prompt_id=phrase.prompt_id,
+            source_prompt=phrase.text,
+            strategy=phrase.strategy,
+            condition_id=phrase.condition_id,
+            score=self._rng.uniform(0.3, 0.99),
+            box_xyxy=box,
+        )
+
+    def predict(self, image: Image.Image | Path, plan: PromptPlan) -> list[RawDetection]:
+        """Genera detecciones aleatorias para cada frase del plan."""
         if isinstance(image, Path):
-            img = Image.open(image)
-            width, height = img.size
+            width, height = Image.open(image).size
         else:
             width, height = image.size
 
         detections = []
-        for prompt in prompts:
-            # Generar entre 0 y 3 detecciones por prompt
-            n_detections = self._rng.randint(0, 3)
-            for _ in range(n_detections):
-                # Generar bounding box aleatorio válido
+        for phrase in plan.by_index():
+            for _ in range(self._rng.randint(0, 3)):
                 x1 = self._rng.uniform(0, width * 0.7)
                 y1 = self._rng.uniform(0, height * 0.7)
                 x2 = self._rng.uniform(x1 + 20, min(x1 + width * 0.4, width))
                 y2 = self._rng.uniform(y1 + 20, min(y1 + height * 0.4, height))
-
-                detections.append(
-                    RawDetection(
-                        label=prompt,
-                        score=self._rng.uniform(0.3, 0.99),
-                        box_xyxy=[x1, y1, x2, y2],
-                    )
-                )
-
+                detections.append(self._bind(phrase, [x1, y1, x2, y2]))
         return detections
 
-    def forward(self, unit: NormalizedUnit, prompts: list[str]) -> list[RawDetection]:
+    def forward(self, unit: NormalizedUnit, plan: PromptPlan) -> list[RawDetection]:
         """Genera detecciones en el espacio ``target_size`` normalizado."""
         target_h, target_w = unit.target_size
         detections = []
-        for prompt in prompts:
-            n_detections = self._rng.randint(0, 3)
-            for _ in range(n_detections):
+        for phrase in plan.by_index():
+            for _ in range(self._rng.randint(0, 3)):
                 x1 = self._rng.uniform(0, target_w * 0.7)
                 y1 = self._rng.uniform(0, target_h * 0.7)
                 x2 = self._rng.uniform(x1 + 20, min(x1 + target_w * 0.4, target_w))
                 y2 = self._rng.uniform(y1 + 20, min(y1 + target_h * 0.4, target_h))
-                detections.append(
-                    RawDetection(
-                        label=prompt,
-                        score=self._rng.uniform(0.3, 0.99),
-                        box_xyxy=[x1, y1, x2, y2],
-                    )
-                )
+                detections.append(self._bind(phrase, [x1, y1, x2, y2]))
         return detections
 
     @property

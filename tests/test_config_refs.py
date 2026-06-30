@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from eovrt_media.config import load_run_config
+from eovrt_media.config.loader import find_experiment_root, find_plane_catalog_root
 
 
 def _write(path: Path, content: str) -> None:
@@ -44,11 +45,11 @@ def configs_root(tmp_path: Path) -> Path:
         """
         prompt_set:
           id: epp_v1
-          items:
+          classes:
             - id: person
-              text: "person"
+              phrasings: { default: ["person"] }
             - id: helmet
-              text: "helmet"
+              phrasings: { default: ["helmet"] }
         """,
     )
     return configs
@@ -101,7 +102,7 @@ class TestRefResolution:
     def test_prompts_ref_resolves_prompt_set(self, configs_root: Path):
         config = load_run_config(_write_run_config(configs_root, BASE_RUN))
         assert config.prompts_file is not None
-        assert config.get_prompt_texts() == ["person", "helmet"]
+        assert config.build_prompt_plan("default").texts() == ["person", "helmet"]
 
     def test_unknown_model_ref_raises(self, configs_root: Path):
         body = BASE_RUN.replace("yoloe/yoloe-26s", "yoloe/nonexistent")
@@ -128,4 +129,33 @@ class TestRefResolution:
         run_path = _write_run_config(configs_root, body)
         config = load_run_config(run_path)
         assert config.model.adapter == "mock"
-        assert config.get_prompt_texts() == ["person", "helmet"]
+        assert config.build_prompt_plan("default").texts() == ["person", "helmet"]
+
+
+class TestTwoRootResolution:
+    def test_plane_catalog_root_repo_relative(self):
+        root = find_plane_catalog_root()
+        assert root.name == "configs"
+        assert (root / "models").is_dir()
+
+    def test_plane_catalog_root_env_override(self, monkeypatch, tmp_path):
+        (tmp_path / "models").mkdir()
+        monkeypatch.setenv("EOVRT_MEDIA_CATALOG_ROOT", str(tmp_path))
+        assert find_plane_catalog_root() == tmp_path.resolve()
+
+    def test_plane_catalog_root_override_arg_wins(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("EOVRT_MEDIA_CATALOG_ROOT", "/should/not/use")
+        assert find_plane_catalog_root(override=tmp_path) == tmp_path.resolve()
+
+    def test_plane_catalog_root_walks_up_to_configs(self, tmp_path):
+        manifest = tmp_path / "configs" / "runs" / "run.yaml"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text("x: 1")
+        assert find_plane_catalog_root(manifest) == (tmp_path / "configs").resolve()
+
+    def test_experiment_root_finds_prompts_dir(self, tmp_path):
+        (tmp_path / "prompts").mkdir()
+        (tmp_path / "experiments" / "g").mkdir(parents=True)
+        manifest = tmp_path / "experiments" / "g" / "m.yaml"
+        manifest.write_text("x: 1")
+        assert find_experiment_root(manifest) == tmp_path.resolve()

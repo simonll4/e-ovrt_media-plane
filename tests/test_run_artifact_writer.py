@@ -13,7 +13,7 @@ from eovrt_media.config import load_run_config
 from eovrt_media.runtime import run_pipeline
 
 
-CONFIGS_DIR = Path(__file__).parent.parent / "configs"
+CONFIGS_DIR = Path(__file__).parent / "fixtures"
 
 
 def _create_test_images(folder: Path, count: int = 3) -> None:

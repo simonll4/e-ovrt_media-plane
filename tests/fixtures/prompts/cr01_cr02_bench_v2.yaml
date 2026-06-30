@@ -7,23 +7,16 @@ prompt_set:
     y el protocolo experimental v2 (2026-06-18).
     NO modificar — congelado para reproducibilidad del BENCH.
   language: en
-  items:
+  classes:
     - id: person
-      text: "person"
       role: entity
-      enabled_by_default: true
-
+      phrasings: { default: ["person"] }
     - id: helmet
-      text: "helmet"
       role: ppe
-      enabled_by_default: true
-
+      phrasings: { default: ["helmet"] }
     - id: vest
-      text: "vest"
       role: ppe
-      enabled_by_default: true
-
+      phrasings: { default: ["vest"] }
     - id: bare_head
-      text: "bare head"
       role: visual_risk_indicator
-      enabled_by_default: true
+      phrasings: { default: ["bare head"] }

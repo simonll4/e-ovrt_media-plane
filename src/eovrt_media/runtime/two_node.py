@@ -16,6 +16,27 @@ from eovrt_media.sinks import RunArtifactWriter
 from eovrt_media.transport import RateGate, create_transport
 
 
+def _wait_for_consumer_end(
+    transport,
+    *,
+    heartbeat_timeout_ms: int,
+    poll_interval_s: float | None = None,
+) -> None:
+    """Wait until Nodo B consumes END, as long as its heartbeat remains alive."""
+    wait_timeout_s = (
+        poll_interval_s if poll_interval_s is not None else heartbeat_timeout_ms / 1000.0
+    )
+    while True:
+        if transport.wait_for_consumer(timeout_s=wait_timeout_s):
+            return
+        if transport.has_seen_peer() and transport.is_peer_alive():
+            continue
+        raise RuntimeError(
+            "Nodo B no consumió END antes del timeout de heartbeat "
+            f"({heartbeat_timeout_ms} ms)."
+        )
+
+
 def run_node_a(config: RunConfig, console: Console | None = None) -> None:
     """Nodo A: ingesta + rate control + normalización + servidor de red."""
     _ = console or Console()
@@ -37,7 +58,6 @@ def run_node_a(config: RunConfig, console: Console | None = None) -> None:
     )
     errors_queue: queue.SimpleQueue = queue.SimpleQueue()
     timings: dict[str, float] = {"backpressure_wait_ms": 0.0}
-    wait_timeout_s = config.transport.heartbeat_timeout_ms / 1000.0
 
     def consumer_is_available() -> bool:
         return not transport.has_seen_peer() or transport.is_peer_alive()
@@ -55,11 +75,10 @@ def run_node_a(config: RunConfig, console: Console | None = None) -> None:
             timings=timings,
             should_continue=consumer_is_available,
         )
-        if not transport.wait_for_consumer(timeout_s=wait_timeout_s):
-            raise RuntimeError(
-                "Nodo B no consumió END antes del timeout de heartbeat "
-                f"({config.transport.heartbeat_timeout_ms} ms)."
-            )
+        _wait_for_consumer_end(
+            transport,
+            heartbeat_timeout_ms=config.transport.heartbeat_timeout_ms,
+        )
     finally:
         transport.shutdown()
 
@@ -71,19 +90,11 @@ def run_node_b(config: RunConfig, console: Console | None = None) -> str:
     artifact_writer = RunArtifactWriter(run_context)
     tracker = LatencyTracker()
     artifact_writer.write_effective_config()
+    artifact_writer.write_debug_event(node="B", stage="run", event="node.start")
 
-    prompt_texts = config.get_prompt_texts()
-    prompt_items = config.get_prompt_items()
-    prompt_set_id = config.prompts_file.resolved_version if config.prompts_file else "unknown"
-
-    normalizer = DetectionNormalizer(
-        min_confidence=config.postprocess.min_confidence,
-        min_box_area_px=config.postprocess.min_box_area_px,
-        normalize_boxes=config.postprocess.normalize_boxes,
+    prompt_set_id = (
+        config.prompts_file.resolved_set_id() if config.prompts_file else "unknown"
     )
-    adapter = create_adapter(config.model)
-    reset_gpu_peak_memory()
-    adapter.load()
 
     transport = create_transport(
         backend="network",
@@ -93,7 +104,19 @@ def run_node_b(config: RunConfig, console: Console | None = None) -> str:
         heartbeat_interval_ms=config.transport.heartbeat_interval_ms,
         heartbeat_timeout_ms=config.transport.heartbeat_timeout_ms,
     )
+    artifact_writer.write_debug_event(node="B", stage="transport", event="transport.start")
+    normalizer = DetectionNormalizer(
+        min_confidence=config.postprocess.min_confidence,
+        min_box_area_px=config.postprocess.min_box_area_px,
+        normalize_boxes=config.postprocess.normalize_boxes,
+    )
+    adapter = create_adapter(config.model)
+    plan = config.build_prompt_plan(adapter.PROMPT_BACKEND)
+    reset_gpu_peak_memory()
     try:
+        artifact_writer.write_debug_event(node="B", stage="model", event="model.load_start")
+        adapter.load()
+        artifact_writer.write_debug_event(node="B", stage="model", event="model.load_end")
         run_consumer_loop(
             transport,
             adapter,
@@ -102,8 +125,7 @@ def run_node_b(config: RunConfig, console: Console | None = None) -> str:
             run_context,
             tracker,
             config,
-            prompt_texts,
-            prompt_items,
+            plan,
             prompt_set_id,
             timings={},
             progress=None,

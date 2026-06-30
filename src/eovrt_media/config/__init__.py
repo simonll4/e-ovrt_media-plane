@@ -1,7 +1,8 @@
 """Módulo de configuración del plano de medios E-OVRT."""
 
+from eovrt_media.config.prompt_plan import PromptPhrase, PromptPlan
 from eovrt_media.config.schemas import (
-    PromptItem,
+    PromptClass,
     PromptSet,
     PromptsFile,
     RunSection,
@@ -17,9 +18,11 @@ from eovrt_media.config.schemas import (
 from eovrt_media.config.loader import load_prompts_file, load_run_config
 
 __all__ = [
-    "PromptItem",
+    "PromptClass",
     "PromptSet",
     "PromptsFile",
+    "PromptPhrase",
+    "PromptPlan",
     "RunSection",
     "SourceSection",
     "SamplingConfig",

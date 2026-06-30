@@ -14,7 +14,7 @@ download-models:
 	./scripts/download_models.sh
 
 run-mock:
-	eovrt-media run --config configs/runs/mock.yaml
+	eovrt-media run --config ../e-ovrt_experimental-setup/experiments/mock.yaml
 
 run-gdino:
 	./scripts/run_grounding_dino_sample.sh

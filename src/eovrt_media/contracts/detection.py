@@ -15,6 +15,8 @@ class RawDetection:
     box_xyxy: list[float]  # [x1, y1, x2, y2] en píxeles
     source_prompt: str | None = None
     prompt_id: str | None = None
+    strategy: str | None = None
+    condition_id: str | None = None
     raw: dict | None = None
 
     @property
@@ -29,6 +31,9 @@ class Detection(BaseModel):
     detection_id: str | None = None
     label: str
     prompt_id: str | None = None
+    source_prompt: str | None = None
+    strategy: str | None = None
+    condition_id: str | None = None
     confidence: float
     bbox_xyxy: list[float] = Field(
         description="Bounding box en píxeles [x1, y1, x2, y2]"
@@ -37,6 +42,6 @@ class Detection(BaseModel):
         description="Bounding box normalizado [0, 1] [x1, y1, x2, y2]"
     )
     area_px: float | None = None
-    
+
     # Nombre del modelo que generó esta detección, cuando está disponible.
     model_name: str | None = None

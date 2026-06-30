@@ -25,6 +25,11 @@ def run(
         exists=True,
         readable=True,
     ),
+    catalog_root: Path | None = typer.Option(
+        None,
+        "--catalog-root",
+        help="Raíz del catálogo del plano (configs/). Default: autodescubierto.",
+    ),
 ) -> None:
     """Ejecutar un pipeline DBE con la configuración indicada."""
     from eovrt_media.config import load_run_config
@@ -33,7 +38,7 @@ def run(
     console.print("\n[bold cyan]E-OVRT Media Plane[/bold cyan] v0.1.0")
     console.print(f"[dim]Config:[/dim] {config}\n")
 
-    run_config = load_run_config(config)
+    run_config = load_run_config(config, catalog_root=catalog_root)
     run_pipeline(run_config, console=console)
 
 
@@ -42,13 +47,16 @@ def run_producer(
     config: Path = typer.Option(
         ..., "--config", "-c", help="Config YAML (topology=two_node).", exists=True, readable=True
     ),
+    catalog_root: Path | None = typer.Option(
+        None, "--catalog-root", help="Raíz del catálogo del plano (configs/)."
+    ),
 ) -> None:
     """Nodo A: ingesta + normalización + servidor de red ZeroMQ."""
     from eovrt_media.config import load_run_config
     from eovrt_media.runtime.two_node import run_node_a
 
     console.print("\n[bold cyan]E-OVRT Media Plane — Nodo A (producer)[/bold cyan]")
-    run_node_a(load_run_config(config), console=console)
+    run_node_a(load_run_config(config, catalog_root=catalog_root), console=console)
 
 
 @app.command(name="run-consumer")
@@ -56,13 +64,16 @@ def run_consumer(
     config: Path = typer.Option(
         ..., "--config", "-c", help="Config YAML (topology=two_node).", exists=True, readable=True
     ),
+    catalog_root: Path | None = typer.Option(
+        None, "--catalog-root", help="Raíz del catálogo del plano (configs/)."
+    ),
 ) -> None:
     """Nodo B: cliente de red ZeroMQ + inferencia + artefactos."""
     from eovrt_media.config import load_run_config
     from eovrt_media.runtime.two_node import run_node_b
 
     console.print("\n[bold cyan]E-OVRT Media Plane — Nodo B (consumer)[/bold cyan]")
-    run_id = run_node_b(load_run_config(config), console=console)
+    run_id = run_node_b(load_run_config(config, catalog_root=catalog_root), console=console)
     console.print(f"[green]✓ Corrida completada:[/green] {run_id}")
 
 
@@ -139,6 +150,53 @@ def run_two_node_local_command(
         console.print(f"[red]✗ {result.failure_reason}[/red]")
         raise typer.Exit(1)
     console.print("[green]✓ Banco two-node local completado.[/green]")
+
+
+@app.command(name="debug-run")
+def debug_run(
+    source: str = typer.Option(..., "--source"),
+    video: Path | None = typer.Option(None, "--video"),
+    rtsp_url: str | None = typer.Option(None, "--rtsp-url"),
+    model_ref: str = typer.Option("yoloe/yoloe-26s", "--model-ref"),
+    device: str = typer.Option("cuda:0", "--device"),
+    codecs: str = typer.Option("raw,jpeg", "--codecs"),
+    payload_format: str = typer.Option("uint8_rgb", "--payload-format"),
+    max_units: int | None = typer.Option(None, "--max-units"),
+    session_id: str | None = typer.Option(None, "--session-id"),
+    debug: bool = typer.Option(True, "--debug/--no-debug"),
+    skip_probe: bool = typer.Option(False, "--skip-probe"),
+) -> None:
+    """Ejecutar campaña de debug del media plane."""
+    from eovrt_media.debugging.session import DebugRunOptions, run_debug_session
+
+    codec_list = [item.strip() for item in codecs.split(",") if item.strip()]
+    if not codec_list:
+        console.print("[red]✗ Debe indicar al menos un codec.[/red]")
+        raise typer.Exit(1)
+    try:
+        result = run_debug_session(
+            DebugRunOptions(
+                source=source,
+                video=video,
+                rtsp_url=rtsp_url,
+                model_ref=model_ref,
+                device=device,
+                codecs=codec_list,
+                payload_format=payload_format,
+                max_units=max_units,
+                session_id=session_id,
+                debug=debug,
+                skip_probe=skip_probe,
+            )
+        )
+    except Exception as error:
+        console.print(f"[red]✗ Debug session falló:[/red] {error}")
+        raise typer.Exit(1)
+    console.print("\n[bold cyan]Debug session[/bold cyan]")
+    console.print(f"  Session: {result.session_dir}")
+    console.print(f"  Report JSON: {result.report_json}")
+    console.print(f"  Report MD:   {result.report_markdown}")
+    console.print(f"  Runs:        {len(result.runs)}")
 
 
 @app.command(name="validate-config")

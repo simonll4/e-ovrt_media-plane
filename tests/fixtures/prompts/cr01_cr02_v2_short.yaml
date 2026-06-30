@@ -6,18 +6,13 @@ prompt_set:
     de v1 ("safety helmet", "high visibility safety vest").
     Derivado del diagnóstico P-E1 sobre dataset_v1 (2026-06-10).
   language: en
-  items:
+  classes:
     - id: person
-      text: "person"
       role: entity
-      enabled_by_default: true
-
+      phrasings: { default: ["person"] }
     - id: helmet
-      text: "helmet"
       role: ppe
-      enabled_by_default: true
-
+      phrasings: { default: ["helmet"] }
     - id: vest
-      text: "vest"
       role: ppe
-      enabled_by_default: true
+      phrasings: { default: ["vest"] }

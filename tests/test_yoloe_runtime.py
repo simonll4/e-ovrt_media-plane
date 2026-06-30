@@ -11,7 +11,12 @@ from eovrt_media.contracts.normalized_unit import (
     ResizeTransform,
 )
 import eovrt_media.models.yoloe_adapter as yoloe_module
+from eovrt_media.config.prompt_plan import PromptPlan
 from eovrt_media.models.yoloe_adapter import YOLOEUltralyticsAdapter
+
+
+def _yoloe_plan():
+    return PromptPlan.from_texts(["person"], "yoloe")
 
 
 def _fake_model():
@@ -25,14 +30,14 @@ def _fake_model():
 def test_yoloe_passes_half_on_cuda():
     adapter = YOLOEUltralyticsAdapter(device="cuda", half_precision=True)
     adapter.model = _fake_model()
-    adapter.predict(Image.new("RGB", (8, 8)), ["person"])
+    adapter.predict(Image.new("RGB", (8, 8)), _yoloe_plan())
     assert adapter.model.predict.call_args.kwargs["half"] is True
 
 
 def test_yoloe_no_half_on_cpu():
     adapter = YOLOEUltralyticsAdapter(device="cpu", half_precision=True)
     adapter.model = _fake_model()
-    adapter.predict(Image.new("RGB", (8, 8)), ["person"])
+    adapter.predict(Image.new("RGB", (8, 8)), _yoloe_plan())
     assert adapter.model.predict.call_args.kwargs["half"] is False
 
 
@@ -58,5 +63,5 @@ def test_yoloe_forward_uses_shared_tensor_without_pil_conversion(monkeypatch):
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("PIL is not allowed")),
     )
 
-    assert adapter.forward(unit, ["person"]) == []
+    assert adapter.forward(unit, _yoloe_plan()) == []
     assert adapter.model.predict.call_args.kwargs["source"] is sentinel

@@ -11,6 +11,7 @@ from PIL import Image
 from eovrt_media.contracts.detection import RawDetection
 from eovrt_media.contracts.normalized_unit import NormalizedUnit
 from eovrt_media.models.base import BaseDetectorAdapter, ModelInputSpec
+from eovrt_media.config.prompt_plan import PromptPlan
 from eovrt_media.models.runtime_utils import (
     make_warmup_image,
     resolve_device,
@@ -26,6 +27,8 @@ logger = logging.getLogger(__name__)
 
 class YOLOEUltralyticsAdapter(BaseDetectorAdapter):
     """Adaptador para YOLOE via Ultralytics."""
+
+    PROMPT_BACKEND = "yoloe"
 
     def __init__(
         self,
@@ -60,7 +63,7 @@ class YOLOEUltralyticsAdapter(BaseDetectorAdapter):
 
         if self.warmup:
             dummy = Image.fromarray(make_warmup_image((640, 640)))
-            self.predict(dummy, ["object"])
+            self.predict(dummy, PromptPlan.from_texts(["object"], "yoloe"))
 
         logger.info("YOLOE cargado correctamente.")
 
@@ -78,18 +81,19 @@ class YOLOEUltralyticsAdapter(BaseDetectorAdapter):
 
         ops_module.process_mask = _process_mask_fp16_safe
 
-    def _ensure_classes(self, prompts: list[str]) -> None:
-        """Configura las clases del modelo si los prompts cambiaron."""
-        if self._prompts_set != prompts:
-            logger.info(f"Configurando clases YOLOE: {prompts}")
+    def _ensure_classes(self, plan: PromptPlan) -> None:
+        """Configura las clases del modelo si las frases del plan cambiaron."""
+        texts = plan.texts()
+        if self._prompts_set != texts:
+            logger.info(f"Configurando clases YOLOE: {texts}")
             use_half = should_use_half(self.device, self.half_precision)
             if use_half:
                 # set_classes corre el text encoder (reprta) que requiere fp32;
                 # si el modelo ya está en fp16 (por predict anterior) revertimos,
                 # luego volvemos a half y casteamos pe explícitamente
                 self.model.model.float()
-            self.model.set_classes(prompts)
-            self._prompts_set = list(prompts)
+            self.model.set_classes(texts)
+            self._prompts_set = list(texts)
             if use_half:
                 self.model.model.half()
                 pe = getattr(self.model.model, "pe", None)
@@ -97,22 +101,22 @@ class YOLOEUltralyticsAdapter(BaseDetectorAdapter):
                     self.model.model.pe = pe.half()
 
     def predict(
-        self, image: Image.Image | Path | torch.Tensor, prompts: list[str]
+        self, image: Image.Image | Path | torch.Tensor, plan: PromptPlan
     ) -> list[RawDetection]:
         """Ejecuta inferencia con YOLOE.
 
         Args:
             image: Imagen PIL o ruta a archivo.
-            prompts: Lista de textos de prompts.
+            plan: PromptPlan resuelto; ``set_classes(plan.texts())`` fija el orden.
 
         Returns:
-            Lista de RawDetection con bounding boxes en píxeles.
+            Lista de RawDetection ligadas al plan, con boxes en píxeles.
         """
         if self.model is None:
             raise RuntimeError("Modelo no cargado. Llamar load() primero.")
 
         # Asegurar clases configuradas
-        self._ensure_classes(prompts)
+        self._ensure_classes(plan)
 
         # YOLOE acepta tanto paths como PIL images
         source = str(image) if isinstance(image, Path) else image
@@ -134,29 +138,45 @@ class YOLOEUltralyticsAdapter(BaseDetectorAdapter):
             return []
 
         result = results[0]
+        if result.boxes is None:
+            return []
+        boxes = result.boxes.xyxy.cpu().tolist()
+        scores = result.boxes.conf.cpu().tolist()
+        class_ids = result.boxes.cls.cpu().tolist()
+        return self._decode_boxes(boxes, scores, class_ids, plan)
+
+    def _decode_boxes(self, boxes, scores, class_ids, plan: PromptPlan) -> list[RawDetection]:
+        """Liga cada caja a su frase: el class_id es el índice directo en el plan."""
+        by_index = plan.by_index()
         detections = []
-
-        if result.boxes is not None:
-            boxes = result.boxes.xyxy.cpu().tolist()
-            scores = result.boxes.conf.cpu().tolist()
-            class_ids = result.boxes.cls.cpu().tolist()
-            names = result.names  # dict: {class_id: name}
-
-            for box, score, cls_id in zip(boxes, scores, class_ids):
-                label = names.get(int(cls_id), f"class_{int(cls_id)}")
-                detections.append(
-                    RawDetection(
-                        label=label,
-                        score=float(score),
-                        box_xyxy=[float(c) for c in box],
-                    )
+        for box, score, cls_id in zip(boxes, scores, class_ids):
+            idx = int(cls_id)
+            if idx < 0 or idx >= len(by_index):
+                # Defensa: el modelo no debería devolver un class_id fuera del
+                # rango de set_classes(plan.texts()); si pasa, se descarta + log.
+                logger.warning(
+                    "YOLOE devolvió class_id=%s fuera de rango (0..%d); detección descartada.",
+                    idx,
+                    len(by_index) - 1,
                 )
-
+                continue
+            phrase = by_index[idx]
+            detections.append(
+                RawDetection(
+                    label=phrase.canonical,
+                    prompt_id=phrase.prompt_id,
+                    source_prompt=phrase.text,
+                    strategy=phrase.strategy,
+                    condition_id=phrase.condition_id,
+                    score=float(score),
+                    box_xyxy=[float(c) for c in box],
+                )
+            )
         return detections
 
-    def forward(self, unit: NormalizedUnit, prompts: list[str]) -> list[RawDetection]:
+    def forward(self, unit: NormalizedUnit, plan: PromptPlan) -> list[RawDetection]:
         """Ejecuta la inferencia desde el payload normalizado del canal."""
-        return self.predict(prepare_model_input(unit, self.input_spec, self.device), prompts)
+        return self.predict(prepare_model_input(unit, self.input_spec, self.device), plan)
 
     @property
     def input_spec(self) -> ModelInputSpec:

@@ -13,6 +13,7 @@ from eovrt_media.runtime.two_node_local import (
     LocalTwoNodeResult,
     build_run_config,
     collect_run_summary,
+    resolve_run_dir_from_node_log,
     resolve_source,
     scan_log_warnings,
     wait_for_tcp_endpoint,
@@ -86,16 +87,34 @@ def test_build_run_config_sets_two_node_network_defaults(tmp_path: Path) -> None
     assert raw["run"]["max_units"] == 3
     assert raw["source"] == {"ref": "bench_v2_val"}
     assert raw["model"] == {"ref": "mock", "device": "cpu"}
-    assert raw["prompts"] == {
-        "ref": "cr01_cr02_bench_v2",
-        "active_ids": ["person", "helmet", "vest", "bare_head"],
-    }
+    assert raw["prompts"]["active_ids"] == ["person", "helmet", "vest", "bare_head"]
+    assert raw["prompts"]["file"].endswith(
+        "e-ovrt_experimental-setup/prompts/cr01_cr02_bench_v2.yaml"
+    )
     assert raw["topology"] == {"mode": "two_node"}
     assert raw["transport"]["backend"] == "network"
     assert raw["transport"]["endpoint"] == "tcp://127.0.0.1:5601"
     assert raw["transport"]["heartbeat_endpoint"] == "tcp://127.0.0.1:5602"
     assert raw["transport"]["compression"] == {"codec": "raw", "quality": 90}
     assert raw["outputs"]["save_previews"] is False
+
+
+def test_build_run_config_enables_debug_output_path(tmp_path: Path) -> None:
+    options = LocalTwoNodeOptions(
+        source="bench-val",
+        model_ref="mock",
+        device="cpu",
+        outputs_base_dir=tmp_path / "runs",
+        debug=True,
+    )
+
+    raw = build_run_config(
+        options,
+        endpoint="tcp://127.0.0.1:5601",
+        heartbeat_endpoint="tcp://127.0.0.1:5602",
+    )
+
+    assert raw["debug"] == {"enabled": True}
 
 
 def test_write_generated_config_persists_yaml(tmp_path: Path) -> None:
@@ -161,6 +180,24 @@ def test_collect_run_summary_reads_summary_and_errors(tmp_path: Path) -> None:
     assert summary["units_processed"] == 4
     assert summary["errors_count"] == 1
     assert summary["detections_by_label"] == {"person": 4}
+
+
+def test_resolve_run_dir_from_node_log_prefers_completed_run_id(tmp_path: Path) -> None:
+    outputs = tmp_path / "runs"
+    expected = outputs / "run_expected"
+    unrelated_latest = outputs / "run_unrelated_latest"
+    expected.mkdir(parents=True)
+    unrelated_latest.mkdir()
+    log_path = tmp_path / "node-b.log"
+    log_path.write_text(
+        "\nE-OVRT Media Plane — Nodo B (consumer)\n"
+        "✓ Corrida completada: run_expected\n",
+        encoding="utf-8",
+    )
+
+    run_dir = resolve_run_dir_from_node_log(log_path, outputs)
+
+    assert run_dir == expected
 
 
 def test_local_two_node_result_success_requires_zero_exit_codes(tmp_path: Path) -> None:
@@ -250,6 +287,63 @@ def test_run_two_node_local_generates_config_and_starts_nodes(
     assert started[1][-3:] == ["run-consumer", "--config", str(result.config_path)]
 
 
+def test_run_two_node_local_writes_wrapper_debug_events(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from eovrt_media.runtime import two_node_local
+
+    monkeypatch.setattr(two_node_local.subprocess, "Popen", lambda *args, **kwargs: FakeProcess(0))
+    monkeypatch.setattr(two_node_local, "wait_for_tcp_endpoint", lambda endpoint, timeout_s: True)
+    monkeypatch.setattr(two_node_local, "latest_run_dir", lambda base_dir=Path("runs"): None)
+
+    result = two_node_local.run_two_node_local(
+        LocalTwoNodeOptions(
+            source="bench-val",
+            model_ref="mock",
+            device="cpu",
+            generated_dir=tmp_path / "generated",
+            logs_dir=tmp_path / "logs",
+            session_dir=tmp_path / "debug-session",
+            debug=True,
+        )
+    )
+
+    events_path = result.logs_dir / "debug_events.jsonl"
+    assert events_path.exists()
+    assert "process.start" in events_path.read_text(encoding="utf-8")
+
+
+def test_run_two_node_local_does_not_fallback_to_latest_run_when_node_b_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from eovrt_media.runtime import two_node_local
+
+    stale_run = tmp_path / "runs" / "run_stale"
+    stale_run.mkdir(parents=True)
+    (stale_run / "summary.json").write_text('{"run_id":"run_stale"}', encoding="utf-8")
+    processes = [FakeProcess(0), FakeProcess(1)]
+
+    monkeypatch.setattr(two_node_local.subprocess, "Popen", lambda *args, **kwargs: processes.pop(0))
+    monkeypatch.setattr(two_node_local, "wait_for_tcp_endpoint", lambda endpoint, timeout_s: True)
+
+    result = two_node_local.run_two_node_local(
+        LocalTwoNodeOptions(
+            source="bench-val",
+            model_ref="mock",
+            device="cpu",
+            generated_dir=tmp_path / "generated",
+            logs_dir=tmp_path / "logs",
+            outputs_base_dir=tmp_path / "runs",
+        )
+    )
+
+    assert result.ok is False
+    assert result.run_dir is None
+    assert result.summary == {}
+
+
 def test_probe_runs_for_ezviz_unless_skipped(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -327,7 +421,8 @@ def test_run_two_node_local_processes_inline_image_folder_with_mock(
 
     prompts_path = tmp_path / "prompts.yaml"
     prompts_path.write_text(
-        "version: v1\nitems:\n  - id: person\n    text: person\n",
+        "prompt_set:\n  id: v1\n  classes:\n"
+        "    - id: person\n      phrasings: {default: [person]}\n",
         encoding="utf-8",
     )
 

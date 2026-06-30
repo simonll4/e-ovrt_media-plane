@@ -12,6 +12,7 @@ from eovrt_media.contracts.detection import RawDetection
 
 if TYPE_CHECKING:
     from eovrt_media.contracts.normalized_unit import NormalizedUnit
+    from eovrt_media.config.prompt_plan import PromptPlan
 
 
 @dataclass
@@ -40,24 +41,27 @@ class ModelInputSpec:
 class BaseDetectorAdapter(ABC):
     """Interfaz común para todos los adaptadores de modelo."""
 
+    PROMPT_BACKEND: str = "default"
+    """Clave de fraseo del adaptador: 'gdino' | 'yoloe' | 'default'."""
+
     @abstractmethod
     def load(self) -> None:
         """Cargar el modelo en memoria/GPU."""
 
     @abstractmethod
-    def predict(self, image: Image.Image | Path, prompts: list[str]) -> list[RawDetection]:
-        """Ejecutar inferencia sobre una imagen con los prompts dados.
+    def predict(self, image: Image.Image | Path, plan: PromptPlan) -> list[RawDetection]:
+        """Ejecutar inferencia sobre una imagen con el plan de prompts dado.
 
         Args:
             image: Imagen PIL o ruta a archivo.
-            prompts: Lista de textos de prompts a detectar.
+            plan: PromptPlan resuelto; el adaptador liga cada detección a su clase.
 
         Returns:
-            Lista de detecciones crudas (RawDetection).
+            Lista de detecciones crudas (RawDetection) ya ligadas al plan.
         """
 
     @abstractmethod
-    def forward(self, unit: NormalizedUnit, prompts: list[str]) -> list[RawDetection]:
+    def forward(self, unit: NormalizedUnit, plan: PromptPlan) -> list[RawDetection]:
         """Ejecutar inferencia desde una unidad normalizada del canal."""
 
     @property

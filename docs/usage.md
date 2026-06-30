@@ -50,14 +50,17 @@ Para datasets pesados, usar `data/raw/` o `data/datasets/` (ignorados por Git).
 
 ## Ejecutar pipeline
 
-Las run configs viven en `configs/runs/` y componen los catálogos de
-`configs/models/`, `configs/datasets/` y `configs/prompts/` por referencia
-(ver `configs/README.md` para la anatomía completa y cómo armar una nueva).
+Los manifiestos de corrida y los prompt sets viven en el repo hermano
+`../e-ovrt_experimental-setup` (`experiments/` y `prompts/`); el media-plane conserva los
+catálogos `configs/models/` y `configs/datasets/`. Un manifiesto compone por referencia:
+`model.ref`/`source.ref` → catálogo del plano; `prompts.ref` → `experimental-setup/prompts/`.
+**Correr siempre desde la raíz del media-plane** (los datasets usan rutas `../e-ovrt_datasets`
+relativas al CWD). Ver `../e-ovrt_experimental-setup/README.md` y `configs/README.md`.
 
 ### Con detector mock (validación sin modelos reales)
 
 ```bash
-eovrt-media run --config configs/runs/mock.yaml
+eovrt-media run --config ../e-ovrt_experimental-setup/experiments/mock.yaml
 # o
 make run-mock
 ```
@@ -69,7 +72,7 @@ el detector mock. Asegúrese de que el repo hermano esté presente como sibling 
 ### Con Grounding DINO
 
 ```bash
-eovrt-media run --config configs/runs/gdino.yaml
+eovrt-media run --config ../e-ovrt_experimental-setup/experiments/gdino.yaml
 # o
 make run-gdino
 ```
@@ -77,7 +80,7 @@ make run-gdino
 ### Con YOLOE
 
 ```bash
-eovrt-media run --config configs/runs/yoloe.yaml
+eovrt-media run --config ../e-ovrt_experimental-setup/experiments/yoloe.yaml
 # o
 make run-yoloe
 ```
@@ -85,7 +88,7 @@ make run-yoloe
 ### Con stride (muestreo por paso)
 
 ```bash
-eovrt-media run --config configs/runs/yoloe_video.yaml
+eovrt-media run --config ../e-ovrt_experimental-setup/experiments/yoloe_video.yaml
 ```
 
 Procesa CHV demo v2 con `stride: 5` (1 de cada 5 imágenes). El stride se controla
@@ -96,10 +99,10 @@ con `rate_control.stride` y el límite de unidades con `run.max_units`. La secci
 
 ```bash
 # Nodo A: ingesta + normalización + ZeroMQ REP
-eovrt-media run-producer --config configs/runs/<archivo>.yaml
+eovrt-media run-producer --config ../e-ovrt_experimental-setup/experiments/<archivo>.yaml
 
 # Nodo B: inferencia + artefactos + ZeroMQ REQ
-eovrt-media run-consumer --config configs/runs/<archivo>.yaml
+eovrt-media run-consumer --config ../e-ovrt_experimental-setup/experiments/<archivo>.yaml
 ```
 
 El config del run debe declarar `topology.mode: two_node`; el loader deriva
@@ -125,6 +128,23 @@ EZVIZ_RTSP_URL='rtsp://user:password@camera/stream' \
 `configs/runs/local/` está ignorado por Git; no versionar URIs RTSP ni endpoints
 locales. Para RTSP, el comando ejecuta una sonda corta antes de levantar nodos
 salvo que se pase `--skip-probe`.
+
+### Framework de debug
+
+Para ejecutar campañas diagnósticas y comparar corridas:
+
+```bash
+eovrt-media debug-run \
+  --source bench-val \
+  --model-ref yoloe/yoloe-26s \
+  --device cuda:0 \
+  --codecs raw,jpeg \
+  --max-units 5 \
+  --debug
+```
+
+Cada corrida puede escribir `debug_events.jsonl`; la campaña queda en
+`runs/debug-sessions/` con `session_report.json` y `session_report.md`.
 
 ### Cámara RTSP con YOLOE en GPU (single-host)
 
@@ -217,11 +237,11 @@ eovrt-media evaluate \
 Imprime una tabla Rich con AP@0.5 y conteos por clase, CR-01 recall, y persiste
 `runs/<run_id>/eval_perception.json` (`type: "perception"`).
 
-Los configs de experimento BENCH viven en `configs/runs/experiments/bench_v2/`
+Los configs de experimento BENCH viven en `../e-ovrt_experimental-setup/experiments/bench_v2/`
 (uno por modelo × split val/test). Ejecute con el modelo deseado y luego evalúe:
 
 ```bash
-eovrt-media run --config configs/runs/experiments/bench_v2/b2_y_e4_yoloe_26s_val.yaml
+eovrt-media run --config ../e-ovrt_experimental-setup/experiments/bench_v2/b2_y_e4_yoloe_26s_val.yaml
 eovrt-media evaluate --run runs/<run_id_generado>
 ```
 

@@ -77,6 +77,7 @@ class RunSummary(BaseModel):
     scenario: str
     model_name: str | None = None
     prompt_set_id: str | None = None
+    experiment_id: str | None = None
     source_type: str | None = None
     source_count: int
     units_processed: int

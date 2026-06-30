@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field, model_validator
+
+if TYPE_CHECKING:
+    from eovrt_media.config.prompt_plan import PromptPlan
 
 
 # ---------------------------------------------------------------------------
@@ -13,72 +16,100 @@ from pydantic import BaseModel, Field, model_validator
 # ---------------------------------------------------------------------------
 
 
-class PromptItem(BaseModel):
-    """Un prompt individual con su ID, texto, aliases, rol y habilitación por defecto."""
+class PromptClass(BaseModel):
+    """Una clase de prompt: identidad estable + fraseo por backend."""
 
     id: str
-    text: str
-    aliases: list[str] = Field(default_factory=list)
+    canonical: str | None = None
     role: str | None = None
-    enabled_by_default: bool = Field(default=True)
+    strategy: str | None = None
+    condition_id: str | None = None
+    enabled_by_default: bool = True
+    phrasings: dict[str, list[str]]
+
+    @model_validator(mode="after")
+    def default_canonical(self) -> PromptClass:
+        if self.canonical is None:
+            self.canonical = self.id
+        return self
 
 
 class PromptSet(BaseModel):
-    """Conjunto de prompts estructurado según MEMORIA."""
+    """Conjunto canónico de clases de prompt."""
 
     id: str
     description: str | None = None
     language: str | None = None
-    items: list[PromptItem]
+    classes: list[PromptClass]
 
 
 class PromptsFile(BaseModel):
-    """Archivo completo de prompts que soporta formato simple y formato MEMORIA."""
+    """Archivo de prompts — formato único (sin legacy)."""
 
-    version: str | None = None
-    items: list[PromptItem] | None = None
-    prompt_set: PromptSet | None = None
+    prompt_set: PromptSet
 
-    @model_validator(mode="after")
-    def validate_formats(self) -> PromptsFile:
-        if self.prompt_set is None and (self.version is None or self.items is None):
-            raise ValueError("Debe proveer 'prompt_set' o bien 'version' e 'items'")
-        if self.prompt_set:
-            self.version = self.prompt_set.id
-            self.items = self.prompt_set.items
-        return self
+    def resolved_set_id(self) -> str:
+        return self.prompt_set.id
 
-    @property
-    def active_items_all(self) -> list[PromptItem]:
-        if self.prompt_set:
-            return self.prompt_set.items
-        return self.items or []
-
-    @property
-    def resolved_version(self) -> str:
-        if self.prompt_set:
-            return self.prompt_set.id
-        return self.version or "unknown"
-
-    def get_active_texts(self, active_ids: list[str] | None) -> list[str]:
-        """Devuelve los textos de los prompts activos, en orden."""
-        return [item.text for item in self.get_active_items(active_ids)]
-
-    def get_active_items(self, active_ids: list[str] | None) -> list[PromptItem]:
-        """Devuelve los PromptItem activos, en orden o filtrados."""
-        all_items = self.active_items_all
-        id_to_item = {item.id: item for item in all_items}
-        
+    def get_active_classes(self, active_ids: list[str] | None) -> list[PromptClass]:
+        """Devuelve las PromptClass activas, en orden o filtradas."""
+        all_classes = self.prompt_set.classes
         if active_ids is None:
-            # Por defecto, solo los habilitados
-            return [item for item in all_items if item.enabled_by_default]
-            
+            return [c for c in all_classes if c.enabled_by_default]
+        by_id = {c.id: c for c in all_classes}
         result = []
         for pid in active_ids:
-            if pid not in id_to_item:
-                raise ValueError(f"Prompt ID '{pid}' no encontrado en archivo de prompts.")
-            result.append(id_to_item[pid])
+            if pid not in by_id:
+                raise ValueError(f"Prompt ID '{pid}' no encontrado en el set.")
+            result.append(by_id[pid])
         return result
+
+    def build_plan(self, backend: str, active_ids: list[str] | None = None) -> PromptPlan:
+        """Aplana las clases activas en un PromptPlan ordenado para el backend."""
+        from eovrt_media.config.prompt_plan import PromptPhrase, PromptPlan
+
+        phrases: list[PromptPhrase] = []
+        seen: dict[str, str] = {}
+        idx = 0
+        active = self.get_active_classes(active_ids)
+        if not active:
+            raise ValueError(
+                "El plan resultó vacío: no hay clases activas "
+                f"(set '{self.resolved_set_id()}', active_ids={active_ids})."
+            )
+        for cls_ in active:
+            # Resolución explícita: una entrada presente pero vacía es un error,
+            # no un fallback silencioso a 'default'.
+            if backend in cls_.phrasings:
+                texts = cls_.phrasings[backend]
+            else:
+                texts = cls_.phrasings.get("default")
+            if not texts:
+                raise ValueError(
+                    f"Clase '{cls_.id}': phrasings['{backend}'] (o ['default']) "
+                    "ausente o vacío."
+                )
+            for text in texts:
+                if text in seen:
+                    raise ValueError(
+                        f"Texto de prompt duplicado '{text}' "
+                        f"(clases '{seen[text]}' y '{cls_.id}')."
+                    )
+                seen[text] = cls_.id
+                phrases.append(
+                    PromptPhrase(
+                        index=idx,
+                        text=text,
+                        prompt_id=cls_.id,
+                        canonical=cls_.canonical,
+                        strategy=cls_.strategy,
+                        condition_id=cls_.condition_id,
+                    )
+                )
+                idx += 1
+        return PromptPlan(
+            set_id=self.resolved_set_id(), backend=backend, phrases=tuple(phrases)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -221,8 +252,8 @@ class ModelSection(BaseModel):
 class PromptsSection(BaseModel):
     """Sección 'prompts' de la configuración.
 
-    Acepta ``ref: <nombre>`` (resuelve ``configs/prompts/<nombre>.yaml``)
-    o una ruta explícita en ``file``.
+    Acepta ``ref: <nombre>`` (resuelve ``<raíz-experimento>/prompts/<nombre>.yaml``,
+    p.ej. en ``e-ovrt_experimental-setup``) o una ruta explícita en ``file``.
     """
 
     ref: str | None = None
@@ -272,6 +303,18 @@ class LoggingConfig(BaseModel):
     level: str = "INFO"
 
 
+class DebugConfig(BaseModel):
+    """Debug instrumentation settings."""
+
+    enabled: bool = False
+
+
+class ExperimentSection(BaseModel):
+    """Metadata/provenance del experimento (cross-plano, propagada al run)."""
+
+    id: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Top-level config
 # ---------------------------------------------------------------------------
@@ -284,13 +327,15 @@ class RunConfig(BaseModel):
     source: SourceSection
     model: ModelSection
     prompts: PromptsSection
-    
+    experiment: ExperimentSection = Field(default_factory=ExperimentSection)
+
     rate_control: RateControlConfig = Field(default_factory=RateControlConfig)
     transport: TransportConfig = Field(default_factory=TransportConfig)
     topology: TopologyConfig = Field(default_factory=TopologyConfig)
     postprocess: PostprocessConfig = Field(default_factory=PostprocessConfig)
     outputs: OutputsConfig = Field(default_factory=OutputsConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    debug: DebugConfig = Field(default_factory=DebugConfig)
 
     # Resolved at load time
     prompts_file: PromptsFile | None = Field(default=None, exclude=True)
@@ -314,6 +359,7 @@ class RunConfig(BaseModel):
                 "postprocess",
                 "outputs",
                 "logging",
+                "debug",
             ):
                 if field not in data:
                     data[field] = {}
@@ -337,21 +383,30 @@ class RunConfig(BaseModel):
             max_units=self.run.max_units,
         )
 
-    def get_prompt_texts(self) -> list[str]:
-        """Devuelve los textos de los prompts activos."""
+    def build_prompt_plan(self, backend: str) -> PromptPlan:
+        """Construye el PromptPlan resuelto para el backend del adaptador."""
         if self.prompts_file is None:
             raise RuntimeError("Archivo de prompts no cargado. Usar load_run_config().")
-        return self.prompts_file.get_active_texts(self.prompts.active_ids)
+        return self.prompts_file.build_plan(backend, self.prompts.active_ids)
 
-    def get_prompt_items(self) -> list[PromptItem]:
-        """Devuelve los PromptItem activos."""
+    def get_active_classes(self) -> list[PromptClass]:
+        """Clases activas del set (metadata para artefactos/provenance)."""
         if self.prompts_file is None:
             raise RuntimeError("Archivo de prompts no cargado. Usar load_run_config().")
-        return self.prompts_file.get_active_items(self.prompts.active_ids)
+        return self.prompts_file.get_active_classes(self.prompts.active_ids)
 
     def to_effective_dict(self) -> dict[str, Any]:
         """Devuelve la configuración efectiva como diccionario serializable."""
         data = self.model_dump(exclude={"prompts_file", "config_path"})
         if self.prompts_file:
-            data["resolved_prompts"] = self.get_prompt_texts()
+            data["resolved_prompt_set"] = self.prompts_file.resolved_set_id()
+            data["resolved_prompt_classes"] = [
+                {
+                    "id": c.id,
+                    "canonical": c.canonical,
+                    "strategy": c.strategy,
+                    "condition_id": c.condition_id,
+                }
+                for c in self.get_active_classes()
+            ]
         return data

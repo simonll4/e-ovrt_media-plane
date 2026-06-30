@@ -19,6 +19,7 @@ from eovrt_media.contracts import (
     RunDescriptor,
     RunSummary,
 )
+from eovrt_media.debugging.events import DebugEventWriter
 from eovrt_media.sinks.jsonl_sink import JSONLSink, SummarySink
 
 if TYPE_CHECKING:
@@ -64,6 +65,10 @@ class RunArtifactWriter:
         self.detections_sink = None
         self.metrics_sink = None
         self.errors_sink = None
+        self.debug_sink = DebugEventWriter(
+            self.run_dir / "debug_events.jsonl",
+            enabled=self.context.config.debug.enabled,
+        )
 
         outputs_cfg = self.context.config.outputs
 
@@ -111,6 +116,10 @@ class RunArtifactWriter:
         self.context.errors_count += 1
         if self.errors_sink:
             self.errors_sink.write_error(error)
+
+    def write_debug_event(self, **kwargs: Any) -> None:
+        kwargs.setdefault("run_id", self.context.run_id)
+        self.debug_sink.write(**kwargs)
 
     def write_provenance(self) -> None:
         """Guarda procedencia de la fuente y una huella reproducible de sus archivos."""
@@ -165,7 +174,7 @@ class RunArtifactWriter:
             source_kind=config.source.kind or "pulleable",
             model=config.model.name or config.model.adapter or "unknown",
             prompt_set=(
-                config.prompts_file.resolved_version if config.prompts_file else None
+                config.prompts_file.resolved_set_id() if config.prompts_file else None
             ),
             device=config.model.device,
             code_version=_get_code_version(),
@@ -176,10 +185,11 @@ class RunArtifactWriter:
             scenario=self.context.config.run.scenario,
             model_name=self.context.config.model.name or self.context.config.model.adapter,
             prompt_set_id=(
-                self.context.config.prompts_file.resolved_version
+                self.context.config.prompts_file.resolved_set_id()
                 if self.context.config.prompts_file
                 else "unknown"
             ),
+            experiment_id=self.context.config.experiment.id,
             source_type=self.context.config.source.type,
             source_count=self.context.units_processed + self.context.units_failed,
             units_processed=self.context.units_processed,
@@ -245,3 +255,4 @@ class RunArtifactWriter:
             self.metrics_sink.close()
         if self.errors_sink:
             self.errors_sink.close()
+        self.debug_sink.close()

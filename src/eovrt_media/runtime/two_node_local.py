@@ -18,6 +18,12 @@ import yaml
 
 DEFAULT_GENERATED_DIR = Path("configs/runs/local/generated")
 DEFAULT_LOGS_DIR = Path("runs/local-two-node")
+# Los prompt sets viven en el repo hermano experimental-setup (ver spec
+# 2026-06-27-experimental-setup-config-design §7). Resuelto relativo al repo del
+# media-plane para no depender del CWD.
+EXPERIMENTAL_SETUP_PROMPTS = (
+    Path(__file__).resolve().parents[3].parent / "e-ovrt_experimental-setup" / "prompts"
+)
 DEFAULT_ACTIVE_IDS = {
     "cr01_cr02_bench_v2": ["person", "helmet", "vest", "bare_head"],
     "cr01_cr02_v2_short": ["person", "helmet", "vest"],
@@ -53,6 +59,8 @@ class LocalTwoNodeOptions:
     generated_dir: Path = DEFAULT_GENERATED_DIR
     logs_dir: Path = DEFAULT_LOGS_DIR
     outputs_base_dir: Path = Path("runs")
+    session_dir: Path | None = None
+    debug: bool = False
     skip_probe: bool = False
     port_base: int | None = None
     startup_timeout_s: float = 10.0
@@ -111,7 +119,7 @@ def build_run_config(
         "source": resolve_source(options),
         "model": {"ref": options.model_ref, "device": options.device},
         "prompts": {
-            "ref": prompts_ref,
+            "file": str(EXPERIMENTAL_SETUP_PROMPTS / f"{prompts_ref}.yaml"),
             "active_ids": DEFAULT_ACTIVE_IDS.get(prompts_ref, ["person", "helmet", "vest"]),
         },
         "topology": {"mode": "two_node"},
@@ -131,6 +139,8 @@ def build_run_config(
     }
     if options.max_units is not None:
         raw["run"]["max_units"] = options.max_units
+    if options.debug:
+        raw["debug"] = {"enabled": True}
     return raw
 
 
@@ -226,6 +236,22 @@ def collect_run_summary(run_dir: Path | None) -> dict[str, Any]:
     return summary
 
 
+def resolve_run_dir_from_node_log(log_path: Path, outputs_base_dir: Path) -> Path | None:
+    """Resolve this bench run directory from Nodo B's completion log."""
+    if not log_path.exists():
+        return None
+    for line in reversed(log_path.read_text(encoding="utf-8", errors="replace").splitlines()):
+        marker = "Corrida completada:"
+        if marker not in line:
+            continue
+        run_id = line.split(marker, 1)[1].strip()
+        if not run_id:
+            return None
+        run_dir = outputs_base_dir / run_id
+        return run_dir if run_dir.exists() else None
+    return None
+
+
 def _command_for_node(node: str, config_path: Path) -> list[str]:
     command = "run-producer" if node == "a" else "run-consumer"
     return [sys.executable, "-m", "eovrt_media.cli", command, "--config", str(config_path)]
@@ -303,48 +329,100 @@ def run_two_node_local(options: LocalTwoNodeOptions) -> LocalTwoNodeResult:
 
     session_name = time.strftime("%Y%m%d-%H%M%S")
     logs_dir = options.logs_dir / session_name
+    if options.session_dir is not None:
+        logs_dir = options.session_dir / "logs" / f"{options.source}_{options.codec}"
     node_a_log = logs_dir / "node-a.log"
     node_b_log = logs_dir / "node-b.log"
     node_a: subprocess.Popen[Any] | None = None
     node_b: subprocess.Popen[Any] | None = None
 
-    with _open_log(node_a_log) as node_a_stream, _open_log(node_b_log) as node_b_stream:
-        try:
-            node_a = subprocess.Popen(
-                _command_for_node("a", config_path),
-                stdout=node_a_stream,
-                stderr=subprocess.STDOUT,
-                cwd=Path.cwd(),
-                env=_subprocess_env(),
-            )
-            if not wait_for_tcp_endpoint(endpoint, timeout_s=options.startup_timeout_s):
-                _terminate_process(node_a)
-                return LocalTwoNodeResult(
-                    config_path=config_path,
-                    logs_dir=logs_dir,
-                    node_a_log=node_a_log,
-                    node_b_log=node_b_log,
-                    run_dir=None,
-                    node_a_returncode=node_a.returncode,
-                    node_b_returncode=None,
-                    summary={},
-                    warnings=scan_log_warnings(node_a_log),
+    from eovrt_media.debugging.events import DebugEventWriter
+
+    debug_writer = DebugEventWriter(logs_dir / "debug_events.jsonl", enabled=options.debug)
+    try:
+        with _open_log(node_a_log) as node_a_stream, _open_log(node_b_log) as node_b_stream:
+            try:
+                debug_writer.write(
+                    run_id=None,
+                    node="session",
+                    stage="process",
+                    event="process.start",
+                    codec=options.codec,
+                    extra={"node": "A", "config": str(config_path), "log": str(node_a_log)},
                 )
+                node_a = subprocess.Popen(
+                    _command_for_node("a", config_path),
+                    stdout=node_a_stream,
+                    stderr=subprocess.STDOUT,
+                    cwd=Path.cwd(),
+                    env=_subprocess_env(),
+                )
+                if not wait_for_tcp_endpoint(endpoint, timeout_s=options.startup_timeout_s):
+                    _terminate_process(node_a)
+                    debug_writer.write(
+                        run_id=None,
+                        node="session",
+                        stage="process",
+                        event="process.exit",
+                        codec=options.codec,
+                        extra={"node": "A", "returncode": node_a.returncode},
+                    )
+                    return LocalTwoNodeResult(
+                        config_path=config_path,
+                        logs_dir=logs_dir,
+                        node_a_log=node_a_log,
+                        node_b_log=node_b_log,
+                        run_dir=None,
+                        node_a_returncode=node_a.returncode,
+                        node_b_returncode=None,
+                        summary={},
+                        warnings=scan_log_warnings(node_a_log),
+                    )
 
-            node_b = subprocess.Popen(
-                _command_for_node("b", config_path),
-                stdout=node_b_stream,
-                stderr=subprocess.STDOUT,
-                cwd=Path.cwd(),
-                env=_subprocess_env(),
-            )
-            node_b.wait()
-            node_a.wait(timeout=options.startup_timeout_s)
-        finally:
-            _terminate_process(node_b)
-            _terminate_process(node_a)
+                debug_writer.write(
+                    run_id=None,
+                    node="session",
+                    stage="process",
+                    event="process.start",
+                    codec=options.codec,
+                    extra={"node": "B", "config": str(config_path), "log": str(node_b_log)},
+                )
+                node_b = subprocess.Popen(
+                    _command_for_node("b", config_path),
+                    stdout=node_b_stream,
+                    stderr=subprocess.STDOUT,
+                    cwd=Path.cwd(),
+                    env=_subprocess_env(),
+                )
+                node_b.wait()
+                debug_writer.write(
+                    run_id=None,
+                    node="session",
+                    stage="process",
+                    event="process.exit",
+                    codec=options.codec,
+                    extra={"node": "B", "returncode": node_b.returncode},
+                )
+                node_a.wait(timeout=options.startup_timeout_s)
+                debug_writer.write(
+                    run_id=None,
+                    node="session",
+                    stage="process",
+                    event="process.exit",
+                    codec=options.codec,
+                    extra={"node": "A", "returncode": node_a.returncode},
+                )
+            finally:
+                _terminate_process(node_b)
+                _terminate_process(node_a)
+    finally:
+        debug_writer.close()
 
-    run_dir = latest_run_dir(options.outputs_base_dir)
+    node_a_returncode = node_a.returncode if node_a is not None else None
+    node_b_returncode = node_b.returncode if node_b is not None else None
+    run_dir = resolve_run_dir_from_node_log(node_b_log, options.outputs_base_dir)
+    if run_dir is None and node_a_returncode == 0 and node_b_returncode == 0:
+        run_dir = latest_run_dir(options.outputs_base_dir)
     warnings = [*scan_log_warnings(node_a_log), *scan_log_warnings(node_b_log)]
     return LocalTwoNodeResult(
         config_path=config_path,
@@ -352,8 +430,8 @@ def run_two_node_local(options: LocalTwoNodeOptions) -> LocalTwoNodeResult:
         node_a_log=node_a_log,
         node_b_log=node_b_log,
         run_dir=run_dir,
-        node_a_returncode=node_a.returncode if node_a is not None else None,
-        node_b_returncode=node_b.returncode if node_b is not None else None,
+        node_a_returncode=node_a_returncode,
+        node_b_returncode=node_b_returncode,
         summary=collect_run_summary(run_dir),
         warnings=warnings,
     )

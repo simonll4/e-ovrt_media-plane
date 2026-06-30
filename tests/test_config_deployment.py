@@ -13,7 +13,10 @@ def _write_config(tmp_path: Path, overrides: dict | None = None) -> Path:
     images_dir = tmp_path / "images"
     images_dir.mkdir(exist_ok=True)
     prompts_path = tmp_path / "prompts.yaml"
-    prompts_path.write_text("version: v1\nitems:\n  - id: person\n    text: person\n")
+    prompts_path.write_text(
+        "prompt_set:\n  id: v1\n  classes:\n"
+        "    - id: person\n      phrasings: {default: [person]}\n"
+    )
 
     raw = {
         "run": {"scenario": "DBE"},
@@ -151,7 +154,11 @@ class TestConfigGating:
         network_configs = []
         config_roots = (Path("configs") / "runs", Path("deploy") / "configs")
         config_paths = sorted(
-            path for root in config_roots if root.exists() for path in root.rglob("*.yaml")
+            path
+            for root in config_roots
+            if root.exists()
+            for path in root.rglob("*.yaml")
+            if "local" not in path.parts  # excluir configs generados localmente (no versionados)
         )
         for config_path in config_paths:
             raw = yaml.safe_load(config_path.read_text()) or {}
