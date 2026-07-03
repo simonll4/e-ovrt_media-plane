@@ -1,10 +1,11 @@
 """API de control de runs (Spec A §3.1)."""
 from __future__ import annotations
 
+import json as _json
 import shutil
 
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from eovrt_media.service.run_manager import RunBusyError, RunManager, UnknownRunError
 from eovrt_media.service.run_request import RunRequest
@@ -68,3 +69,29 @@ def delete_run(run_id: str, request: Request):
     run_dir = request.app.state.settings.runs_dir / run_id
     shutil.rmtree(run_dir, ignore_errors=True)
     return Response(status_code=204)
+
+
+@router.get("/runs/{run_id}/detections")
+def get_detections(
+    run_id: str,
+    request: Request,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=1000),
+):
+    _manager(request)  # 503 si no ready
+    path = request.app.state.settings.runs_dir / run_id / "detections.jsonl"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"Sin detecciones para: {run_id}")
+    lines = path.read_text().splitlines()
+    start = (page - 1) * page_size
+    items = [_json.loads(line) for line in lines[start : start + page_size] if line]
+    return {"page": page, "page_size": page_size, "total": len(lines), "items": items}
+
+
+@router.get("/runs/{run_id}/artifacts/{artifact_path:path}")
+def get_artifact(run_id: str, artifact_path: str, request: Request):
+    run_dir = (request.app.state.settings.runs_dir / run_id).resolve()
+    target = (run_dir / artifact_path).resolve()
+    if not target.is_relative_to(run_dir) or not target.is_file():
+        raise HTTPException(status_code=404, detail="Artefacto no encontrado")
+    return FileResponse(target)  # Starlette >=0.36 maneja Range (206) para video
