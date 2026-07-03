@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -320,6 +321,18 @@ class ExperimentSection(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Secret redaction
+# ---------------------------------------------------------------------------
+
+_URL_USERINFO = re.compile(r"//[^@/]+@")
+
+
+def redact_url_credentials(url: str) -> str:
+    """Redacta userinfo de URLs (rtsp://user:pass@host → rtsp://***:***@host)."""
+    return _URL_USERINFO.sub("//***:***@", url)
+
+
+# ---------------------------------------------------------------------------
 # Top-level config
 # ---------------------------------------------------------------------------
 
@@ -402,6 +415,15 @@ class RunConfig(BaseModel):
     def to_effective_dict(self) -> dict[str, Any]:
         """Devuelve la configuración efectiva como diccionario serializable."""
         data = self.model_dump(exclude={"prompts_file", "config_path"})
+
+        # Redact credentials from source URLs
+        source_data = data.get("source")
+        if isinstance(source_data, dict):
+            for key in ("url", "path"):
+                value = source_data.get(key)
+                if isinstance(value, str) and "@" in value and "://" in value:
+                    source_data[key] = redact_url_credentials(value)
+
         if self.prompts_file:
             data["resolved_prompt_set"] = self.prompts_file.resolved_set_id()
             data["resolved_prompt_classes"] = [
