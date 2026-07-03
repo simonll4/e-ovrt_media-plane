@@ -93,3 +93,76 @@ def test_list_runs_desde_disco(manager, tmp_path):
     _wait_final(manager, run_id)
     runs = manager.list_runs()
     assert any(r["run_id"] == run_id for r in runs)
+
+
+def test_watchdog_tick_delega_en_stop_atomico(manager, tmp_path, monkeypatch):
+    """El watchdog no debe mutar stop_cause directamente: tiene que pasar por
+    stop(), que hace el check-and-set atómico bajo lock (regresión del hallazgo
+    de TOCTOU)."""
+    folder = _images(tmp_path, n=400)
+    run_id = manager.start_run(_request(folder))
+    active = manager._active
+    assert active is not None
+    # Simula estancamiento sin esperar el timeout real del watchdog_seconds.
+    active.broadcaster.last_event_monotonic = time.monotonic() - 1_000_000
+
+    calls = []
+    original_stop = manager.stop
+
+    def spy_stop(rid, cause="stop"):
+        calls.append((rid, cause))
+        return original_stop(rid, cause=cause)
+
+    monkeypatch.setattr(manager, "stop", spy_stop)
+
+    manager._watchdog_tick()
+
+    assert calls == [(run_id, "stalled")]
+    status = _wait_final(manager, run_id)
+    assert status == "failed"  # stop_cause=="stalled" => status "failed" (ver _execute)
+    summary = json.loads((tmp_path / "runs" / run_id / "summary.json").read_text())
+    assert summary["stop_cause"] == "stalled"
+
+
+def test_watchdog_tick_no_pisa_stop_cause_existente(manager, tmp_path):
+    """Si stop_cause ya quedó asignado (p.ej. un stop() de usuario ganó la
+    carrera), el watchdog no debe sobreescribirlo con 'stalled'."""
+    folder = _images(tmp_path, n=400)
+    run_id = manager.start_run(_request(folder))
+    active = manager._active
+    assert active is not None
+    active.stop_cause = "stop"
+    active.broadcaster.last_event_monotonic = time.monotonic() - 1_000_000
+
+    manager._watchdog_tick()
+
+    assert active.stop_cause == "stop"
+
+    manager.stop(run_id, cause="stop")
+    status = _wait_final(manager, run_id)
+    assert status == "stopped"
+    summary = json.loads((tmp_path / "runs" / run_id / "summary.json").read_text())
+    assert summary["stop_cause"] == "stop"
+
+
+def test_stop_es_atomico_primero_gana(manager, tmp_path):
+    """Propiedad en la que se apoya el fix: stop() no pisa una stop_cause ya
+    asignada, sin importar qué cause llegue después."""
+    folder = _images(tmp_path, n=400)
+    run_id = manager.start_run(_request(folder))
+    manager.stop(run_id, cause="stop")
+    manager.stop(run_id, cause="stalled")  # llegada tardía, no debe ganar
+    status = _wait_final(manager, run_id)
+    assert status == "stopped"
+    summary = json.loads((tmp_path / "runs" / run_id / "summary.json").read_text())
+    assert summary["stop_cause"] == "stop"
+
+
+def test_watchdog_tick_run_terminado_no_crashea(manager, tmp_path):
+    """Si el run ya terminó entre la lectura de staleness y la llamada a
+    stop(), el watchdog no debe crashear con UnknownRunError."""
+    run_id = manager.start_run(_request(_images(tmp_path)))
+    _wait_final(manager, run_id)
+    assert manager._active is None
+    # No debe lanzar, aunque no haya run activo.
+    manager._watchdog_tick()

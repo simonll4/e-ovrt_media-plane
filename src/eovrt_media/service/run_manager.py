@@ -210,11 +210,23 @@ class RunManager:
 
     def _watchdog_loop(self) -> None:
         while not self._closing.wait(timeout=5.0):
-            with self._lock:
-                active = self._active
-            if active is None or active.stop_cause is not None:
-                continue
-            idle = time.monotonic() - active.broadcaster.last_event_monotonic
-            if idle > self._settings.watchdog_seconds:
-                active.stop_cause = "stalled"
-                active.control.request_stop()
+            self._watchdog_tick()
+
+    def _watchdog_tick(self) -> None:
+        """Una pasada del watchdog; extraído de `_watchdog_loop` para poder
+        testearlo sin depender del timing real del hilo."""
+        with self._lock:
+            active = self._active
+        if active is None or active.stop_cause is not None:
+            return
+        idle = time.monotonic() - active.broadcaster.last_event_monotonic
+        if idle > self._settings.watchdog_seconds:
+            try:
+                # stop() hace el check-and-set de stop_cause bajo lock, así que
+                # un stop() concurrente (p.ej. cause="stop") gana la carrera y
+                # el watchdog no lo pisa con "stalled".
+                self.stop(active.run_id, cause="stalled")
+            except UnknownRunError:
+                # El run terminó entre la lectura de staleness y este stop():
+                # ya no hay nada que detener.
+                pass
