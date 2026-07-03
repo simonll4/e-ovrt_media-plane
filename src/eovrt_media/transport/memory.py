@@ -27,6 +27,7 @@ class MemoryTransportAdapter(TransportAdapter):
 
         if policy == "deterministic":
             self._q: queue.Queue = queue.Queue(maxsize=max_queue_size)
+            self._det_closed = False
         elif policy == "bounded_freshness":
             self._buf: deque = deque(maxlen=buffer_size)
             self._lock = Lock()
@@ -39,7 +40,13 @@ class MemoryTransportAdapter(TransportAdapter):
 
     def offer(self, unit: NormalizedUnit) -> None:
         if self.policy == "deterministic":
-            self._q.put(unit)  # bloquea si llena (backpressure)
+            while not self._det_closed:
+                try:
+                    self._q.put(unit, timeout=0.1)  # backpressure con chequeo de cierre
+                    return
+                except queue.Full:
+                    continue
+            self.units_dropped += 1  # canal cerrado: descartar
         else:
             with self._not_empty:
                 if len(self._buf) == self._buf.maxlen:
@@ -50,7 +57,13 @@ class MemoryTransportAdapter(TransportAdapter):
 
     def close(self) -> None:
         if self.policy == "deterministic":
-            self._q.put(END)
+            if self._det_closed:
+                return
+            self._det_closed = True
+            try:
+                self._q.put_nowait(END)
+            except queue.Full:
+                pass  # request() detecta _det_closed al vaciar la cola
         else:
             with self._not_empty:
                 self._closed = True
@@ -60,8 +73,14 @@ class MemoryTransportAdapter(TransportAdapter):
 
     def request(self, current_time_ms=None) -> NormalizedUnit | type[END]:
         if self.policy == "deterministic":
-            item = self._q.get()
-            return END if item is END else item
+            while True:
+                try:
+                    item = self._q.get(timeout=0.1)
+                except queue.Empty:
+                    if self._det_closed:
+                        return END
+                    continue
+                return END if item is END else item
         else:
             with self._not_empty:
                 while True:
