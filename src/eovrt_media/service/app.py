@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from starlette.concurrency import run_in_threadpool
 
 from eovrt_media.service.retention import gc_runs_dir
-from eovrt_media.service.routers import health, model, runs, stream
+from eovrt_media.service.routers import catalog, health, model, runs, stream
 from eovrt_media.service.settings import ServiceSettings
 
 logger = logging.getLogger(__name__)
@@ -60,4 +60,5 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
     app.include_router(model.router)
     app.include_router(runs.router)
     app.include_router(stream.router)
+    app.include_router(catalog.router)
     return app
