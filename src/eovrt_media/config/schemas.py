@@ -324,11 +324,30 @@ class ExperimentSection(BaseModel):
 # Secret redaction
 # ---------------------------------------------------------------------------
 
-_URL_USERINFO = re.compile(r"//[^@/]+@")
+# La authority es todo lo que sigue a "//" hasta el primer '/', '?', '#' o el
+# final de la cadena. El userinfo (si existe) es todo lo anterior al ÚLTIMO '@'
+# dentro de esa authority — un password sin escapar puede contener '@'/':'
+# embebidos (p.ej. "p@ss"), así que NO alcanza con cortar en el primer '@'.
+#
+# `[^/?#]*` es codicioso: intenta consumir toda la authority y retrocede de a un
+# carácter hasta encontrar un '@' final, lo que en la práctica ata el match al
+# ÚLTIMO '@' anterior a '/', '?', '#' o EOF — exactamente el límite de userinfo.
+# Si la authority no contiene ningún '@', el patrón no matchea y no se redacta
+# nada (así se preservan `rtsp://host/path` y `rtsp://host/path?foo=a@b`, donde
+# el '@' vive en la query, fuera de la authority).
+_URL_USERINFO = re.compile(r"//[^/?#]*@")
 
 
 def redact_url_credentials(url: str) -> str:
-    """Redacta userinfo de URLs (rtsp://user:pass@host → rtsp://***:***@host)."""
+    """Redacta userinfo completo de URLs, incluyendo '@'/':' embebidos en el password.
+
+    rtsp://user:pass@host        -> rtsp://***:***@host
+    rtsp://user:p@ss@host/path   -> rtsp://***:***@host/path   (sin fugas de "p@ss")
+    rtsp://user@host/path        -> rtsp://***:***@host/path   (sin password: se
+                                     fabrica un "***:***" fijo por simplicidad; no
+                                     sobrevive ningún fragmento del username original)
+    rtsp://host/path?foo=a@b     -> sin cambios (el '@' está en la query, no en userinfo)
+    """
     return _URL_USERINFO.sub("//***:***@", url)
 
 
