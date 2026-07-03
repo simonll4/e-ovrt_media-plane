@@ -14,9 +14,8 @@ def test_healthz_ok():
     assert r.json() == {"status": "ok"}
 
 
-def test_readyz_503_sin_modelo():
-    # En esta task el lifespan aún no carga modelo: not ready.
-    # (Task 11 reemplaza este test por la variante con carga real.)
-    with TestClient(_app()) as client:
-        r = client.get("/readyz")
-    assert r.status_code == 503
+def test_readyz_503_con_modelo_invalido():
+    from eovrt_media.service.settings import ServiceSettings
+    settings = ServiceSettings.from_env({"EOVRT_MODEL_REF": "no/existe"})
+    with TestClient(create_app(settings)) as client:
+        assert client.get("/readyz").status_code == 503
