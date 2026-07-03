@@ -46,6 +46,13 @@ async def stream_run(ws: WebSocket, run_id: str) -> None:
                 await ws.send_json(event)
             status = manager.get(run_id)["status"]
             if status != "running":
+                # Flush final: entre el drain de arriba y este chequeo de status
+                # pudieron llegar eventos (incluido el "state" propio del
+                # broadcaster) a la cola del subscriber; drenarlos antes de
+                # cerrar evita perder la cola de eventos (puede duplicar el
+                # "state" final, aceptable — el cliente coalesce por type).
+                for event in sub.drain():
+                    await ws.send_json(event)
                 await ws.send_json({"type": "state", "status": status})
                 break
             await asyncio.sleep(_POLL_SECONDS)
