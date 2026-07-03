@@ -77,3 +77,47 @@ def test_delete_run_terminado(client, tmp_path):
 
 def test_404_desconocido(client):
     assert client.get("/api/runs/nope").status_code == 404
+
+
+def test_ready_gate_503_en_todos_los_endpoints(tmp_path):
+    # Modelo inválido -> app.state.ready queda False (mismo patrón que
+    # test_service_startup.py::test_startup_modelo_invalido_no_ready).
+    settings = ServiceSettings.from_env(
+        {"EOVRT_MODEL_REF": "no/existe", "EOVRT_RUNS_DIR": str(tmp_path / "runs")}
+    )
+    with TestClient(create_app(settings)) as client:
+        body = _body(_images(tmp_path))
+        assert client.post("/api/runs", json=body).status_code == 503
+        assert client.get("/api/runs").status_code == 503
+        assert client.get("/api/runs/any-id").status_code == 503
+        assert client.post("/api/runs/any-id/stop").status_code == 503
+        assert client.delete("/api/runs/any-id").status_code == 503
+
+
+def test_stop_404_desconocido(client):
+    assert client.post("/api/runs/nope/stop").status_code == 404
+
+
+def test_delete_404_desconocido(client):
+    assert client.delete("/api/runs/nope").status_code == 404
+
+
+def test_delete_409_run_activo(client, tmp_path):
+    folder = _images(tmp_path, n=400)
+    run_id = client.post("/api/runs", json=_body(folder)).json()["run_id"]
+    assert client.delete(f"/api/runs/{run_id}").status_code == 409
+    assert client.post(f"/api/runs/{run_id}/stop").status_code == 202
+    assert _wait_final(client, run_id) == "stopped"
+
+
+def test_ingest_plugin_desconocido_es_422(client, tmp_path):
+    # IngestSpec.plugin es un str libre (no Literal/enum), por lo que un plugin
+    # inexistente pasa la validación de Pydantic y sólo falla dentro de
+    # RunManager.start_run -> to_raw_run_config, que levanta ValueError.
+    # Eso ejerce el propio try/except ValueError -> 422 del router (no el 422
+    # genérico de FastAPI por body mal formado).
+    body = _body(_images(tmp_path))
+    body["ingest"]["plugin"] = "plugin_inexistente"
+    r = client.post("/api/runs", json=body)
+    assert r.status_code == 422
+    assert "plugin_inexistente" in r.json()["detail"]
