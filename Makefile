@@ -1,4 +1,4 @@
-.PHONY: install lint test download-models serve smoke compare-runs
+.PHONY: install lint test download-models serve smoke compare-runs docker-build docker-run-mock
 
 install:
 	python -m pip install --upgrade pip setuptools wheel
@@ -22,3 +22,10 @@ smoke:
 
 compare-runs:
 	python -m eovrt_media.tools.inspect_runs compare runs
+
+docker-build:
+	docker build -t eovrt-media-plane .
+
+docker-run-mock:
+	docker run --rm -p 8080:8080 -e EOVRT_MODEL_REF=mock \
+	  -v $$(pwd)/runs:/data/runs eovrt-media-plane
