@@ -1,5 +1,14 @@
 # Media-Plane Service (Fase 1 DBE) Implementation Plan
 
+> **SUPERSEDED (2026-07-03):** este plan fue escrito contra una versión sin cerrar del
+> spec (2026-07-01) y no cubre los gaps operacionales encontrados en la auditoría del
+> 2026-07-02 (retención de `RUNS_DIR`, SIGTERM/graceful shutdown, watchdog, rebase de
+> datasets en contenedor vía `EOVRT_DATASETS_ROOT`, redacción de credenciales RTSP,
+> `run_id` único). El plan vigente es
+> `docs/superpowers/plans/2026-07-03-media-plane-service-fase1.md`. Se conserva este
+> archivo como referencia histórica (incluye la validación cruzada de contrato con el
+> plan de Spec B en `webconsole-backend.md`, que el plan vigente todavía no repitió).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Convertir `e-ovrt_media-plane` de una CLI batch a un servicio FastAPI persistente de un solo contenedor (Fase 1 DBE) que carga un modelo una vez al arrancar y expone runs vía HTTP/WebSocket, sin CLI y sin recarga dinámica de modelos.
