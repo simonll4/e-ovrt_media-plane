@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import cv2
-import numpy as np
 import pytest
 import yaml
 
@@ -237,37 +235,14 @@ def test_wait_for_tcp_endpoint_returns_false_for_unused_endpoint() -> None:
     assert wait_for_tcp_endpoint("tcp://127.0.0.1:1", timeout_s=0.05) is False
 
 
-class FakeProcess:
-    def __init__(self, returncode: int = 0) -> None:
-        self.returncode = returncode
-        self.terminated = False
-
-    def wait(self, timeout: float | None = None) -> int:
-        return self.returncode
-
-    def poll(self) -> int | None:
-        return self.returncode
-
-    def terminate(self) -> None:
-        self.terminated = True
-        self.returncode = -15
-
-
-def test_run_two_node_local_generates_config_and_starts_nodes(
+def test_run_two_node_local_raises_since_cli_removed(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Task 17 eliminó el CLI `eovrt_media.cli` que esta orquestación spawneaba.
+    # run_two_node_local ahora falla de forma explícita e informativa (RuntimeError)
+    # en vez de un ModuleNotFoundError opaco desde los subprocesos. Sus helpers de
+    # config (build_run_config, etc.) siguen soportados y testeados aparte.
     from eovrt_media.runtime import two_node_local
-
-    started: list[list[str]] = []
-
-    def fake_popen(command, stdout, stderr, cwd, env):
-        started.append(command)
-        return FakeProcess(0)
-
-    monkeypatch.setattr(two_node_local.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(two_node_local, "wait_for_tcp_endpoint", lambda endpoint, timeout_s: True)
-    monkeypatch.setattr(two_node_local, "latest_run_dir", lambda base_dir=Path("runs"): None)
 
     options = LocalTwoNodeOptions(
         source="bench-val",
@@ -276,192 +251,16 @@ def test_run_two_node_local_generates_config_and_starts_nodes(
         generated_dir=tmp_path / "generated",
         logs_dir=tmp_path / "logs",
     )
-
-    result = two_node_local.run_two_node_local(options)
-
-    assert result.ok is True
-    assert result.config_path.exists()
-    assert result.node_a_log == result.logs_dir / "node-a.log"
-    assert result.node_b_log == result.logs_dir / "node-b.log"
-    assert started[0][-3:] == ["run-producer", "--config", str(result.config_path)]
-    assert started[1][-3:] == ["run-consumer", "--config", str(result.config_path)]
+    with pytest.raises(RuntimeError, match="no está soportado"):
+        two_node_local.run_two_node_local(options)
 
 
-def test_run_two_node_local_writes_wrapper_debug_events(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from eovrt_media.runtime import two_node_local
-
-    monkeypatch.setattr(two_node_local.subprocess, "Popen", lambda *args, **kwargs: FakeProcess(0))
-    monkeypatch.setattr(two_node_local, "wait_for_tcp_endpoint", lambda endpoint, timeout_s: True)
-    monkeypatch.setattr(two_node_local, "latest_run_dir", lambda base_dir=Path("runs"): None)
-
-    result = two_node_local.run_two_node_local(
-        LocalTwoNodeOptions(
-            source="bench-val",
-            model_ref="mock",
-            device="cpu",
-            generated_dir=tmp_path / "generated",
-            logs_dir=tmp_path / "logs",
-            session_dir=tmp_path / "debug-session",
-            debug=True,
-        )
-    )
-
-    events_path = result.logs_dir / "debug_events.jsonl"
-    assert events_path.exists()
-    assert "process.start" in events_path.read_text(encoding="utf-8")
-
-
-def test_run_two_node_local_does_not_fallback_to_latest_run_when_node_b_fails(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from eovrt_media.runtime import two_node_local
-
-    stale_run = tmp_path / "runs" / "run_stale"
-    stale_run.mkdir(parents=True)
-    (stale_run / "summary.json").write_text('{"run_id":"run_stale"}', encoding="utf-8")
-    processes = [FakeProcess(0), FakeProcess(1)]
-
-    monkeypatch.setattr(two_node_local.subprocess, "Popen", lambda *args, **kwargs: processes.pop(0))
-    monkeypatch.setattr(two_node_local, "wait_for_tcp_endpoint", lambda endpoint, timeout_s: True)
-
-    result = two_node_local.run_two_node_local(
-        LocalTwoNodeOptions(
-            source="bench-val",
-            model_ref="mock",
-            device="cpu",
-            generated_dir=tmp_path / "generated",
-            logs_dir=tmp_path / "logs",
-            outputs_base_dir=tmp_path / "runs",
-        )
-    )
-
-    assert result.ok is False
-    assert result.run_dir is None
-    assert result.summary == {}
-
-
-def test_probe_runs_for_ezviz_unless_skipped(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from eovrt_media.runtime import two_node_local
-
-    probed = []
-
-    monkeypatch.setattr(two_node_local.subprocess, "Popen", lambda *args, **kwargs: FakeProcess(0))
-    monkeypatch.setattr(two_node_local, "wait_for_tcp_endpoint", lambda endpoint, timeout_s: True)
-    monkeypatch.setattr(two_node_local, "latest_run_dir", lambda base_dir=Path("runs"): None)
-    monkeypatch.setattr(
-        two_node_local,
-        "probe_rtsp_config",
-        lambda config_path, frames=30: probed.append(config_path),
-    )
-
-    options = LocalTwoNodeOptions(
-        source="ezviz",
-        rtsp_url="rtsp://user:secret@cam/live",
-        model_ref="mock",
-        device="cpu",
-        generated_dir=tmp_path / "generated",
-        logs_dir=tmp_path / "logs",
-    )
-
-    two_node_local.run_two_node_local(options)
-
-    assert len(probed) == 1
-
-
-def test_probe_is_skipped_when_requested(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from eovrt_media.runtime import two_node_local
-
-    probed = []
-
-    monkeypatch.setattr(two_node_local.subprocess, "Popen", lambda *args, **kwargs: FakeProcess(0))
-    monkeypatch.setattr(two_node_local, "wait_for_tcp_endpoint", lambda endpoint, timeout_s: True)
-    monkeypatch.setattr(two_node_local, "latest_run_dir", lambda base_dir=Path("runs"): None)
-    monkeypatch.setattr(
-        two_node_local,
-        "probe_rtsp_config",
-        lambda config_path, frames=30: probed.append(config_path),
-    )
-
-    options = LocalTwoNodeOptions(
-        source="ezviz",
-        rtsp_url="rtsp://user:secret@cam/live",
-        model_ref="mock",
-        device="cpu",
-        generated_dir=tmp_path / "generated",
-        logs_dir=tmp_path / "logs",
-        skip_probe=True,
-    )
-
-    two_node_local.run_two_node_local(options)
-
-    assert probed == []
-
-
-def _write_images(folder: Path, count: int = 2) -> None:
-    folder.mkdir(parents=True, exist_ok=True)
-    for index in range(count):
-        image = np.full((48, 64, 3), index * 40, dtype=np.uint8)
-        cv2.imwrite(str(folder / f"img_{index:03d}.jpg"), image)
-
-
-def test_run_two_node_local_processes_inline_image_folder_with_mock(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    images = tmp_path / "images"
-    _write_images(images, count=2)
-
-    prompts_path = tmp_path / "prompts.yaml"
-    prompts_path.write_text(
-        "prompt_set:\n  id: v1\n  classes:\n"
-        "    - id: person\n      phrasings: {default: [person]}\n",
-        encoding="utf-8",
-    )
-
-    from eovrt_media.runtime import two_node_local
-
-    def fake_resolve_source(options):
-        return {"type": "image_folder", "path": str(images)}
-
-    def fake_resolve_prompts_ref(options):
-        return "v1"
-
-    monkeypatch.setattr(two_node_local, "resolve_source", fake_resolve_source)
-    monkeypatch.setattr(two_node_local, "resolve_prompts_ref", fake_resolve_prompts_ref)
-    monkeypatch.setitem(two_node_local.DEFAULT_ACTIVE_IDS, "v1", ["person"])
-
-    original_build = two_node_local.build_run_config
-
-    def build_with_prompt_file(options, endpoint, heartbeat_endpoint):
-        raw = original_build(options, endpoint=endpoint, heartbeat_endpoint=heartbeat_endpoint)
-        raw["model"] = {"adapter": "mock", "device": "cpu"}
-        raw["prompts"] = {"file": str(prompts_path), "active_ids": ["person"]}
-        return raw
-
-    monkeypatch.setattr(two_node_local, "build_run_config", build_with_prompt_file)
-    monkeypatch.chdir(Path.cwd())
-
-    result = two_node_local.run_two_node_local(
-        LocalTwoNodeOptions(
-            source="bench-val",
-            model_ref="mock",
-            device="cpu",
-            max_units=2,
-            generated_dir=tmp_path / "generated",
-            logs_dir=tmp_path / "logs",
-            outputs_base_dir=tmp_path / "runs",
-            startup_timeout_s=10.0,
-        )
-    )
-
-    assert result.ok is True
-    assert result.summary["units_processed"] == 2
-    assert result.summary["errors_count"] == 0
+# NOTE (Task 17): a real end-to-end test used to live here
+# (test_run_two_node_local_processes_inline_image_folder_with_mock), spawning actual
+# `python -m eovrt_media.cli run-producer/run-consumer` subprocesses (the only test in
+# this file that did not mock `subprocess.Popen`). `cli.py` and the `eovrt-media` entry
+# point were removed in Task 17, so that subprocess target no longer exists and the test
+# could never pass again as written. It was removed rather than rewritten because
+# `runtime/two_node_local.py` itself is slated for removal per the original Task 17 plan
+# (its Phase 2 replacement is docker-compose) — see task-17-report.md for why the module
+# was kept in this pass (it still backs `eovrt_media.tools.debug_run`).

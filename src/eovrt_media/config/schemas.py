@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -252,18 +253,20 @@ class ModelSection(BaseModel):
 class PromptsSection(BaseModel):
     """Sección 'prompts' de la configuración.
 
-    Acepta ``ref: <nombre>`` (resuelve ``<raíz-experimento>/prompts/<nombre>.yaml``,
-    p.ej. en ``e-ovrt_experimental-setup``) o una ruta explícita en ``file``.
+    Acepta ``ref`` (catálogo/experimento), ``file`` (ruta explícita) o
+    ``set_inline`` (PromptSet embebido — contrato del servicio, Spec A §3.1).
+    Precedencia: set_inline > file > ref.
     """
 
     ref: str | None = None
     file: str | None = None
+    set_inline: PromptSet | None = None
     active_ids: list[str] | None = None
 
     @model_validator(mode="after")
-    def require_ref_or_file(self) -> PromptsSection:
-        if self.ref is None and self.file is None:
-            raise ValueError("La sección 'prompts' requiere 'ref' o 'file'")
+    def require_prompt_source(self) -> PromptsSection:
+        if self.ref is None and self.file is None and self.set_inline is None:
+            raise ValueError("La sección 'prompts' requiere 'ref', 'file' o 'set_inline'")
         return self
 
 
@@ -315,6 +318,37 @@ class ExperimentSection(BaseModel):
     """Metadata/provenance del experimento (cross-plano, propagada al run)."""
 
     id: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Secret redaction
+# ---------------------------------------------------------------------------
+
+# La authority es todo lo que sigue a "//" hasta el primer '/', '?', '#' o el
+# final de la cadena. El userinfo (si existe) es todo lo anterior al ÚLTIMO '@'
+# dentro de esa authority — un password sin escapar puede contener '@'/':'
+# embebidos (p.ej. "p@ss"), así que NO alcanza con cortar en el primer '@'.
+#
+# `[^/?#]*` es codicioso: intenta consumir toda la authority y retrocede de a un
+# carácter hasta encontrar un '@' final, lo que en la práctica ata el match al
+# ÚLTIMO '@' anterior a '/', '?', '#' o EOF — exactamente el límite de userinfo.
+# Si la authority no contiene ningún '@', el patrón no matchea y no se redacta
+# nada (así se preservan `rtsp://host/path` y `rtsp://host/path?foo=a@b`, donde
+# el '@' vive en la query, fuera de la authority).
+_URL_USERINFO = re.compile(r"//[^/?#]*@")
+
+
+def redact_url_credentials(url: str) -> str:
+    """Redacta userinfo completo de URLs, incluyendo '@'/':' embebidos en el password.
+
+    rtsp://user:pass@host        -> rtsp://***:***@host
+    rtsp://user:p@ss@host/path   -> rtsp://***:***@host/path   (sin fugas de "p@ss")
+    rtsp://user@host/path        -> rtsp://***:***@host/path   (sin password: se
+                                     fabrica un "***:***" fijo por simplicidad; no
+                                     sobrevive ningún fragmento del username original)
+    rtsp://host/path?foo=a@b     -> sin cambios (el '@' está en la query, no en userinfo)
+    """
+    return _URL_USERINFO.sub("//***:***@", url)
 
 
 # ---------------------------------------------------------------------------
@@ -400,6 +434,15 @@ class RunConfig(BaseModel):
     def to_effective_dict(self) -> dict[str, Any]:
         """Devuelve la configuración efectiva como diccionario serializable."""
         data = self.model_dump(exclude={"prompts_file", "config_path"})
+
+        # Redact credentials from source URLs
+        source_data = data.get("source")
+        if isinstance(source_data, dict):
+            for key in ("url", "path"):
+                value = source_data.get(key)
+                if isinstance(value, str) and "@" in value and "://" in value:
+                    source_data[key] = redact_url_credentials(value)
+
         if self.prompts_file:
             data["resolved_prompt_set"] = self.prompts_file.resolved_set_id()
             data["resolved_prompt_classes"] = [

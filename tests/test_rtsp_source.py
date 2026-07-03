@@ -160,3 +160,45 @@ class TestRtspSource:
         )
         with pytest.raises(ConnectionError, match="RTSP"):
             list(source)
+
+    def test_connection_error_redacts_credentials(self, tmp_path, monkeypatch):
+        """La URL cruda con user:pass NUNCA aparece en el ConnectionError.
+
+        Ese mensaje fluye a errors.jsonl, servido sin auth por la API, así que
+        una fuga aquí expondría la password de la cámara por HTTP.
+        """
+        missing = tmp_path / "missing.mp4"
+        monkeypatch.setattr(
+            RtspSource, "_open_capture", lambda self, url: cv2.VideoCapture(str(missing))
+        )
+        secret = "sup3rs3cr3t"
+        source = RtspSource(
+            url=f"rtsp://admin:{secret}@camera.local:554/live",
+            reconnect_retries=1,
+            reconnect_delay_ms=0,
+        )
+        with pytest.raises(ConnectionError) as excinfo:
+            list(source)
+        message = str(excinfo.value)
+        assert secret not in message
+        assert "admin" not in message
+        assert "***" in message
+
+    def test_warning_log_redacts_credentials(self, tmp_path, monkeypatch, caplog):
+        """El log de reconexión tampoco filtra la password de la URL."""
+        missing = tmp_path / "missing.mp4"
+        monkeypatch.setattr(
+            RtspSource, "_open_capture", lambda self, url: cv2.VideoCapture(str(missing))
+        )
+        secret = "sup3rs3cr3t"
+        source = RtspSource(
+            url=f"rtsp://admin:{secret}@camera.local:554/live",
+            reconnect_retries=1,
+            reconnect_delay_ms=0,
+        )
+        with caplog.at_level("WARNING", logger="eovrt_media.sources.rtsp_source"):
+            with pytest.raises(ConnectionError):
+                list(source)
+        log_text = caplog.text
+        assert secret not in log_text
+        assert "***" in log_text

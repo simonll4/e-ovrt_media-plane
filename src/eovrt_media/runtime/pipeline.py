@@ -26,50 +26,12 @@ from eovrt_media.preprocessing import normalize_spatial
 from eovrt_media.runtime.run_context import RunContext
 from eovrt_media.sinks import RunArtifactWriter
 from eovrt_media.sinks.video_annotation_writer import VideoAnnotationWriter
-from eovrt_media.sources import BaseSource, ImageFolderSource, VideoFileSource
+from eovrt_media.sources import BaseSource
+from eovrt_media.sources.registry import create_source  # noqa: F401  (API pública estable)
 from eovrt_media.transport import RateGate, create_transport
 from eovrt_media.visualize import draw_detections_rgb
 
 logger = logging.getLogger(__name__)
-
-
-def create_source(config: RunConfig) -> BaseSource:
-    """Crea una fuente; RateGate aplica el stride después de la ingesta."""
-    source_type = config.source.type.lower().strip()
-    if source_type == "image_folder":
-        return ImageFolderSource(
-            folder_path=config.source.path,
-            extensions=config.source.extensions,
-            every_n=1,
-            max_units=config.run.max_units,
-        )
-    if source_type in {"video", "video_frame", "video_file"}:
-        return VideoFileSource(
-            video_path=config.source.path,
-            every_n=1,
-            target_fps=None,
-            max_units=config.run.max_units,
-        )
-    if source_type == "rtsp":
-        from eovrt_media.sources import RtspSource
-
-        return RtspSource(
-            url=config.source.url or config.source.path,
-            reconnect_retries=config.source.reconnect_retries,
-            reconnect_delay_ms=config.source.reconnect_delay_ms,
-            max_units=config.run.max_units,
-        )
-    if source_type == "oak_d":
-        from eovrt_media.sources import OakDSource
-
-        return OakDSource(
-            url=config.source.url or config.source.path,
-            max_units=config.run.max_units,
-        )
-    raise ValueError(
-        f"Tipo de fuente '{source_type}' no soportado o no implementado. "
-        "Usar image_folder, video_file, rtsp u oak_d."
-    )
 
 
 def run_producer_loop(
@@ -328,17 +290,51 @@ def run_consumer_loop(
             progress.update(task, advance=1)
 
 
-def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
-    """Ejecuta una corrida mediante un productor y un consumidor en memoria."""
-    console = console or Console()
+class RunControl:
+    """Control de vida de un run: stop cooperativo desde otro thread."""
+
+    def __init__(self) -> None:
+        self._stop = threading.Event()
+        self._source: BaseSource | None = None
+
+    def bind_source(self, source: BaseSource) -> None:
+        self._source = source
+
+    def request_stop(self) -> None:
+        self._stop.set()
+        if self._source is not None:
+            self._source.stop()  # destraba fuentes live bloqueadas en captura
+
+    @property
+    def stop_requested(self) -> bool:
+        return self._stop.is_set()
+
+
+def execute_run(
+    config: RunConfig,
+    adapter,
+    *,
+    console: Console | None = None,
+    control: RunControl | None = None,
+    event_sink=None,
+) -> str:
+    """Ejecuta un run con un adapter YA CARGADO (no lo crea, no lo cierra).
+
+    Camino del servicio (Spec A §6): el modelo vive a nivel proceso; stop vía
+    RunControl; telemetría opcional por event_sink (decorando el writer).
+    """
     run_context = RunContext(config)
     artifact_writer = RunArtifactWriter(run_context)
+    if event_sink is not None:
+        from eovrt_media.service.events import EventEmittingArtifactWriter
+
+        artifact_writer = EventEmittingArtifactWriter(artifact_writer, event_sink)
     tracker = LatencyTracker()
-    adapter = None
     producer = None
 
-    console.print(f"[bold green]▶ Corrida:[/bold green] {run_context.run_id}")
-    console.print(f"[dim]  Directorio de salida: {run_context.run_dir}[/dim]")
+    if console is not None:
+        console.print(f"[bold green]▶ Corrida:[/bold green] {run_context.run_id}")
+        console.print(f"[dim]  Directorio de salida: {run_context.run_dir}[/dim]")
 
     try:
         if config.config_path:
@@ -346,25 +342,23 @@ def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
         artifact_writer.write_effective_config()
 
         source = create_source(config)
+        if control is not None:
+            control.bind_source(source)
         try:
             source_count = len(source)
             progress_total: int | None = source_count if source_count >= 0 else None
         except TypeError:
-            source_count = -1
             progress_total = None
         normalizer = DetectionNormalizer(
             min_confidence=config.postprocess.min_confidence,
             min_box_area_px=config.postprocess.min_box_area_px,
             normalize_boxes=config.postprocess.normalize_boxes,
         )
-        adapter = create_adapter(config.model)
         plan = config.build_prompt_plan(adapter.PROMPT_BACKEND)
         prompt_set_id = (
             config.prompts_file.resolved_set_id() if config.prompts_file else "unknown"
         )
         reset_gpu_peak_memory()
-        with console.status("[bold cyan]Cargando modelo..."):
-            adapter.load()
 
         rate_control = config.rate_control
         transport = create_transport(
@@ -374,6 +368,9 @@ def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
             buffer_size=rate_control.buffer_size,
             max_staleness_ms=rate_control.max_staleness_ms,
             endpoint=config.transport.endpoint,
+        )
+        should_continue = (
+            (lambda: not control.stop_requested) if control is not None else None
         )
         timings: dict[str, float] = {"backpressure_wait_ms": 0.0}
         producer = threading.Thread(
@@ -387,38 +384,50 @@ def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
                 run_context.run_id,
                 run_context._errors_queue,
                 timings,
+                should_continue,
             ),
             daemon=True,
             name="pipeline-producer",
         )
         producer.start()
 
+        def _consume(progress=None, task=None) -> None:
+            run_consumer_loop(
+                transport=transport,
+                adapter=adapter,
+                normalizer=normalizer,
+                artifact_writer=artifact_writer,
+                run_context=run_context,
+                tracker=tracker,
+                config=config,
+                plan=plan,
+                prompt_set_id=prompt_set_id,
+                timings=timings,
+                progress=progress,
+                task=task,
+                drain_errors=True,
+            )
+
         try:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TaskProgressColumn(),
-                console=console,
-            ) as progress:
-                task = progress.add_task("Procesando unidades visuales...", total=progress_total)
-                run_consumer_loop(
-                    transport=transport,
-                    adapter=adapter,
-                    normalizer=normalizer,
-                    artifact_writer=artifact_writer,
-                    run_context=run_context,
-                    tracker=tracker,
-                    config=config,
-                    plan=plan,
-                    prompt_set_id=prompt_set_id,
-                    timings=timings,
-                    progress=progress,
-                    task=task,
-                    drain_errors=True,
-                )
+            if console is not None:
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    TaskProgressColumn(),
+                    console=console,
+                ) as progress:
+                    task = progress.add_task(
+                        "Procesando unidades visuales...", total=progress_total
+                    )
+                    _consume(progress, task)
+            else:
+                _consume()
         except KeyboardInterrupt:
-            console.print("\n[yellow]⚠ Corrida interrumpida — guardando artefactos...[/yellow]")
+            if console is not None:
+                console.print(
+                    "\n[yellow]⚠ Corrida interrumpida — guardando artefactos...[/yellow]"
+                )
             source.stop()
             transport.close()
             producer.join(timeout=5.0)
@@ -429,8 +438,6 @@ def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
     finally:
         if producer is not None:
             producer.join(timeout=30.0)
-        if adapter is not None:
-            adapter.close()
         artifact_writer.close()
 
     run_context.gpu_memory_peak_mb = get_gpu_memory_peak_mb()
@@ -439,3 +446,15 @@ def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
     artifact_writer.write_provenance()
     artifact_writer.write_manifest()
     return run_context.run_id
+
+
+def run_pipeline(config: RunConfig, console: Console | None = None) -> str:
+    """Ejecuta una corrida creando y cargando el adapter (camino standalone/tests)."""
+    console = console or Console()
+    adapter = create_adapter(config.model)
+    with console.status("[bold cyan]Cargando modelo..."):
+        adapter.load()
+    try:
+        return execute_run(config, adapter, console=console)
+    finally:
+        adapter.close()

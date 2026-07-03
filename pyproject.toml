@@ -8,10 +8,11 @@ dependencies = [
     "opencv-python",
     "pydantic",
     "pyyaml",
-    "typer",
     "rich",
     "pyzmq",
     "msgpack",
+    "fastapi>=0.110",
+    "uvicorn[standard]",
 ]
 
 [project.optional-dependencies]
@@ -27,10 +28,8 @@ gpu = [
 dev = [
     "pytest",
     "ruff",
+    "httpx",
 ]
-
-[project.scripts]
-eovrt-media = "eovrt_media.cli:app"
 
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
