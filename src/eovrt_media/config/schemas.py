@@ -252,18 +252,20 @@ class ModelSection(BaseModel):
 class PromptsSection(BaseModel):
     """Sección 'prompts' de la configuración.
 
-    Acepta ``ref: <nombre>`` (resuelve ``<raíz-experimento>/prompts/<nombre>.yaml``,
-    p.ej. en ``e-ovrt_experimental-setup``) o una ruta explícita en ``file``.
+    Acepta ``ref`` (catálogo/experimento), ``file`` (ruta explícita) o
+    ``set_inline`` (PromptSet embebido — contrato del servicio, Spec A §3.1).
+    Precedencia: set_inline > file > ref.
     """
 
     ref: str | None = None
     file: str | None = None
+    set_inline: PromptSet | None = None
     active_ids: list[str] | None = None
 
     @model_validator(mode="after")
-    def require_ref_or_file(self) -> PromptsSection:
-        if self.ref is None and self.file is None:
-            raise ValueError("La sección 'prompts' requiere 'ref' o 'file'")
+    def require_prompt_source(self) -> PromptsSection:
+        if self.ref is None and self.file is None and self.set_inline is None:
+            raise ValueError("La sección 'prompts' requiere 'ref', 'file' o 'set_inline'")
         return self
 
 

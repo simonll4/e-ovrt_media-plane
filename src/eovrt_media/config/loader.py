@@ -278,8 +278,10 @@ def load_run_config_data(
     config = RunConfig(**raw)
     config.config_path = config_path
 
-    # Resolver ruta del archivo de prompts relativa al config o al CWD
-    if config.prompts.file:
+    # Resolver prompts: precedencia set_inline > file > ref
+    if config.prompts.set_inline is not None:
+        config.prompts_file = PromptsFile(prompt_set=config.prompts.set_inline)
+    elif config.prompts.file:
         prompts_path = Path(config.prompts.file)
         if not prompts_path.is_absolute() and config_path is not None:
             # Intentar relativa al directorio del config primero
