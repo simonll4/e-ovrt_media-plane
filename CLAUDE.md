@@ -36,6 +36,9 @@ python -m eovrt_media.tools.evaluate --run runs/<run_id> [--bench-coco ...] [--p
 python -m eovrt_media.tools.inspect_runs inspect runs/<run_id>
 python -m eovrt_media.tools.inspect_runs compare runs/          # tabla comparativa
 python -m eovrt_media.tools.debug_run --source bench-val [...]  # campaña de debug
+# CAVEAT: la ruta de dos-nodos-local de debug_run (run_two_node_local) NO funciona
+# post-eliminación-del-CLI (spawnea el `eovrt_media.cli` borrado); ahora falla con un
+# RuntimeError explícito. Pendiente de decisión en Fase 2 (docker-compose de dos nodos).
 
 # Test
 make test                                       # pytest -q

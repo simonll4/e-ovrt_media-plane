@@ -54,6 +54,16 @@ def to_raw_run_config(request: RunRequest, model_section: ModelSection) -> dict[
             f"Plugin de ingesta desconocido: {request.ingest.plugin!r}. "
             f"Disponibles: {sorted(_PLUGIN_TO_SOURCE_TYPE)}"
         )
+    # El registro de plugins es la fuente de verdad de disponibilidad: un plugin
+    # advertido como available:false (p.ej. oak_d) debe dar un 4xx claro, no un
+    # NotImplementedError del loader que escaparía como 500.
+    from eovrt_media.sources.registry import PLUGINS
+
+    plugin = PLUGINS.get(request.ingest.plugin)
+    if plugin is not None and not plugin.available:
+        raise ValueError(
+            f"Plugin de ingesta '{request.ingest.plugin}' no disponible: {plugin.description}"
+        )
     ingest_config = dict(request.ingest.config)
     dataset = ingest_config.pop("dataset", None)
     if dataset:

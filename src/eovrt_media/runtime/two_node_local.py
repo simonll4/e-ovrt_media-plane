@@ -308,7 +308,18 @@ def _terminate_process(process: subprocess.Popen[Any] | None) -> None:
 
 
 def run_two_node_local(options: LocalTwoNodeOptions) -> LocalTwoNodeResult:
-    """Generate config, launch Nodo A and Nodo B, and collect local bench results."""
+    """Generate config, launch Nodo A and Nodo B, and collect local bench results.
+
+    NO SOPORTADO desde Task 17: esta orquestación spawnea `python -m eovrt_media.cli
+    run-producer/run-consumer`, pero el CLI fue eliminado. Sin este guard, cada
+    invocación real fallaría con un `ModuleNotFoundError` opaco de los subprocesos.
+    Se conserva el módulo (sus helpers de config siguen usados por debug_run) y la
+    ruta de dos nodos se retoma en Fase 2 con docker-compose.
+    """
+    raise RuntimeError(
+        "run_two_node_local ya no está soportado: el CLI `eovrt_media.cli` fue "
+        "eliminado (Task 17). Usar el servicio (docker-compose de dos nodos en Fase 2)."
+    )
     endpoint, heartbeat_endpoint = _endpoints_for_options(options)
     raw_config = build_run_config(
         options,

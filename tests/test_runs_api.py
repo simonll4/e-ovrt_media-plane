@@ -121,3 +121,27 @@ def test_ingest_plugin_desconocido_es_422(client, tmp_path):
     r = client.post("/api/runs", json=body)
     assert r.status_code == 422
     assert "plugin_inexistente" in r.json()["detail"]
+
+
+def test_ingest_plugin_no_disponible_es_4xx(client, tmp_path):
+    # oak_d está en el registro pero available:false. Antes escapaba como 500
+    # (NotImplementedError del loader); ahora es un 4xx claro y no un 500.
+    body = _body(_images(tmp_path))
+    body["ingest"]["plugin"] = "oak_d"
+    r = client.post("/api/runs", json=body)
+    assert 400 <= r.status_code < 500
+    assert r.status_code != 500
+    assert "oak_d" in r.json()["detail"]
+
+
+def test_detections_run_id_con_path_traversal_es_404(client):
+    # Un run_id con '..' no debe poder reubicar el run_dir: se rechaza como 404.
+    r = client.get("/api/runs/..%2F..%2Fetc/detections")
+    assert r.status_code == 404
+    r2 = client.get("/api/runs/bad..id/detections")
+    assert r2.status_code == 404
+
+
+def test_artifact_run_id_con_path_traversal_es_404(client):
+    r = client.get("/api/runs/bad..id/artifacts/errors.jsonl")
+    assert r.status_code == 404

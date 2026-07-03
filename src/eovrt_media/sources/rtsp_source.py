@@ -8,6 +8,7 @@ from typing import Iterator
 
 import cv2
 
+from eovrt_media.config.schemas import redact_url_credentials
 from eovrt_media.contracts import VisualUnit
 from eovrt_media.sources.base import BaseSource
 
@@ -46,14 +47,19 @@ class RtspSource(BaseSource):
             if cap.isOpened():
                 return cap
             cap.release()
+            # NUNCA loguear/exponer la URL cruda: las credenciales inline
+            # (rtsp://user:pass@host) se filtrarían a logs y a errors.jsonl,
+            # que se sirve sin autenticación vía la API.
+            safe_url = redact_url_credentials(self.url)
             logger.warning(
                 "RTSP no disponible (intento %d/%d): %s",
-                attempt, self.reconnect_retries, self.url,
+                attempt, self.reconnect_retries, safe_url,
             )
             if attempt < self.reconnect_retries and self.reconnect_delay_ms > 0:
                 time.sleep(self.reconnect_delay_ms / 1000.0)
         raise ConnectionError(
-            f"RTSP: no se pudo conectar tras {self.reconnect_retries} intentos: {self.url}"
+            f"RTSP: no se pudo conectar tras {self.reconnect_retries} intentos: "
+            f"{redact_url_credentials(self.url)}"
         )
 
     def stop(self) -> None:

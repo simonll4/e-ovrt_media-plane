@@ -235,37 +235,14 @@ def test_wait_for_tcp_endpoint_returns_false_for_unused_endpoint() -> None:
     assert wait_for_tcp_endpoint("tcp://127.0.0.1:1", timeout_s=0.05) is False
 
 
-class FakeProcess:
-    def __init__(self, returncode: int = 0) -> None:
-        self.returncode = returncode
-        self.terminated = False
-
-    def wait(self, timeout: float | None = None) -> int:
-        return self.returncode
-
-    def poll(self) -> int | None:
-        return self.returncode
-
-    def terminate(self) -> None:
-        self.terminated = True
-        self.returncode = -15
-
-
-def test_run_two_node_local_generates_config_and_starts_nodes(
+def test_run_two_node_local_raises_since_cli_removed(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Task 17 eliminó el CLI `eovrt_media.cli` que esta orquestación spawneaba.
+    # run_two_node_local ahora falla de forma explícita e informativa (RuntimeError)
+    # en vez de un ModuleNotFoundError opaco desde los subprocesos. Sus helpers de
+    # config (build_run_config, etc.) siguen soportados y testeados aparte.
     from eovrt_media.runtime import two_node_local
-
-    started: list[list[str]] = []
-
-    def fake_popen(command, stdout, stderr, cwd, env):
-        started.append(command)
-        return FakeProcess(0)
-
-    monkeypatch.setattr(two_node_local.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(two_node_local, "wait_for_tcp_endpoint", lambda endpoint, timeout_s: True)
-    monkeypatch.setattr(two_node_local, "latest_run_dir", lambda base_dir=Path("runs"): None)
 
     options = LocalTwoNodeOptions(
         source="bench-val",
@@ -274,133 +251,8 @@ def test_run_two_node_local_generates_config_and_starts_nodes(
         generated_dir=tmp_path / "generated",
         logs_dir=tmp_path / "logs",
     )
-
-    result = two_node_local.run_two_node_local(options)
-
-    assert result.ok is True
-    assert result.config_path.exists()
-    assert result.node_a_log == result.logs_dir / "node-a.log"
-    assert result.node_b_log == result.logs_dir / "node-b.log"
-    assert started[0][-3:] == ["run-producer", "--config", str(result.config_path)]
-    assert started[1][-3:] == ["run-consumer", "--config", str(result.config_path)]
-
-
-def test_run_two_node_local_writes_wrapper_debug_events(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from eovrt_media.runtime import two_node_local
-
-    monkeypatch.setattr(two_node_local.subprocess, "Popen", lambda *args, **kwargs: FakeProcess(0))
-    monkeypatch.setattr(two_node_local, "wait_for_tcp_endpoint", lambda endpoint, timeout_s: True)
-    monkeypatch.setattr(two_node_local, "latest_run_dir", lambda base_dir=Path("runs"): None)
-
-    result = two_node_local.run_two_node_local(
-        LocalTwoNodeOptions(
-            source="bench-val",
-            model_ref="mock",
-            device="cpu",
-            generated_dir=tmp_path / "generated",
-            logs_dir=tmp_path / "logs",
-            session_dir=tmp_path / "debug-session",
-            debug=True,
-        )
-    )
-
-    events_path = result.logs_dir / "debug_events.jsonl"
-    assert events_path.exists()
-    assert "process.start" in events_path.read_text(encoding="utf-8")
-
-
-def test_run_two_node_local_does_not_fallback_to_latest_run_when_node_b_fails(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from eovrt_media.runtime import two_node_local
-
-    stale_run = tmp_path / "runs" / "run_stale"
-    stale_run.mkdir(parents=True)
-    (stale_run / "summary.json").write_text('{"run_id":"run_stale"}', encoding="utf-8")
-    processes = [FakeProcess(0), FakeProcess(1)]
-
-    monkeypatch.setattr(two_node_local.subprocess, "Popen", lambda *args, **kwargs: processes.pop(0))
-    monkeypatch.setattr(two_node_local, "wait_for_tcp_endpoint", lambda endpoint, timeout_s: True)
-
-    result = two_node_local.run_two_node_local(
-        LocalTwoNodeOptions(
-            source="bench-val",
-            model_ref="mock",
-            device="cpu",
-            generated_dir=tmp_path / "generated",
-            logs_dir=tmp_path / "logs",
-            outputs_base_dir=tmp_path / "runs",
-        )
-    )
-
-    assert result.ok is False
-    assert result.run_dir is None
-    assert result.summary == {}
-
-
-def test_probe_runs_for_ezviz_unless_skipped(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from eovrt_media.runtime import two_node_local
-
-    probed = []
-
-    monkeypatch.setattr(two_node_local.subprocess, "Popen", lambda *args, **kwargs: FakeProcess(0))
-    monkeypatch.setattr(two_node_local, "wait_for_tcp_endpoint", lambda endpoint, timeout_s: True)
-    monkeypatch.setattr(two_node_local, "latest_run_dir", lambda base_dir=Path("runs"): None)
-    monkeypatch.setattr(
-        two_node_local,
-        "probe_rtsp_config",
-        lambda config_path, frames=30: probed.append(config_path),
-    )
-
-    options = LocalTwoNodeOptions(
-        source="ezviz",
-        rtsp_url="rtsp://user:secret@cam/live",
-        model_ref="mock",
-        device="cpu",
-        generated_dir=tmp_path / "generated",
-        logs_dir=tmp_path / "logs",
-    )
-
-    two_node_local.run_two_node_local(options)
-
-    assert len(probed) == 1
-
-
-def test_probe_is_skipped_when_requested(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from eovrt_media.runtime import two_node_local
-
-    probed = []
-
-    monkeypatch.setattr(two_node_local.subprocess, "Popen", lambda *args, **kwargs: FakeProcess(0))
-    monkeypatch.setattr(two_node_local, "wait_for_tcp_endpoint", lambda endpoint, timeout_s: True)
-    monkeypatch.setattr(two_node_local, "latest_run_dir", lambda base_dir=Path("runs"): None)
-    monkeypatch.setattr(
-        two_node_local,
-        "probe_rtsp_config",
-        lambda config_path, frames=30: probed.append(config_path),
-    )
-
-    options = LocalTwoNodeOptions(
-        source="ezviz",
-        rtsp_url="rtsp://user:secret@cam/live",
-        model_ref="mock",
-        device="cpu",
-        generated_dir=tmp_path / "generated",
-        logs_dir=tmp_path / "logs",
-        skip_probe=True,
-    )
-
-    two_node_local.run_two_node_local(options)
-
-    assert probed == []
+    with pytest.raises(RuntimeError, match="no está soportado"):
+        two_node_local.run_two_node_local(options)
 
 
 # NOTE (Task 17): a real end-to-end test used to live here

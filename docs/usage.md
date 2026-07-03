@@ -1,5 +1,10 @@
 # Uso del Plano de Medios
 
+> **Nota (Fase 1):** el media-plane ya **no es un CLI**. El comando `eovrt-media`
+> fue eliminado (Task 17); el pipeline se dispara como un **servicio HTTP/WS** que
+> mantiene un único run activo. Los utilitarios ex-subcomandos ahora se invocan
+> como módulos (`python -m eovrt_media.tools.*`).
+
 ## Instalación
 
 ```bash
@@ -14,9 +19,6 @@ source .venv/bin/activate
 # Instalar
 pip install --upgrade pip setuptools wheel
 pip install -e ".[dev]"
-
-# Verificar
-eovrt-media --help
 ```
 
 O usar el script de bootstrap:
@@ -48,128 +50,126 @@ Colocar imágenes de prueba en `data/samples/images/` (`.jpg`, `.jpeg`, `.png`) 
 
 Para datasets pesados, usar `data/raw/` o `data/datasets/` (ignorados por Git).
 
-## Ejecutar pipeline
+## Levantar el servicio
 
-Los manifiestos de corrida y los prompt sets viven en el repo hermano
-`../e-ovrt_experimental-setup` (`experiments/` y `prompts/`); el media-plane conserva los
-catálogos `configs/models/` y `configs/datasets/`. Un manifiesto compone por referencia:
-`model.ref`/`source.ref` → catálogo del plano; `prompts.ref` → `experimental-setup/prompts/`.
-**Correr siempre desde la raíz del media-plane** (los datasets usan rutas `../e-ovrt_datasets`
-relativas al CWD). Ver `../e-ovrt_experimental-setup/README.md` y `configs/README.md`.
-
-### Con detector mock (validación sin modelos reales)
+El **modelo se carga una sola vez al startup** (no por run) a partir de la variable
+`EOVRT_MODEL_REF` (una `ref` del catálogo `configs/models/`, o `mock` para validar el
+pipeline sin pesos reales). **Correr siempre desde la raíz del media-plane** (los
+catálogos de datasets usan rutas `../e-ovrt_datasets` relativas al CWD).
 
 ```bash
-eovrt-media run --config ../e-ovrt_experimental-setup/experiments/mock.yaml
-# o
-make run-mock
+# Arranca uvicorn --factory sobre eovrt_media.service.app:create_app en :8080
+EOVRT_MODEL_REF=mock make serve
+
+# Smoke: verifica /healthz + /readyz
+make smoke
 ```
 
-La config `mock.yaml` usa el catálogo `demo_v2` (CHV demo v2, repo hermano
-`../e-ovrt_datasets`). No requiere pesos de modelos; valida el pipeline completo con
-el detector mock. Asegúrese de que el repo hermano esté presente como sibling en disco.
-
-### Con Grounding DINO
+Endpoints de salud y metadata:
 
 ```bash
-eovrt-media run --config ../e-ovrt_experimental-setup/experiments/gdino.yaml
-# o
-make run-gdino
+curl -s http://localhost:8080/healthz          # liveness
+curl -s http://localhost:8080/readyz           # readiness (modelo cargado)
+curl -s http://localhost:8080/api/model        # ref/adaptador/device del modelo cargado
 ```
 
-### Con YOLOE
+Variables de entorno relevantes: `EOVRT_MODEL_REF` (obligatoria), `EOVRT_RUNS_DIR`
+(directorio de artefactos, default `runs/`), `EOVRT_CATALOG_ROOT`, `EOVRT_DATASETS_ROOT`.
+
+## Disparar una corrida
+
+El **modelo nunca viaja en el request**: es el que la instancia cargó al startup. El
+body declara la **fuente de ingesta** (`ingest`) y los **prompts** (`prompts`). Los
+plugins de ingesta disponibles se consultan en el catálogo:
 
 ```bash
-eovrt-media run --config ../e-ovrt_experimental-setup/experiments/yoloe.yaml
-# o
-make run-yoloe
+curl -s http://localhost:8080/api/catalog/ingest-plugins   # image_folder, video_file, rtsp, oak_d
+curl -s http://localhost:8080/api/catalog/datasets          # datasets referenciables por 'dataset'
 ```
 
-### Con stride (muestreo por paso)
+Ejemplo mínimo — carpeta de imágenes + prompts inline:
 
 ```bash
-eovrt-media run --config ../e-ovrt_experimental-setup/experiments/yoloe_video.yaml
+curl -X POST http://localhost:8080/api/runs \
+  -H "Content-Type: application/json" \
+  -d '{
+        "ingest": {"plugin": "image_folder", "config": {"path": "/ruta/a/imagenes"}},
+        "prompts": {
+          "set_inline": {
+            "id": "demo",
+            "classes": [{"id": "person", "phrasings": {"default": ["person"]}}]
+          },
+          "active_ids": ["person"]
+        },
+        "run": {"stride": 1, "max_units": 200, "save_previews": true}
+      }'
+# -> 201 {"run_id": "run_..."}
 ```
 
-Procesa CHV demo v2 con `stride: 5` (1 de cada 5 imágenes). El stride se controla
-con `rate_control.stride` y el límite de unidades con `run.max_units`. La sección
-`sampling` ya no es válida; el loader informa cómo migrarla.
+Notas:
+- `ingest.plugin` puede ser `image_folder`, `video_file`, `rtsp` (vivo) o `oak_d`
+  (advertido pero **no disponible** en Fase 1 → responde 4xx claro, no 500).
+- Para usar un dataset del catálogo, pasar `config.dataset: <nombre>` en vez de `path`.
+- Incluir una sección `model` en el body es un error (**422**): el modelo es fijo por instancia.
+- Solo puede haber **un run activo**: un segundo `POST /api/runs` mientras hay uno en curso responde **409**.
+- Para RTSP con credenciales inline (`rtsp://user:pass@host`), las URLs se **redactan**
+  en logs y artefactos (`errors.jsonl`, `effective_config.yaml`) antes de persistirse.
 
-### Topología dos nodos (Nodo A edge + Nodo B GPU)
+### Consultar, transmitir y detener
 
 ```bash
-# Nodo A: ingesta + normalización + ZeroMQ REP
-eovrt-media run-producer --config ../e-ovrt_experimental-setup/experiments/<archivo>.yaml
+# Estado/resumen de la corrida
+curl -s http://localhost:8080/api/runs/<run_id>
 
-# Nodo B: inferencia + artefactos + ZeroMQ REQ
-eovrt-media run-consumer --config ../e-ovrt_experimental-setup/experiments/<archivo>.yaml
+# Listado (activo + historial en EOVRT_RUNS_DIR)
+curl -s http://localhost:8080/api/runs
+
+# Detener el run activo
+curl -X POST http://localhost:8080/api/runs/<run_id>/stop    # 202
+
+# Borrar un run terminado (409 si sigue activo)
+curl -X DELETE http://localhost:8080/api/runs/<run_id>       # 204
 ```
 
-El config del run debe declarar `topology.mode: two_node`; el loader deriva
-automáticamente `transport.backend: network`. Ver
-[docs/deployment/two-node-docker.md](deployment/two-node-docker.md) para el
-despliegue con Docker Compose.
+Stream de eventos en vivo (detecciones/métricas/estado) por WebSocket:
 
-### Banco local nativo two-node
+```
+WS ws://localhost:8080/api/runs/<run_id>/stream
+```
 
-Para probar a fondo el plano de medios en una sola PC sin Docker, usar el banco
-nativo. El comando genera una config local bajo `configs/runs/local/generated/`,
-levanta Nodo A y Nodo B como procesos separados sobre loopback, guarda logs por
-nodo y resume los artefactos de la corrida.
+### Artefactos por HTTP
 
 ```bash
-eovrt-media run-two-node-local --source bench-val --codec jpeg --max-units 200
-eovrt-media run-two-node-local --source bench-val --codec raw --max-units 200
-eovrt-media run-two-node-local --source video --video data/samples/videos/sample.mp4 --codec jpeg
-EZVIZ_RTSP_URL='rtsp://user:password@camera/stream' \
-  eovrt-media run-two-node-local --source ezviz --max-units 300
+# Detecciones paginadas (JSON)
+curl -s "http://localhost:8080/api/runs/<run_id>/detections?page=1&page_size=100"
+
+# Archivos crudos del run (soporta Range para video)
+curl -s http://localhost:8080/api/runs/<run_id>/artifacts/summary.json
+curl -s http://localhost:8080/api/runs/<run_id>/artifacts/errors.jsonl
+curl -s http://localhost:8080/api/runs/<run_id>/artifacts/previews/<archivo>.jpg
 ```
 
-`configs/runs/local/` está ignorado por Git; no versionar URIs RTSP ni endpoints
-locales. Para RTSP, el comando ejecuta una sonda corta antes de levantar nodos
-salvo que se pase `--skip-probe`.
+## Topología dos nodos (Nodo A edge + Nodo B GPU)
 
-### Framework de debug
+La ejecución distribuida (Nodo A: ingesta + normalización + ZeroMQ REP; Nodo B:
+inferencia + artefactos + ZeroMQ REQ) se invoca **en proceso** vía
+`runtime/two_node.py:run_node_a()` / `run_node_b()`; el config debe declarar
+`topology.mode: two_node` (el loader deriva `transport.backend: network`). Ver
+[docs/deployment/two-node-docker.md](deployment/two-node-docker.md) para el despliegue
+con Docker Compose (ruta prevista para Fase 2).
 
-Para ejecutar campañas diagnósticas y comparar corridas:
-
-```bash
-eovrt-media debug-run \
-  --source bench-val \
-  --model-ref yoloe/yoloe-26s \
-  --device cuda:0 \
-  --codecs raw,jpeg \
-  --max-units 5 \
-  --debug
-```
-
-Cada corrida puede escribir `debug_events.jsonl`; la campaña queda en
-`runs/debug-sessions/` con `session_report.json` y `session_report.md`.
-
-### Cámara RTSP con YOLOE en GPU (single-host)
-
-Guarde las configuraciones operativas locales en `configs/runs/local/`; este directorio
-está ignorado por Git. La URI RTSP no debe versionarse ni incluirse en tickets. Para la
-cámara, use el modelo `yoloe/yoloe-26s` con `device: cuda:0`, `source.type: rtsp` y
-`rate_control.policy: bounded_freshness`.
-
-```bash
-python scripts/probe_rtsp.py --config configs/runs/local/ezviz_yoloe_rtsp.yaml --frames 30
-eovrt-media run --config configs/runs/local/ezviz_yoloe_rtsp.yaml
-```
-
-Todo el directorio `runs/<run_id>/` puede contener la URI RTSP, incluidos
-`run_config.yaml`, `effective_config.yaml`, `detections.jsonl`, `metrics.jsonl` y
-`errors.jsonl`; manténgalo local o sanitícelo antes de compartirlo.
+> **No soportado en Fase 1:** el banco local nativo `run_two_node_local()` y la
+> campaña `debug_run` en modo dos-nodos-local **spawneaban el CLI eliminado** y ahora
+> fallan de forma explícita. Su reemplazo es el docker-compose de dos nodos (Fase 2).
 
 ## Leer resultados
 
-Cada corrida genera un directorio en `runs/`:
+Cada corrida genera un directorio en `EOVRT_RUNS_DIR` (default `runs/`):
 
 ```
 runs/<run_id>/
 ├── run_config.yaml          # Copia de la configuración original
-├── effective_config.yaml    # Configuración efectiva (defaults resueltos)
+├── effective_config.yaml    # Configuración efectiva (defaults resueltos, URLs redactadas)
 ├── run_manifest.json        # Metadatos: run_id, fechas, commit del código, archivos
 ├── detections.jsonl         # Una línea JSON por unidad procesada
 ├── metrics.jsonl            # Métricas por unidad
@@ -187,31 +187,12 @@ Con `save_previews: true`, el consumidor renderiza previews anotados directament
 `NormalizedUnit.payload`. Funciona con imágenes, vídeo, RTSP y en Nodo B sin acceso a la ruta
 original del productor; las cajas se dibujan en el espacio del payload normalizado.
 
-### Ver resumen
+### Inspeccionar y comparar corridas (utilitarios)
 
 ```bash
-cat runs/<run_id>/summary.json | python -m json.tool
-```
-
-### Ver detecciones
-
-```bash
-head -5 runs/<run_id>/detections.jsonl
-```
-
-### Inspeccionar corrida
-
-```bash
-eovrt-media inspect-run runs/<run_id>
-```
-
-### Comparar corridas
-
-```bash
-eovrt-media compare-runs runs/                      # todas las corridas bajo runs/
-eovrt-media compare-runs runs/<run_a> runs/<run_b>  # corridas específicas
-# o
-make compare-runs
+python -m eovrt_media.tools.inspect_runs inspect runs/<run_id>
+python -m eovrt_media.tools.inspect_runs compare runs/                 # tabla comparativa
+python -m eovrt_media.tools.inspect_runs compare runs/<run_a> runs/<run_b>
 ```
 
 Imprime una tabla comparativa (modelo, device, unidades, detecciones, latencias, FPS, VRAM pico) y el desglose de detecciones por label de cada corrida.
@@ -221,29 +202,21 @@ Imprime una tabla comparativa (modelo, device, unidades, detecciones, latencias,
 Tras ejecutar una corrida sobre imágenes del BENCH, calcule AP@0.5 por clase y CR-01 recall:
 
 ```bash
-eovrt-media evaluate --run runs/<run_id>
+python -m eovrt_media.tools.evaluate --run runs/<run_id>
 ```
 
 El comando auto-descubre los archivos del BENCH desde el repo hermano `../e-ovrt_datasets`.
 Si los paths difieren, páselos explícitamente:
 
 ```bash
-eovrt-media evaluate \
+python -m eovrt_media.tools.evaluate \
   --run runs/<run_id> \
   --bench-coco ../e-ovrt_datasets/datasets/processed/coco/bench/construction_site_safety_bench.json \
   --person-gt  ../e-ovrt_datasets/datasets/processed/coco/bench/person_gt.json
 ```
 
-Imprime una tabla Rich con AP@0.5 y conteos por clase, CR-01 recall, y persiste
+Imprime una tabla con AP@0.5 y conteos por clase, CR-01 recall, y persiste
 `runs/<run_id>/eval_perception.json` (`type: "perception"`).
-
-Los configs de experimento BENCH viven en `../e-ovrt_experimental-setup/experiments/bench_v2/`
-(uno por modelo × split val/test). Ejecute con el modelo deseado y luego evalúe:
-
-```bash
-eovrt-media run --config ../e-ovrt_experimental-setup/experiments/bench_v2/b2_y_e4_yoloe_26s_val.yaml
-eovrt-media evaluate --run runs/<run_id_generado>
-```
 
 ## Knobs de rendimiento
 
@@ -287,6 +260,8 @@ corridas DBE reproducibles nunca pasan por compresión lossy.
 ## Linting y tests
 
 ```bash
-make lint    # ruff check
-make test    # pytest
+make lint    # ruff check src tests
+make test    # pytest -q
 ```
+</content>
+</invoke>

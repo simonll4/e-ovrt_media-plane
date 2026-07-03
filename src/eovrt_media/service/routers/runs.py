@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json as _json
+import re
 import shutil
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -11,6 +12,16 @@ from eovrt_media.service.run_manager import RunBusyError, RunManager, UnknownRun
 from eovrt_media.service.run_request import RunRequest
 
 router = APIRouter(prefix="/api")
+
+# run_id se usa como segmento de path del filesystem: solo alfanuméricos, '_' y '-'.
+# Esto descarta '..', '/' y demás antes de construir cualquier ruta (defensa en
+# profundidad frente a la normalización de proxies/clientes).
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _require_valid_run_id(run_id: str) -> None:
+    if not _RUN_ID_RE.match(run_id):
+        raise HTTPException(status_code=404, detail=f"Run desconocido: {run_id}")
 
 
 def _manager(request: Request) -> RunManager:
@@ -79,6 +90,7 @@ def get_detections(
     page_size: int = Query(100, ge=1, le=1000),
 ):
     _manager(request)  # 503 si no ready
+    _require_valid_run_id(run_id)
     path = request.app.state.settings.runs_dir / run_id / "detections.jsonl"
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Sin detecciones para: {run_id}")
@@ -97,6 +109,7 @@ def get_detections(
 
 @router.get("/runs/{run_id}/artifacts/{artifact_path:path}")
 def get_artifact(run_id: str, artifact_path: str, request: Request):
+    _require_valid_run_id(run_id)
     run_dir = (request.app.state.settings.runs_dir / run_id).resolve()
     try:
         target = (run_dir / artifact_path).resolve()
