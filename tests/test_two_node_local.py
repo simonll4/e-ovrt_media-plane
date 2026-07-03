@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import cv2
-import numpy as np
 import pytest
 import yaml
 
@@ -405,63 +403,12 @@ def test_probe_is_skipped_when_requested(
     assert probed == []
 
 
-def _write_images(folder: Path, count: int = 2) -> None:
-    folder.mkdir(parents=True, exist_ok=True)
-    for index in range(count):
-        image = np.full((48, 64, 3), index * 40, dtype=np.uint8)
-        cv2.imwrite(str(folder / f"img_{index:03d}.jpg"), image)
-
-
-def test_run_two_node_local_processes_inline_image_folder_with_mock(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    images = tmp_path / "images"
-    _write_images(images, count=2)
-
-    prompts_path = tmp_path / "prompts.yaml"
-    prompts_path.write_text(
-        "prompt_set:\n  id: v1\n  classes:\n"
-        "    - id: person\n      phrasings: {default: [person]}\n",
-        encoding="utf-8",
-    )
-
-    from eovrt_media.runtime import two_node_local
-
-    def fake_resolve_source(options):
-        return {"type": "image_folder", "path": str(images)}
-
-    def fake_resolve_prompts_ref(options):
-        return "v1"
-
-    monkeypatch.setattr(two_node_local, "resolve_source", fake_resolve_source)
-    monkeypatch.setattr(two_node_local, "resolve_prompts_ref", fake_resolve_prompts_ref)
-    monkeypatch.setitem(two_node_local.DEFAULT_ACTIVE_IDS, "v1", ["person"])
-
-    original_build = two_node_local.build_run_config
-
-    def build_with_prompt_file(options, endpoint, heartbeat_endpoint):
-        raw = original_build(options, endpoint=endpoint, heartbeat_endpoint=heartbeat_endpoint)
-        raw["model"] = {"adapter": "mock", "device": "cpu"}
-        raw["prompts"] = {"file": str(prompts_path), "active_ids": ["person"]}
-        return raw
-
-    monkeypatch.setattr(two_node_local, "build_run_config", build_with_prompt_file)
-    monkeypatch.chdir(Path.cwd())
-
-    result = two_node_local.run_two_node_local(
-        LocalTwoNodeOptions(
-            source="bench-val",
-            model_ref="mock",
-            device="cpu",
-            max_units=2,
-            generated_dir=tmp_path / "generated",
-            logs_dir=tmp_path / "logs",
-            outputs_base_dir=tmp_path / "runs",
-            startup_timeout_s=10.0,
-        )
-    )
-
-    assert result.ok is True
-    assert result.summary["units_processed"] == 2
-    assert result.summary["errors_count"] == 0
+# NOTE (Task 17): a real end-to-end test used to live here
+# (test_run_two_node_local_processes_inline_image_folder_with_mock), spawning actual
+# `python -m eovrt_media.cli run-producer/run-consumer` subprocesses (the only test in
+# this file that did not mock `subprocess.Popen`). `cli.py` and the `eovrt-media` entry
+# point were removed in Task 17, so that subprocess target no longer exists and the test
+# could never pass again as written. It was removed rather than rewritten because
+# `runtime/two_node_local.py` itself is slated for removal per the original Task 17 plan
+# (its Phase 2 replacement is docker-compose) — see task-17-report.md for why the module
+# was kept in this pass (it still backs `eovrt_media.tools.debug_run`).

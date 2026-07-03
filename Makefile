@@ -1,4 +1,4 @@
-.PHONY: install lint test download-models run-mock run-gdino run-yoloe compare-runs
+.PHONY: install lint test download-models serve smoke compare-runs
 
 install:
 	python -m pip install --upgrade pip setuptools wheel
@@ -13,14 +13,12 @@ test:
 download-models:
 	./scripts/download_models.sh
 
-run-mock:
-	eovrt-media run --config ../e-ovrt_experimental-setup/experiments/mock.yaml
+serve:
+	EOVRT_MODEL_REF=$${EOVRT_MODEL_REF:-mock} \
+	uvicorn --factory eovrt_media.service.app:create_app --host 0.0.0.0 --port 8080
 
-run-gdino:
-	./scripts/run_grounding_dino_sample.sh
-
-run-yoloe:
-	./scripts/run_yoloe_sample.sh
+smoke:
+	curl -sf http://localhost:8080/healthz && curl -sf http://localhost:8080/readyz && echo OK
 
 compare-runs:
-	eovrt-media compare-runs runs
+	python -m eovrt_media.tools.inspect_runs compare runs

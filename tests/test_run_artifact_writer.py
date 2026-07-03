@@ -6,11 +6,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pytest
-from typer.testing import CliRunner
 
-from eovrt_media.cli import app, _collect_summaries
 from eovrt_media.config import load_run_config
 from eovrt_media.runtime import run_pipeline
+from eovrt_media.tools.inspect_runs import _collect_summaries, compare_runs
 
 
 CONFIGS_DIR = Path(__file__).parent / "fixtures"
@@ -107,9 +106,8 @@ class TestCompareRuns:
         assert len(summaries) == 1
         assert summaries[0]["run_id"] == summary["run_id"]
 
-    def test_cli_compare_runs(self, completed_run):
+    def test_cli_compare_runs(self, completed_run, capsys: pytest.CaptureFixture[str]):
         run_dir, summary = completed_run
-        runner = CliRunner()
-        result = runner.invoke(app, ["compare-runs", str(run_dir.parent)])
-        assert result.exit_code == 0
-        assert summary["run_id"] in result.output
+        compare_runs([run_dir.parent])
+        captured = capsys.readouterr()
+        assert summary["run_id"] in captured.out

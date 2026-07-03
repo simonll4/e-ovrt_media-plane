@@ -8,7 +8,6 @@ dependencies = [
     "opencv-python",
     "pydantic",
     "pyyaml",
-    "typer",
     "rich",
     "pyzmq",
     "msgpack",
@@ -31,9 +30,6 @@ dev = [
     "ruff",
     "httpx",
 ]
-
-[project.scripts]
-eovrt-media = "eovrt_media.cli:app"
 
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
