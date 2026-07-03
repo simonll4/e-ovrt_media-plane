@@ -26,50 +26,12 @@ from eovrt_media.preprocessing import normalize_spatial
 from eovrt_media.runtime.run_context import RunContext
 from eovrt_media.sinks import RunArtifactWriter
 from eovrt_media.sinks.video_annotation_writer import VideoAnnotationWriter
-from eovrt_media.sources import BaseSource, ImageFolderSource, VideoFileSource
+from eovrt_media.sources import BaseSource
+from eovrt_media.sources.registry import create_source  # noqa: F401  (API pública estable)
 from eovrt_media.transport import RateGate, create_transport
 from eovrt_media.visualize import draw_detections_rgb
 
 logger = logging.getLogger(__name__)
-
-
-def create_source(config: RunConfig) -> BaseSource:
-    """Crea una fuente; RateGate aplica el stride después de la ingesta."""
-    source_type = config.source.type.lower().strip()
-    if source_type == "image_folder":
-        return ImageFolderSource(
-            folder_path=config.source.path,
-            extensions=config.source.extensions,
-            every_n=1,
-            max_units=config.run.max_units,
-        )
-    if source_type in {"video", "video_frame", "video_file"}:
-        return VideoFileSource(
-            video_path=config.source.path,
-            every_n=1,
-            target_fps=None,
-            max_units=config.run.max_units,
-        )
-    if source_type == "rtsp":
-        from eovrt_media.sources import RtspSource
-
-        return RtspSource(
-            url=config.source.url or config.source.path,
-            reconnect_retries=config.source.reconnect_retries,
-            reconnect_delay_ms=config.source.reconnect_delay_ms,
-            max_units=config.run.max_units,
-        )
-    if source_type == "oak_d":
-        from eovrt_media.sources import OakDSource
-
-        return OakDSource(
-            url=config.source.url or config.source.path,
-            max_units=config.run.max_units,
-        )
-    raise ValueError(
-        f"Tipo de fuente '{source_type}' no soportado o no implementado. "
-        "Usar image_folder, video_file, rtsp u oak_d."
-    )
 
 
 def run_producer_loop(
