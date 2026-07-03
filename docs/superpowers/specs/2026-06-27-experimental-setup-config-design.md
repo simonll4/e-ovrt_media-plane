@@ -1,7 +1,7 @@
 # Diseño — Módulo `experimental-setup`: configuración de experimentos de la plataforma
 
 **Fecha:** 2026-06-27
-**Estado:** Propuesto (pendiente de aprobación)
+**Estado:** Implementado (2026-07-03)
 **Ámbito:** plataforma E-OVRT-VDP — relocalización de la **declaración de experimentos** (prompt sets +
 manifiestos de corrida) a un repo externo `e-ovrt_experimental-setup`, y los cambios en
 `e-ovrt_media-plane` (loader + CLI) para consumirlos.

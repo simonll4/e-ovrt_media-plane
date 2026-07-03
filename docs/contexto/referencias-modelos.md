@@ -321,8 +321,7 @@ Agregar un script o comando CLI para preparar modelos sin mezclar esa lógica co
 Comando deseado:
 
 ```bash
-eovrt-media download-models --model yoloe --variant yoloe-26s-seg.pt
-eovrt-media download-models --model grounding_dino --variant IDEA-Research/grounding-dino-tiny
+make download-models   # → scripts/download_models.sh (GDINO, MM-GDINO, YOLOE)
 ```
 
 Comportamiento esperado:

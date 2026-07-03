@@ -1,6 +1,7 @@
+import json
 import time
 from pathlib import Path
-from eovrt_media.service.retention import gc_runs_dir
+from eovrt_media.service.retention import gc_runs_dir, reconcile_orphan_runs
 from eovrt_media.service.settings import ServiceSettings
 
 
@@ -34,3 +35,71 @@ def test_gc_sin_limites_no_borra(tmp_path):
         {"EOVRT_MODEL_REF": "mock", "EOVRT_RUNS_DIR": str(runs)}
     )
     assert gc_runs_dir(settings) == []
+
+
+def test_gc_excluye_run_activo(tmp_path):
+    """gc_runs_dir no debe borrar el run que está corriendo ahora mismo,
+    aunque sea el más viejo y exceda la retención por edad."""
+    runs = tmp_path / "runs"
+    _mkrun(runs, "activo", age_days=10)
+    settings = ServiceSettings.from_env({
+        "EOVRT_MODEL_REF": "mock", "EOVRT_RUNS_DIR": str(runs),
+        "EOVRT_RUNS_MAX_AGE_DAYS": "7",
+    })
+    removed = gc_runs_dir(settings, exclude={"activo"})
+    assert removed == []
+    assert (runs / "activo").exists()
+
+
+def _mkrun_sin_summary(runs: Path, name: str):
+    """Simula un run huérfano: dir con artefactos parciales pero sin
+    summary.json (el proceso murió con el run activo, F1 kill/OOM)."""
+    d = runs / name
+    d.mkdir(parents=True)
+    (d / "detections.jsonl").write_text('{"unit_id": "u1"}\n')
+    return d
+
+
+def test_reconcile_marca_huerfano_como_interrupted(tmp_path):
+    runs = tmp_path / "runs"
+    _mkrun_sin_summary(runs, "run_huerfano")
+    settings = ServiceSettings.from_env(
+        {"EOVRT_MODEL_REF": "mock", "EOVRT_RUNS_DIR": str(runs)}
+    )
+    reconciled = reconcile_orphan_runs(settings)
+    assert reconciled == ["run_huerfano"]
+    summary = json.loads((runs / "run_huerfano" / "summary.json").read_text())
+    assert summary["status"] == "interrupted"
+    assert summary["run_id"] == "run_huerfano"
+
+
+def test_reconcile_no_pisa_summary_existente(tmp_path):
+    runs = tmp_path / "runs"
+    d = _mkrun(runs, "run_ok")  # ya tiene summary.json (fixture _mkrun)
+    (d / "summary.json").write_text('{"run_id": "run_ok", "status": "succeeded"}')
+    settings = ServiceSettings.from_env(
+        {"EOVRT_MODEL_REF": "mock", "EOVRT_RUNS_DIR": str(runs)}
+    )
+    reconciled = reconcile_orphan_runs(settings)
+    assert reconciled == []
+    summary = json.loads((d / "summary.json").read_text())
+    assert summary["status"] == "succeeded"
+
+
+def test_reconcile_es_idempotente(tmp_path):
+    runs = tmp_path / "runs"
+    _mkrun_sin_summary(runs, "run_huerfano")
+    settings = ServiceSettings.from_env(
+        {"EOVRT_MODEL_REF": "mock", "EOVRT_RUNS_DIR": str(runs)}
+    )
+    first = reconcile_orphan_runs(settings)
+    second = reconcile_orphan_runs(settings)
+    assert first == ["run_huerfano"]
+    assert second == []  # la segunda pasada ya encuentra summary.json
+
+
+def test_reconcile_sin_runs_dir_no_rompe(tmp_path):
+    settings = ServiceSettings.from_env(
+        {"EOVRT_MODEL_REF": "mock", "EOVRT_RUNS_DIR": str(tmp_path / "no_existe")}
+    )
+    assert reconcile_orphan_runs(settings) == []

@@ -22,7 +22,7 @@ python -m pip install --upgrade pip setuptools wheel --quiet
 pip install -e ".[dev]" --quiet
 
 echo "[3/3] Verificando instalación..."
-eovrt-media --help
+python -c "import eovrt_media; print('eovrt_media OK')"
 
 echo ""
 echo "=== Bootstrap completo ==="

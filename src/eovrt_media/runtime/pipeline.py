@@ -13,7 +13,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn
 
 from eovrt_media.config import RunConfig
 from eovrt_media.contracts import DetectionEvent, ErrorEvent, MetricSample
-from eovrt_media.contracts.normalized_unit import END, PayloadFormat
+from eovrt_media.contracts.normalized_unit import END, STALL, PayloadFormat
 from eovrt_media.metrics import (
     LatencyTracker,
     get_gpu_memory_allocated_mb,
@@ -32,6 +32,37 @@ from eovrt_media.transport import RateGate, create_transport
 from eovrt_media.visualize import draw_detections_rgb
 
 logger = logging.getLogger(__name__)
+
+STOP_DRAIN_SECONDS = 2.0
+"""Ventana de drenaje tras `RunControl.request_stop()` antes de forzar la
+salida del consumer si el transporte no entrega ni una unidad ni `END`.
+
+Cubre el caso de una fuente que ignora `stop()` (p.ej. un RTSP colgado en un
+`recv` a nivel C): el productor nunca cierra el transporte, así que sin este
+límite el consumer (y por lo tanto `execute_run`) quedaría bloqueado para
+siempre en `transport.request()`.
+"""
+
+_STOP_POLL_INTERVAL_S = 0.2
+"""Granularidad de sondeo del consumer cuando hay un `RunControl` asociado.
+
+Se usa desde el arranque del loop (no sólo tras pedir el stop) para que el
+consumer nunca quede atrapado dentro de una única llamada bloqueante a
+`transport.request()`: sin este sondeo periódico, un stop pedido mientras el
+consumer está a mitad de una espera indefinida no podría detectarse hasta
+que llegara una unidad o el canal cerrara — exactamente el escenario que
+este mecanismo previene.
+"""
+
+PRODUCER_JOIN_TIMEOUT_AFTER_STALL_S = 2.0
+"""Timeout de `producer.join()` cuando el consumer forzó su salida por stall.
+
+Si el consumer tuvo que tratar la ventana de drenaje agotada como `END`, es
+porque el productor probablemente sigue bloqueado en la fuente (que ignoró
+`stop()`) y jamás va a unirse. Esperar los 30s genéricos no aporta nada en
+ese caso; el hilo productor queda como daemon-leak acotado (uno por
+stop-con-fuente-colgada) que muere al terminar el proceso.
+"""
 
 
 def run_producer_loop(
@@ -111,8 +142,28 @@ def run_consumer_loop(
     progress=None,
     task=None,
     drain_errors: bool = True,
-) -> None:
-    """Consume del transporte hasta END: inferencia → postproceso → escritura."""
+    control: "RunControl | None" = None,
+) -> bool:
+    """Consume del transporte hasta END: inferencia → postproceso → escritura.
+
+    Si se pasa `control`, el loop sondea el transporte con timeout corto (en
+    vez de bloquear indefinidamente en una sola llamada) para poder
+    re-chequear `control.stop_requested` en cualquier momento — incluso si la
+    llamada anterior a `transport.request()` seguía "en vuelo" cuando se pidió
+    el stop. Una vez pedido el stop se abre una ventana de drenaje acotada
+    (`STOP_DRAIN_SECONDS`); si vence sin que el transporte entregue unidad ni
+    `END` (productor colgado en una fuente que ignora `stop()`), se trata como
+    `END` para no bloquear a `execute_run` para siempre.
+
+    Retorna `True` si el loop tuvo que forzar esa salida por stall (útil para
+    que el caller acote el timeout de `producer.join()`, ya que ese productor
+    probablemente nunca se va a unir). Retorna `False` en toda otra
+    terminación (END real, con o sin stop pedido).
+
+    Sin `control` (por ejemplo, la ruta two-node vía `run_node_b`), el
+    comportamiento es IDÉNTICO al histórico: una única llamada bloqueante a
+    `transport.request()` por iteración.
+    """
     preview_attempts = 0
     video_writer = (
         VideoAnnotationWriter(
@@ -122,8 +173,26 @@ def run_consumer_loop(
         if config.outputs.save_annotated_video
         else None
     )
+    stalled = False
+    drain_deadline: float | None = None
     while True:
-        item = transport.request()
+        if control is not None:
+            item = transport.request(timeout=_STOP_POLL_INTERVAL_S)
+            if item is STALL:
+                if not control.stop_requested:
+                    continue  # aún no se pidió stop: seguir esperando en silencio
+                if drain_deadline is None:
+                    drain_deadline = time.monotonic() + STOP_DRAIN_SECONDS
+                if time.monotonic() < drain_deadline:
+                    continue  # dentro de la ventana de drenaje: reintentar
+                logger.warning(
+                    "Consumer: ventana de drenaje agotada tras request_stop() sin "
+                    "END del productor — se fuerza la salida (posible fuente colgada)."
+                )
+                item = END
+                stalled = True
+        else:
+            item = transport.request()
         if drain_errors:
             producer_errors = _drain_producer_errors(
                 run_context._errors_queue, artifact_writer, run_context
@@ -289,6 +358,8 @@ def run_consumer_loop(
         if progress is not None and task is not None:
             progress.update(task, advance=1)
 
+    return stalled
+
 
 class RunControl:
     """Control de vida de un run: stop cooperativo desde otro thread."""
@@ -331,6 +402,7 @@ def execute_run(
         artifact_writer = EventEmittingArtifactWriter(artifact_writer, event_sink)
     tracker = LatencyTracker()
     producer = None
+    consumer_stalled = False
 
     if console is not None:
         console.print(f"[bold green]▶ Corrida:[/bold green] {run_context.run_id}")
@@ -392,7 +464,8 @@ def execute_run(
         producer.start()
 
         def _consume(progress=None, task=None) -> None:
-            run_consumer_loop(
+            nonlocal consumer_stalled
+            consumer_stalled = run_consumer_loop(
                 transport=transport,
                 adapter=adapter,
                 normalizer=normalizer,
@@ -406,6 +479,7 @@ def execute_run(
                 progress=progress,
                 task=task,
                 drain_errors=True,
+                control=control,
             )
 
         try:
@@ -437,7 +511,10 @@ def execute_run(
         run_context.backpressure_wait_ms = timings["backpressure_wait_ms"]
     finally:
         if producer is not None:
-            producer.join(timeout=30.0)
+            join_timeout = (
+                PRODUCER_JOIN_TIMEOUT_AFTER_STALL_S if consumer_stalled else 30.0
+            )
+            producer.join(timeout=join_timeout)
         artifact_writer.close()
 
     run_context.gpu_memory_peak_mb = get_gpu_memory_peak_mb()

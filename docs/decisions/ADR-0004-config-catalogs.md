@@ -3,6 +3,19 @@
 - **Estado**: aceptada
 - **Fecha**: 2026-06-11
 
+> **Actualización 2026-07-03: parcialmente superado.** Desde el pivote a servicio
+> (Fase 1 / Spec A), `configs/runs/` y `configs/runs/experiments/` ya **no existen**:
+> los manifiestos de corrida (antes "run configs compuestas") se movieron al repo
+> hermano `e-ovrt_experimental-setup` (`experiments/`, `prompts/`), y el servicio
+> acepta la composición equivalente **inline en el body de `POST /api/runs`**
+> (`ingest{plugin,config}` + `prompts{set_inline,active_ids}` o `prompts.ref`).
+> Lo que sigue vigente de esta ADR: los **catálogos de capacidades**
+> `configs/models/<familia>/<variante>.yaml` y `configs/datasets/<nombre>.yaml`, y la
+> organización de pesos por linaje (`models/<familia>/{original,finetuned}/`). Ver
+> `docs/superpowers/specs/2026-06-27-experimental-setup-config-design.md` y
+> `docs/superpowers/specs/2026-07-01-media-plane-service-design.md` para el diseño
+> vigente.
+
 ## Contexto
 
 Tras el Sprint 1 experimental, cada run config duplicaba la definición

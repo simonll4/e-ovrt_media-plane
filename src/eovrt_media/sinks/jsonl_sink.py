@@ -4,11 +4,38 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
+from typing import Any
 
 from eovrt_media.contracts import DetectionEvent, MetricSample, RunSummary, ErrorEvent
 
 logger = logging.getLogger(__name__)
+
+
+def atomic_write_json(
+    path: Path, data: Any, *, indent: int = 2, ensure_ascii: bool = False
+) -> None:
+    """Escribe ``data`` como JSON en ``path`` de forma atómica.
+
+    Escribe primero a un archivo temporal en el mismo directorio y lo
+    sustituye con ``os.replace`` (atómico a nivel de filesystem), evitando
+    dejar un JSON truncado si el proceso muere a mitad de escritura
+    (kill/OOM).
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(path.name + ".tmp")
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=indent, ensure_ascii=ensure_ascii)
+    except Exception:
+        # Falla a mitad de escritura del .tmp (disco lleno, error de
+        # serialización, etc.): no dejar basura .tmp en disco. El destino
+        # real (path) todavía no fue tocado — os.replace() no se llegó a
+        # ejecutar — así que queda intacto.
+        tmp_path.unlink(missing_ok=True)
+        raise
+    os.replace(tmp_path, path)
 
 
 class JSONLSink:
@@ -61,8 +88,6 @@ class SummarySink:
         self.output_path = output_path
 
     def write(self, summary: RunSummary) -> None:
-        """Escribe el RunSummary como JSON formateado."""
-        self.output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.output_path, "w", encoding="utf-8") as f:
-            json.dump(summary.model_dump(exclude_none=True), f, indent=2, ensure_ascii=False)
+        """Escribe el RunSummary como JSON formateado, de forma atómica."""
+        atomic_write_json(self.output_path, summary.model_dump(exclude_none=True))
         logger.info(f"Resumen guardado en: {self.output_path}")

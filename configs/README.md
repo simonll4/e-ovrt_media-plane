@@ -1,8 +1,10 @@
 # Configs
 
-Toda la variación del pipeline vive acá, organizada en **catálogos** (qué
-existe) y **runs** (qué se ejecuta). Una run config compone entradas de los
-catálogos por referencia y solo declara lo que cambia.
+Acá viven los **catálogos de capacidades** del plano (qué modelos y fuentes
+existen). Los **manifiestos de corrida** (qué se ejecuta) y los **prompt sets**
+NO viven acá: residen en el repo hermano `e-ovrt_experimental-setup` y llegan al
+plano vía la API del servicio (`POST /api/runs`). Un request compone entradas de
+estos catálogos por referencia y solo declara lo que cambia.
 
 ```
 configs/
@@ -10,12 +12,10 @@ configs/
 │   ├── mock.yaml
 │   ├── yoloe/yoloe-26s.yaml
 │   └── grounding-dino/{gdino-tiny,gdino-base}.yaml
-├── datasets/    # catálogo de fuentes: imágenes o video
-├── prompts/     # catálogo de prompt sets versionados
-└── runs/        # configs ejecutables (componen los catálogos de arriba)
+└── datasets/    # catálogo de fuentes: imágenes o video
 ```
 
-## Anatomía de una run config
+## Anatomía de un request de corrida
 
 ```yaml
 run:
@@ -31,7 +31,9 @@ model:
   confidence_threshold: 0.15
 
 prompts:
-  ref: cr01_cr02_v2_short      # → configs/prompts/cr01_cr02_v2_short.yaml
+  ref: cr01_cr02_v2_short      # → e-ovrt_experimental-setup/prompts/cr01_cr02_v2_short.yaml
+  # o inline, sin repo hermano:
+  # set_inline: {person: person, helmet: helmet, vest: vest}
   active_ids: [person, helmet, vest]
 
 postprocess:                   # secciones opcionales: defaults razonables
@@ -40,8 +42,10 @@ postprocess:                   # secciones opcionales: defaults razonables
 
 Reglas de resolución:
 
-- `ref` se resuelve contra esta carpeta (`configs/`); los campos inline de la
-  run config **pisan** los del catálogo.
+- `model.ref`/`source.ref` se resuelven contra esta carpeta (`configs/`);
+  `prompts.ref` se resuelve contra el repo hermano `e-ovrt_experimental-setup`
+  (o se declara inline vía `prompts.set_inline`). Los campos inline del request
+  **pisan** los del catálogo.
 - Secciones omitidas (`rate_control`, `transport`, `topology`, `postprocess`, `outputs`, `logging`) toman
   los defaults definidos en `src/eovrt_media/config/schemas.py`.
 - `sampling` ya no es válido: usar `rate_control.stride` y `run.max_units`.
@@ -99,13 +103,19 @@ Convención de nombre para finetunes: `<variante>-ft-<tag>.yaml`.
 `rtsp` está implementado (fuente live, política `bounded_freshness`).
 `oak_d` está declarado pero pendiente de implementación (falla explícita al cargar).
 
-**`prompts/<nombre>.yaml`** — un `prompt_set` versionado con `id`, `items`
-(id, texto, aliases, rol). Versionar cambios de vocabulario como un set nuevo
-(`*_v2`), nunca editar un set ya usado por una corrida registrada.
+Los **prompt sets** versionados (`id`, `items`, aliases, rol) NO son un catálogo
+del plano: viven en `e-ovrt_experimental-setup/prompts/<nombre>.yaml` y se
+referencian por `prompts.ref`, o se declaran inline en el request con
+`prompts.set_inline`. Versionar cambios de vocabulario como un set nuevo (`*_v2`),
+nunca editar un set ya usado por una corrida registrada.
 
-## Validar y ejecutar
+## Ejecutar una corrida
+
+Los manifiestos de corrida viven en `e-ovrt_experimental-setup`; el servicio los
+recibe como request:
 
 ```bash
-eovrt-media validate-config --config configs/runs/<archivo>.yaml
-eovrt-media run --config configs/runs/<archivo>.yaml
+curl -X POST http://localhost:8080/api/runs \
+  -H "Content-Type: application/json" \
+  -d @<request>.json
 ```

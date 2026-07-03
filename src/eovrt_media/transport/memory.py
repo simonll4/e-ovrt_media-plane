@@ -7,7 +7,7 @@ import time
 from collections import deque
 from threading import Lock
 
-from eovrt_media.contracts.normalized_unit import NormalizedUnit, END
+from eovrt_media.contracts.normalized_unit import NormalizedUnit, END, STALL
 from eovrt_media.transport.base import TransportAdapter
 
 
@@ -71,14 +71,35 @@ class MemoryTransportAdapter(TransportAdapter):
 
     # --- consumidor ---
 
-    def request(self, current_time_ms=None) -> NormalizedUnit | type[END]:
+    def request(
+        self, current_time_ms=None, timeout: float | None = None
+    ) -> NormalizedUnit | type[END] | type[STALL]:
+        """Obtiene la siguiente unidad, o ``END``/``STALL``.
+
+        ``timeout`` es opt-in: si se omite (``None``), el comportamiento es
+        IDÉNTICO al histórico (bloquea hasta que haya unidad o el canal
+        cierre). Si se pasa, la llamada retorna ``STALL`` tras ese lapso sin
+        unidad ni cierre — usado por el consumidor para re-chequear un stop
+        cooperativo sin quedar bloqueado para siempre si el productor nunca
+        cierra el canal (p.ej. fuente colgada que ignora ``stop()``).
+        """
+        deadline = time.monotonic() + timeout if timeout is not None else None
         if self.policy == "deterministic":
+            poll_interval = 0.1
             while True:
+                wait = poll_interval
+                if deadline is not None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return STALL
+                    wait = min(poll_interval, remaining)
                 try:
-                    item = self._q.get(timeout=0.1)
+                    item = self._q.get(timeout=wait)
                 except queue.Empty:
                     if self._det_closed:
                         return END
+                    if deadline is not None and time.monotonic() >= deadline:
+                        return STALL
                     continue
                 return END if item is END else item
         else:
@@ -94,4 +115,10 @@ class MemoryTransportAdapter(TransportAdapter):
                         return unit
                     if self._closed:
                         return END
-                    self._not_empty.wait()
+                    if deadline is not None:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            return STALL
+                        self._not_empty.wait(timeout=remaining)
+                    else:
+                        self._not_empty.wait()

@@ -6,6 +6,7 @@ from PIL import Image
 
 from eovrt_media.config.loader import resolve_model_ref
 from eovrt_media.models import create_adapter
+from eovrt_media.service import run_manager as run_manager_module
 from eovrt_media.service.run_manager import RunBusyError, RunManager, UnknownRunError
 from eovrt_media.service.run_request import RunRequest
 from eovrt_media.service.settings import ServiceSettings
@@ -156,6 +157,49 @@ def test_stop_es_atomico_primero_gana(manager, tmp_path):
     assert status == "stopped"
     summary = json.loads((tmp_path / "runs" / run_id / "summary.json").read_text())
     assert summary["stop_cause"] == "stop"
+
+
+def test_watchdog_invoca_gc_periodicamente(manager, monkeypatch):
+    """El GC de retención (gc_runs_dir) sólo se llamaba al startup del
+    servicio; con retención configurada nunca se aplicaba en un proceso de
+    larga vida. El watchdog debe invocarlo cada `_gc_interval_seconds` de
+    wall-clock (medidos vía time.monotonic, sin sleeps largos en el test)."""
+    calls = []
+    monkeypatch.setattr(
+        run_manager_module, "gc_runs_dir", lambda settings, exclude=None: calls.append(exclude) or []
+    )
+
+    # Aún no pasó el intervalo: no debe invocar el GC.
+    manager._watchdog_tick()
+    assert calls == []
+
+    # Forzamos que "ya pasó" el intervalo de GC.
+    manager._last_gc_monotonic = time.monotonic() - manager._gc_interval_seconds - 1
+    manager._watchdog_tick()
+    assert len(calls) == 1
+    assert calls[0] is None  # sin run activo, no hay nada que excluir
+
+    # Inmediatamente después no debe volver a invocarlo (intervalo reiniciado).
+    manager._watchdog_tick()
+    assert len(calls) == 1
+
+
+def test_watchdog_gc_periodico_excluye_run_activo(manager, tmp_path, monkeypatch):
+    """Si hay un run activo cuando toca correr el GC, no debe poder ser
+    borrado: se le pasa a gc_runs_dir para que lo excluya explícitamente."""
+    folder = _images(tmp_path, n=400)
+    run_id = manager.start_run(_request(folder))
+
+    calls = []
+    monkeypatch.setattr(
+        run_manager_module, "gc_runs_dir", lambda settings, exclude=None: calls.append(exclude) or []
+    )
+    manager._last_gc_monotonic = time.monotonic() - manager._gc_interval_seconds - 1
+    manager._watchdog_tick()
+
+    assert calls == [{run_id}]
+    manager.stop(run_id)
+    _wait_final(manager, run_id)
 
 
 def test_watchdog_tick_run_terminado_no_crashea(manager, tmp_path):

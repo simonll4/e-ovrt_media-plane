@@ -5,6 +5,7 @@ import asyncio
 
 from fastapi import APIRouter, WebSocket
 
+from eovrt_media.service.run_ids import is_valid_run_id
 from eovrt_media.service.run_manager import UnknownRunError
 
 router = APIRouter(prefix="/api")
@@ -14,6 +15,12 @@ _POLL_SECONDS = 0.2
 
 @router.websocket("/runs/{run_id}/stream")
 async def stream_run(ws: WebSocket, run_id: str) -> None:
+    if not is_valid_run_id(run_id):
+        # run_id inválido (p.ej. traversal '..'): mismo cierre que "run
+        # desconocido", sin tocar el filesystem (ver runs.py _require_valid_run_id).
+        await ws.accept()
+        await ws.close(code=4404)
+        return
     manager = getattr(ws.app.state, "manager", None)
     if manager is None:
         await ws.accept()

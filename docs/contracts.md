@@ -3,6 +3,14 @@
 Los contratos del plano de medios separan ingesta, payload normalizado, inferencia y
 artefactos. Se implementan con Pydantic v2 salvo `ResizeTransform`, que es una dataclass.
 
+> Este documento cubre los contratos **internos** del pipeline (los objetos que fluyen
+> entre etapas). El contrato **externo** del servicio — endpoints REST (`POST/GET/DELETE
+> /api/runs`, etc.) y eventos WebSocket (`/api/runs/{id}/stream`) — vive en
+> [usage.md](usage.md) y en el diseño
+> [2026-07-01-media-plane-service-design.md](superpowers/specs/2026-07-01-media-plane-service-design.md).
+> Es el contrato que consume la webconsole (`../e-ovrt_experimental-setup/webconsole/`)
+> como cliente externo del media-plane.
+
 ## Flujo de contratos
 
 ```

@@ -58,3 +58,14 @@ class NormalizedUnit(BaseModel):
 
 class END:
     """Sentinel de fin de canal — el productor lo emite al agotar la fuente."""
+
+
+class STALL:
+    """Sentinel de sondeo sin resultado.
+
+    Lo devuelve ``TransportAdapter.request(timeout=...)`` cuando el timeout
+    vence sin que haya ni una unidad disponible ni un ``END`` (canal aún
+    abierto, pero sin actividad). Permite al consumidor recuperar el control
+    periódicamente — p.ej. para re-chequear un pedido de stop cooperativo —
+    en vez de bloquear indefinidamente. No representa fin de canal.
+    """

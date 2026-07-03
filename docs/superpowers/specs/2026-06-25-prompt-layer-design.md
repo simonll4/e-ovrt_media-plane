@@ -1,7 +1,7 @@
 # Diseño — Capa de declaración y consumo de prompts del Media Plane
 
 **Fecha:** 2026-06-25
-**Estado:** Propuesto (pendiente de aprobación)
+**Estado:** Implementado (2026-07-03)
 **Ámbito:** `e-ovrt_media-plane` — capa de prompts (declaración YAML, esquema, resolución y consumo por adaptador)
 **Orientación:** ejecuciones **experimentales** (no productivo). Prioriza claridad, reproducibilidad y exploración de fraseo, no robustez operacional.
 

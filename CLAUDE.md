@@ -22,14 +22,17 @@ curl -X POST http://localhost:8080/api/runs \
   -H "Content-Type: application/json" \
   -d '{
         "ingest": {"plugin": "image_folder", "config": {"path": "/path/to/images"}},
-        "prompts": {"set_inline": {"person": "person"}, "active_ids": ["person"]}
+        "prompts": {
+          "set_inline": {"id": "demo", "classes": [{"id": "person", "phrasings": {"default": ["person"]}}]},
+          "active_ids": ["person"]
+        }
       }'
 # GET  /api/runs/{run_id}            — estado/resumen de la corrida
 # WS   /api/runs/{run_id}/stream     — eventos en vivo (detecciones/métricas)
 # POST /api/runs/{run_id}/stop       — detener la corrida activa
 
 # Two-node topology (EBE distributed) — se sigue invocando en proceso, no vía CLI:
-# runtime/two_node.py:run_node_a() / run_node_b(); ver tests/test_cli_two_node.py.
+# runtime/two_node.py:run_node_a() / run_node_b(); ver tests/test_two_node.py.
 
 # Utilidades standalone (ex-subcomandos CLI), invocables como módulos:
 python -m eovrt_media.tools.evaluate --run runs/<run_id> [--bench-coco ...] [--person-gt ...]
@@ -57,7 +60,7 @@ Python pipeline for open-vocabulary object detection (OVD). All behavior is conf
 
 **Execution path (single-host)**: `POST /api/runs` (`service/routers/runs.py`) → `RunManager` → `runtime/pipeline.py:execute_run()` → producer thread (read → rate-gate → normalize) + consumer thread (inference → postprocess → write), coupled via `MemoryTransportAdapter`. The model is loaded once at service startup (`EOVRT_MODEL_REF`), not per run. The `eovrt-media` CLI no longer exists.
 
-**Execution path (two-node)**: `run-producer` → `runtime/two_node.py:run_node_a()` (ingesta + ZeroMQ REP server); `run-consumer` → `runtime/two_node.py:run_node_b()` (ZeroMQ REQ client + inference + artifacts). Transport: `NetworkTransportAdapter` (ZeroMQ REQ/REP, msgpack serialization, heartbeat PUSH/PULL dedicado).
+**Execution path (two-node)**: invoked in-process (no CLI) — `runtime/two_node.py:run_node_a()` (ingesta + ZeroMQ REP server) and `run_node_b()` (ZeroMQ REQ client + inference + artifacts); the run config must set `topology.mode: two_node` (loader derives `transport.backend: network`). Transport: `NetworkTransportAdapter` (ZeroMQ REQ/REP, msgpack serialization, heartbeat PUSH/PULL dedicado). Docker packaging of the two-node split is deferred to Fase 2.
 
 **Key abstractions**:
 - `BaseDetectorAdapter` (`models/base.py`) — plugin interface for inference; register new adapters in `models/__init__.py:create_adapter()`

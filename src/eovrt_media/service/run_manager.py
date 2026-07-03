@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import time
 import uuid
@@ -13,8 +14,16 @@ from eovrt_media.config.loader import find_plane_catalog_root, load_run_config_d
 from eovrt_media.config.schemas import ModelSection
 from eovrt_media.runtime.pipeline import RunControl, execute_run
 from eovrt_media.service.events import EventBroadcaster, Subscriber
+from eovrt_media.service.retention import gc_runs_dir
 from eovrt_media.service.run_request import RunRequest, to_raw_run_config
 from eovrt_media.service.settings import ServiceSettings
+from eovrt_media.sinks.jsonl_sink import atomic_write_json
+
+logger = logging.getLogger(__name__)
+
+# Cada cuántos segundos de wall-clock corre el GC de retención desde el
+# watchdog (gc_runs_dir sólo se invocaba al startup — Fix 2 hardening F2).
+_GC_INTERVAL_SECONDS = 3600.0
 
 
 class RunBusyError(RuntimeError):
@@ -51,6 +60,8 @@ class RunManager:
         self._lock = threading.Lock()
         self._active: ActiveRun | None = None
         self._closing = threading.Event()
+        self._gc_interval_seconds = _GC_INTERVAL_SECONDS
+        self._last_gc_monotonic = time.monotonic()
         self._watchdog = threading.Thread(
             target=self._watchdog_loop, daemon=True, name="run-watchdog"
         )
@@ -119,7 +130,14 @@ class RunManager:
         summary_path = self._settings.runs_dir / run_id / "summary.json"
         if not summary_path.exists():
             raise UnknownRunError(run_id)
-        summary = json.loads(summary_path.read_text())
+        try:
+            summary = json.loads(summary_path.read_text())
+        except (json.JSONDecodeError, OSError) as exc:
+            # Summary corrupto/truncado (kill/OOM a mitad de escritura) o borrado
+            # por un DELETE concurrente (TOCTOU): tratamos el run como inexistente
+            # en vez de propagar un 500.
+            logger.warning("summary ilegible para run_id=%s: %s", run_id, exc)
+            raise UnknownRunError(run_id) from exc
         return {
             "run_id": run_id,
             "status": summary.get("status", "unknown"),
@@ -144,7 +162,16 @@ class RunManager:
                     continue
                 summary_path = d / "summary.json"
                 if summary_path.exists():
-                    summary = json.loads(summary_path.read_text())
+                    try:
+                        summary = json.loads(summary_path.read_text())
+                    except (json.JSONDecodeError, OSError) as exc:
+                        # Summary corrupto/truncado o borrado por un DELETE
+                        # concurrente (TOCTOU, FileNotFoundError es OSError):
+                        # se omite el run en vez de romper el listado completo.
+                        logger.warning(
+                            "Omitiendo run %s: summary ilegible (%s)", d.name, exc
+                        )
+                        continue
                     runs.append(
                         {"run_id": d.name, "status": summary.get("status", "unknown")}
                     )
@@ -185,6 +212,7 @@ class RunManager:
             )
         except Exception as exc:  # noqa: BLE001 — el estado failed captura la causa
             status, error = "failed", str(exc)
+            logger.exception("Run %s falló durante la ejecución", active.run_id)
         if active.control.stop_requested and status == "succeeded":
             status = "failed" if active.stop_cause == "stalled" else "stopped"
         self._finalize(active, status, error)
@@ -193,14 +221,21 @@ class RunManager:
         run_dir = self._settings.runs_dir / active.run_id
         run_dir.mkdir(parents=True, exist_ok=True)
         summary_path = run_dir / "summary.json"
-        summary: dict[str, Any] = (
-            json.loads(summary_path.read_text()) if summary_path.exists() else {}
-        )
+        summary: dict[str, Any] = {}
+        if summary_path.exists():
+            try:
+                summary = json.loads(summary_path.read_text())
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.warning(
+                    "summary ilegible al finalizar run_id=%s, se reconstruye desde cero: %s",
+                    active.run_id,
+                    exc,
+                )
         summary.setdefault("run_id", active.run_id)
         summary["status"] = status
         summary["stop_cause"] = active.stop_cause
         summary["error"] = error
-        summary_path.write_text(json.dumps(summary, indent=2))
+        atomic_write_json(summary_path, summary)
         active.status = status
         active.error = error
         active.broadcaster.emit({"type": "state", "status": status, "error": error})
@@ -215,12 +250,19 @@ class RunManager:
     def _watchdog_tick(self) -> None:
         """Una pasada del watchdog; extraído de `_watchdog_loop` para poder
         testearlo sin depender del timing real del hilo."""
+        self._maybe_gc()
         with self._lock:
             active = self._active
         if active is None or active.stop_cause is not None:
             return
         idle = time.monotonic() - active.broadcaster.last_event_monotonic
         if idle > self._settings.watchdog_seconds:
+            logger.warning(
+                "Watchdog: run %s sin eventos hace %.1fs (> %.1fs), deteniendo por stall",
+                active.run_id,
+                idle,
+                self._settings.watchdog_seconds,
+            )
             try:
                 # stop() hace el check-and-set de stop_cause bajo lock, así que
                 # un stop() concurrente (p.ej. cause="stop") gana la carrera y
@@ -230,3 +272,20 @@ class RunManager:
                 # El run terminó entre la lectura de staleness y este stop():
                 # ya no hay nada que detener.
                 pass
+
+    def _maybe_gc(self) -> None:
+        """Corre `gc_runs_dir` cada `_gc_interval_seconds` de wall-clock,
+        medidos sobre los ticks del watchdog (que ya corre en su propio
+        thread). Antes, el GC de retención sólo se disparaba al startup del
+        servicio, así que con retención configurada nunca se aplicaba en un
+        servicio de larga vida hasta el próximo reinicio."""
+        now = time.monotonic()
+        if now - self._last_gc_monotonic < self._gc_interval_seconds:
+            return
+        self._last_gc_monotonic = now
+        with self._lock:
+            active = self._active
+        exclude = {active.run_id} if active is not None else None
+        removed = gc_runs_dir(self._settings, exclude=exclude)
+        if removed:
+            logger.info("GC periódico de retención: %d runs eliminados", len(removed))

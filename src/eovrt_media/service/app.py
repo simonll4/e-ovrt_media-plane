@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from starlette.concurrency import run_in_threadpool
 
-from eovrt_media.service.retention import gc_runs_dir
+from eovrt_media.service.retention import gc_runs_dir, reconcile_orphan_runs
 from eovrt_media.service.routers import catalog, health, model, runs, stream
 from eovrt_media.service.settings import ServiceSettings
 
@@ -36,6 +36,12 @@ async def _lifespan(app: FastAPI):
     except Exception as exc:  # noqa: BLE001 — /readyz reporta la causa; sin recarga (Spec A §8)
         app.state.load_error = str(exc)
         logger.exception("Fallo de carga del modelo %s", settings.model_ref)
+    reconciled = reconcile_orphan_runs(settings)
+    if reconciled:
+        logger.info(
+            "Reconciliación de runs huérfanos al arrancar: %d runs marcados 'interrupted'",
+            len(reconciled),
+        )
     removed = gc_runs_dir(settings)
     if removed:
         logger.info("GC de retención: %d runs eliminados", len(removed))

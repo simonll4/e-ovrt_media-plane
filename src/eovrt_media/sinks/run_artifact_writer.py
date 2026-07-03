@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import shutil
 import subprocess
 from datetime import datetime, timezone
@@ -19,7 +18,7 @@ from eovrt_media.contracts import (
     RunDescriptor,
     RunSummary,
 )
-from eovrt_media.sinks.jsonl_sink import JSONLSink, SummarySink
+from eovrt_media.sinks.jsonl_sink import JSONLSink, SummarySink, atomic_write_json
 
 if TYPE_CHECKING:
     from eovrt_media.runtime.run_context import RunContext
@@ -135,8 +134,7 @@ class RunArtifactWriter:
             "vocabulary": source.vocabulary,
             "source_fingerprint": _compute_source_fingerprint(source.path),
         }
-        with open(self.run_dir / "run_provenance.json", "w", encoding="utf-8") as file:
-            json.dump(provenance, file, indent=2, ensure_ascii=False)
+        atomic_write_json(self.run_dir / "run_provenance.json", provenance)
 
     def write_summary(self, tracker: Any | None = None) -> None:
         """Genera y guarda el resumen final summary.json."""
@@ -247,8 +245,7 @@ class RunArtifactWriter:
                 if p.name != "run_manifest.json"
             ),
         }
-        with open(self.run_dir / "run_manifest.json", "w", encoding="utf-8") as f:
-            json.dump(manifest, f, indent=2, ensure_ascii=False)
+        atomic_write_json(self.run_dir / "run_manifest.json", manifest)
 
     def close(self) -> None:
         """Cierra todos los archivos abiertos por los sinks."""

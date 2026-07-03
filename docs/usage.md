@@ -74,7 +74,7 @@ curl -s http://localhost:8080/api/model        # ref/adaptador/device del modelo
 ```
 
 Variables de entorno relevantes: `EOVRT_MODEL_REF` (obligatoria), `EOVRT_RUNS_DIR`
-(directorio de artefactos, default `runs/`), `EOVRT_CATALOG_ROOT`, `EOVRT_DATASETS_ROOT`.
+(directorio de artefactos, default `runs/`), `EOVRT_MEDIA_CATALOG_ROOT`, `EOVRT_DATASETS_ROOT`.
 
 ## Disparar una corrida
 

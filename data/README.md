@@ -23,7 +23,7 @@ data/
 
 Los datasets de obra (MOCS, CHV, …) viven de forma centralizada en el repo hermano
 `e-ovrt_datasets` (en `../e-ovrt_datasets/datasets/raw/`). El media-plane los consume
-cross-repo: los catálogos en `configs/datasets/` (p. ej. `chv.yaml`, `mocs.yaml`) usan
-un `path` relativo `../e-ovrt_datasets/...`, por lo que **`eovrt-media` debe ejecutarse
+cross-repo: los catálogos en `configs/datasets/` (p. ej. `chv.yaml`) usan
+un `path` relativo `../e-ovrt_datasets/...`, por lo que **el servicio debe arrancarse
 desde la raíz del media-plane** para que el path resuelva. `data/raw/` queda para datos
 locales puntuales, no como home de los datasets compartidos.

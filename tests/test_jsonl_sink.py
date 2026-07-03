@@ -1,7 +1,12 @@
 """Tests para JSONLSink y SummarySink."""
 
 import json
+
+import pytest
+
+import eovrt_media.sinks.jsonl_sink as jsonl_sink_mod
 from eovrt_media.sinks import JSONLSink
+from eovrt_media.sinks.jsonl_sink import atomic_write_json
 from eovrt_media.contracts import DetectionEvent, MetricSample, ErrorEvent, Detection
 
 
@@ -86,3 +91,43 @@ def test_jsonl_sink_flow(tmp_path):
     err_loaded = json.loads(lines[2])
     assert err_loaded["run_id"] == "run_123"
     assert err_loaded["message"] == "Test error"
+
+
+def test_atomic_write_json_no_trunca_archivo_existente_ante_fallo(tmp_path, monkeypatch):
+    """Ancla Fix 1: si el proceso muere a mitad de la escritura (disco lleno,
+    kill, OOM), el archivo real (summary.json/run_manifest.json/...) no debe
+    quedar truncado ni corrupto — la escritura pasa por un .tmp que sólo se
+    promueve con os.replace() si se completó por entero."""
+    output = tmp_path / "summary.json"
+    output.write_text(json.dumps({"status": "previo_ok"}))
+
+    def boom(*_args, **_kwargs):
+        raise OSError("fallo simulado a mitad de escritura")
+
+    monkeypatch.setattr(jsonl_sink_mod.json, "dump", boom)
+
+    with pytest.raises(OSError):
+        atomic_write_json(output, {"status": "nuevo"})
+
+    # El destino real nunca se tocó: sigue con el contenido previo, íntegro
+    # (el fallo ocurrió escribiendo el .tmp, antes del os.replace() final).
+    assert json.loads(output.read_text()) == {"status": "previo_ok"}
+    # Tampoco debe quedar el .tmp huérfano (Fix B).
+    assert list(output.parent.glob("*.tmp")) == []
+
+
+def test_atomic_write_json_limpia_tmp_ante_fallo(tmp_path, monkeypatch):
+    """Ancla Fix B: si json.dump falla a mitad de escritura del .tmp, no debe
+    quedar un archivo *.tmp huérfano en el directorio destino."""
+    output = tmp_path / "summary.json"
+
+    def boom(*_args, **_kwargs):
+        raise ValueError("fallo simulado a mitad de escritura")
+
+    monkeypatch.setattr(jsonl_sink_mod.json, "dump", boom)
+
+    with pytest.raises(ValueError):
+        atomic_write_json(output, {"status": "nuevo"})
+
+    assert list(tmp_path.glob("*.tmp")) == []
+    assert not output.exists()

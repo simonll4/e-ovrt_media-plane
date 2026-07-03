@@ -1,3 +1,4 @@
+import json
 import time
 import pytest
 from PIL import Image
@@ -51,6 +52,35 @@ def test_stream_run_desconocido_cierra_4404(client):
         with client.websocket_connect("/api/runs/nope/stream") as ws:
             ws.receive_json()
     assert excinfo.value.code == 4404
+
+
+def test_stream_run_id_dotdot_no_filtra_evento_fuera_de_runs_dir(client, tmp_path):
+    """Ancla Fix A: antes del fix, stream_run pasaba run_id crudo a
+    manager.get()/subscribe() sin validar, igual que get_run/stop_run/
+    delete_run antes de F1. Con run_id=".." (via "%2e%2e", que decodifica a
+    ".." — un ".." literal en la URL se normaliza antes de salir del cliente
+    HTTP, enmascarando el bug con un 404 de ruteo ajeno al fix), manager.get()
+    arma runs_dir/../summary.json: un archivo *fuera* de runs_dir. Sin
+    validar el run_id antes de llamar a manager.get, ese summary.json se
+    filtra por el WS como si fuera el estado de un run real (status=
+    "leaked"). Revert del fix (comentar la validación al inicio de
+    stream_run) reproduce esto: el WS recibiría {"type": "state",
+    "status": "leaked"} y cerraría con el código normal (no 4404) en vez de
+    cerrar 4404 sin leer nada del filesystem.
+    """
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    outside_summary = tmp_path / "summary.json"
+    outside_summary.write_text(json.dumps({"status": "leaked"}))
+
+    with pytest.raises(WebSocketDisconnect) as excinfo:
+        with client.websocket_connect("/api/runs/%2e%2e/stream") as ws:
+            ws.receive_json()
+    assert excinfo.value.code == 4404
+
+    # El archivo fuera de runs_dir no debe haber sido leído ni alterado.
+    assert outside_summary.exists()
+    assert json.loads(outside_summary.read_text())["status"] == "leaked"
 
 
 def test_stream_run_terminado_envia_estado_final(client, tmp_path):

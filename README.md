@@ -6,9 +6,15 @@ Este componente implementa la ruta crítica visual: ingesta de fuentes DBE/EBE,
 normalización, transporte productor/consumidor, inferencia open-vocabulary,
 postproceso y persistencia de artefactos versionados.
 
-Las cuatro combinaciones escenario × topología están implementadas: DBE/EBE en
-un host y en dos nodos (ZeroMQ). El detalle verificable está en
-[docs/implementation-status.md](docs/implementation-status.md).
+Desde la **Fase 1 (Spec A)** el media-plane **no es un CLI**: es un **servicio de
+inferencia HTTP/WS** (FastAPI) que carga el modelo una vez al startup y mantiene un
+único run activo. Las corridas se disparan por `POST /api/runs`; los utilitarios
+ex-subcomandos se invocan como módulos (`python -m eovrt_media.tools.*`). La guía
+completa de uso está en [docs/usage.md](docs/usage.md).
+
+Las cuatro combinaciones escenario × topología están implementadas: DBE/EBE en un host
+(`memory`) y en dos nodos (`network`/ZeroMQ, hoy invocado en proceso). El detalle
+verificable está en [docs/implementation-status.md](docs/implementation-status.md).
 
 **No implementa** patrones de riesgo, alertas, UI, notificaciones, MOT formal, zonas ni lógica de plano de control.
 
@@ -31,30 +37,44 @@ pip install -e ".[dev]"
 make download-models
 ```
 
-### Ejecutar pipeline
+### Levantar el servicio
+
+El **modelo se carga una vez al startup** desde `EOVRT_MODEL_REF` (una `ref` del
+catálogo `configs/models/`, o `mock` para validar sin pesos). Correr **desde la raíz**
+del media-plane (los catálogos de datasets usan rutas `../e-ovrt_datasets` relativas al CWD).
 
 ```bash
-# Smoke test sin pesos (mock detector, CHV demo v2)
-make run-mock
+# uvicorn --factory eovrt_media.service.app:create_app en :8080
+EOVRT_MODEL_REF=mock make serve
 
-# Con Grounding DINO tiny (requiere modelos descargados)
-make run-gdino
-
-# Con YOLOE-26s (requiere modelos descargados)
-make run-yoloe
-
-# Con CLI directamente (manifiestos en el repo hermano e-ovrt_experimental-setup;
-# correr desde la raíz del media-plane)
-eovrt-media run --config ../e-ovrt_experimental-setup/experiments/gdino.yaml
-
-# Topología dos nodos (Nodo A ingesta, Nodo B inferencia)
-eovrt-media run-producer --config ../e-ovrt_experimental-setup/experiments/<archivo>.yaml
-eovrt-media run-consumer --config ../e-ovrt_experimental-setup/experiments/<archivo>.yaml
+# Smoke: verifica /healthz + /readyz
+make smoke
 ```
 
-Los sample runs (`mock`, `gdino`, `yoloe`) apuntan al dataset CHV demo v2 del
-repo hermano `../e-ovrt_datasets`. El smoke test mock valida el pipeline completo
-sin necesitar pesos de modelos.
+### Disparar una corrida
+
+El modelo nunca viaja en el request (es fijo por instancia); el body declara la fuente
+de ingesta y los prompts. Un solo run activo a la vez (un segundo POST → 409).
+
+```bash
+curl -X POST http://localhost:8080/api/runs \
+  -H "Content-Type: application/json" \
+  -d '{
+        "ingest": {"plugin": "image_folder", "config": {"path": "/ruta/a/imagenes"}},
+        "prompts": {
+          "set_inline": {
+            "id": "demo",
+            "classes": [{"id": "person", "phrasings": {"default": ["person"]}}]
+          },
+          "active_ids": ["person"]
+        }
+      }'
+# -> 201 {"run_id": "run_..."}
+```
+
+Para usar un dataset del catálogo, pasar `config.dataset: <nombre>` en vez de `path`.
+Ver [docs/usage.md](docs/usage.md) para el contrato completo (WebSocket de eventos,
+artefactos por HTTP, detener/borrar corridas) y la topología dos nodos.
 
 ### Ver resultados
 
@@ -62,7 +82,7 @@ sin necesitar pesos de modelos.
 ls runs/
 cat runs/<run_id>/summary.json
 head runs/<run_id>/detections.jsonl
-eovrt-media inspect-run runs/<run_id>
+python -m eovrt_media.tools.inspect_runs inspect runs/<run_id>
 ```
 
 ### Linting y tests
@@ -78,24 +98,32 @@ make test
 
 ```
 src/eovrt_media/        # Paquete principal
-├── cli.py              # CLI con Typer (run, validate-config, inspect-run, compare-runs, download-models)
-├── config/             # Esquemas Pydantic + loader con resolución de refs a catálogos
+├── service/            # Servicio FastAPI: app+lifespan, settings, RunManager, events, routers/
+├── tools/              # Utilitarios ex-CLI (evaluate, inspect_runs, debug_run) — python -m
+├── config/             # Esquemas Pydantic + loader (dict-based, resolve_model_ref, set_inline)
 ├── contracts/          # Contratos Pydantic (VisualUnit, NormalizedUnit, eventos)
-├── sources/            # Fuentes de datos (ImageFolderSource, VideoFileSource, RtspSource, OakDSource)
+├── sources/            # Fuentes + registry de plugins de ingesta (image_folder, video_file, rtsp, oak_d)
 ├── models/             # Adaptadores de modelo (mock, grounding_dino, yoloe)
 ├── preprocessing/      # Normalización de unidades visuales
 ├── postprocessing/     # Filtros y normalización de detecciones
-├── runtime/            # Productor/consumidor, orquestación, two-node
+├── runtime/            # Productor/consumidor, execute_run + RunControl, two-node
 ├── transport/          # Canal productor/consumidor (memory y network/ZeroMQ)
 ├── metrics/            # Timers y agregación de métricas (p95/p99, FPS)
 ├── sinks/              # Persistencia de artefactos en runs/<run_id>/
 └── visualize.py        # Utilidad de renderizado de detecciones
+```
 
-configs/                # Catálogos + run configs (ver configs/README.md)
+> **Caveat `debug_run`:** la ruta de dos-nodos-local de `python -m eovrt_media.tools.debug_run`
+> (`run_two_node_local`) no funciona tras la eliminación del CLI — spawnea el
+> `eovrt_media.cli` borrado y falla con un `RuntimeError` explícito. Pendiente de decisión
+> en Fase 2 (docker-compose de dos nodos); `evaluate` e `inspect_runs` no están afectados.
+
+```
+configs/                # Catálogos de capacidades (ver configs/README.md)
 ├── models/             # Catálogo de modelos: un YAML por variante de pesos
-├── datasets/           # Catálogo de fuentes de datos
-├── prompts/            # Catálogo de prompt sets versionados
-└── runs/               # Configs ejecutables que componen los catálogos
+└── datasets/           # Catálogo de fuentes de datos
+#   (los manifiestos de corrida viven en el repo hermano e-ovrt_experimental-setup;
+#    el servicio recibe el request por POST /api/runs)
 
 models/                 # Pesos por familia y linaje (ver models/README.md)
 ├── yoloe/{original,finetuned}/

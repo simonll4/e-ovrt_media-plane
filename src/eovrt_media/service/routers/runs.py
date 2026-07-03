@@ -2,26 +2,16 @@
 from __future__ import annotations
 
 import json as _json
-import re
 import shutil
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
+from eovrt_media.service.run_ids import require_valid_run_id as _require_valid_run_id
 from eovrt_media.service.run_manager import RunBusyError, RunManager, UnknownRunError
 from eovrt_media.service.run_request import RunRequest
 
 router = APIRouter(prefix="/api")
-
-# run_id se usa como segmento de path del filesystem: solo alfanuméricos, '_' y '-'.
-# Esto descarta '..', '/' y demás antes de construir cualquier ruta (defensa en
-# profundidad frente a la normalización de proxies/clientes).
-_RUN_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
-
-
-def _require_valid_run_id(run_id: str) -> None:
-    if not _RUN_ID_RE.match(run_id):
-        raise HTTPException(status_code=404, detail=f"Run desconocido: {run_id}")
 
 
 def _manager(request: Request) -> RunManager:
@@ -53,6 +43,7 @@ def list_runs(request: Request):
 
 @router.get("/runs/{run_id}")
 def get_run(run_id: str, request: Request):
+    _require_valid_run_id(run_id)
     try:
         return _manager(request).get(run_id)
     except UnknownRunError as exc:
@@ -61,6 +52,7 @@ def get_run(run_id: str, request: Request):
 
 @router.post("/runs/{run_id}/stop", status_code=202)
 def stop_run(run_id: str, request: Request):
+    _require_valid_run_id(run_id)
     try:
         _manager(request).stop(run_id)
     except UnknownRunError as exc:
@@ -70,6 +62,7 @@ def stop_run(run_id: str, request: Request):
 
 @router.delete("/runs/{run_id}", status_code=204)
 def delete_run(run_id: str, request: Request):
+    _require_valid_run_id(run_id)
     manager = _manager(request)
     try:
         info = manager.get(run_id)
@@ -92,10 +85,17 @@ def get_detections(
     _manager(request)  # 503 si no ready
     _require_valid_run_id(run_id)
     path = request.app.state.settings.runs_dir / run_id / "detections.jsonl"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail=f"Sin detecciones para: {run_id}")
+    try:
+        text = path.read_text()
+    except FileNotFoundError as exc:
+        # TOCTOU: un DELETE concurrente puede borrar el archivo entre un
+        # chequeo previo de existencia y esta lectura; se trata como 404
+        # en vez de dejar propagar un 500.
+        raise HTTPException(
+            status_code=404, detail=f"Sin detecciones para: {run_id}"
+        ) from exc
     records = []
-    for line in path.read_text().splitlines():
+    for line in text.splitlines():
         if not line:
             continue
         try:

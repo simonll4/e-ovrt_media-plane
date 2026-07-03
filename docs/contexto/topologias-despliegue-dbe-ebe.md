@@ -317,12 +317,18 @@ conceptual de los componentes.
   `pixel_data` embebe el frame BGR en `VisualUnit` para que `image_loader` no reabra el stream.
   `bounded_freshness` descarta frames obsoletos bajo carga. Validado con cámara EZVIZ real
   (1920×1080, 9 fps observados).
-- **Dos nodos — DBE/EBE**: implementado. `NetworkTransportAdapter` usa ZeroMQ REQ/REP
-  para datos y PUSH/PULL dedicado para heartbeat; la serialización msgpack + numpy raw
+- **Dos nodos — DBE/EBE**: implementado **en proceso**. `NetworkTransportAdapter` usa ZeroMQ
+  REQ/REP para datos y PUSH/PULL dedicado para heartbeat; la serialización msgpack + numpy raw
   conserva payloads `uint8_rgb`, `fp32` y `fp16`. Nodo A (`run_node_a`) vincula REP/PULL;
   Nodo B (`run_node_b`) conecta REQ/PUSH y produce artefactos, incluidos previews desde payload.
-  Contenedores Docker disponibles: `Dockerfile.node-a` (edge, sin GPU) y `Dockerfile.node-b`
-  (CUDA), orquestados con los manifiestos Compose local y por host.
+  Esto sigue vigente y ejercitado por `tests/test_two_node.py`.
+
+  > **Caveat (2026-07-03):** el empaquetado **Docker** de este two-node (`Dockerfile.node-a`,
+  > `Dockerfile.node-b` y los `docker-compose*.yml` de `deploy/`) está **deprecado/roto y
+  > diferido a Fase 2** — esos artefactos invocan el CLI `eovrt-media run-producer/run-consumer`,
+  > eliminado al pasar el media-plane a servicio (Fase 1 / Spec A). Se conservan solo como
+  > referencia del wiring ZeroMQ para rehacer el split edge/GPU sobre el servicio. Detalle en
+  > [deploy/README.md](../../deploy/README.md).
 
 Los modos soportados son `memory` y `network`; ZeroMQ permite usar endpoints TCP o `ipc://`
 sin introducir otro backend. La política de rate control y el formato de payload siguen siendo

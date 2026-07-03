@@ -1,4 +1,4 @@
-"""Integración loopback de run-producer / run-consumer en el mismo proceso."""
+"""Integración loopback de run_node_a / run_node_b (runtime/two_node.py) en el mismo proceso."""
 from __future__ import annotations
 
 import json

@@ -4,8 +4,12 @@ Uso: `python -m eovrt_media.tools.debug_run --source bench-val [...]`
 
 Nota: esta utilidad depende de `eovrt_media.debugging.session.run_debug_session`, que a
 su vez orquesta `eovrt_media.runtime.two_node_local` (banco two-node nativo en
-localhost). Ver docs/superpowers/sdd/task-17-report.md para el detalle de por qué ese
-módulo se conserva en esta migración en vez de eliminarse.
+localhost).
+
+Caveat: la ruta `run_two_node_local` de esta utilidad no funciona tras la eliminación
+del CLI (Fase 1 / Spec A) — spawnea el `eovrt_media.cli` borrado y falla con un
+`RuntimeError` explícito. Pendiente de decisión en Fase 2 (docker-compose de dos
+nodos); ver README.md y deploy/README.md para el estado del empaquetado two-node.
 """
 
 from __future__ import annotations

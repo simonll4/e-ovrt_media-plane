@@ -160,7 +160,7 @@ def compare_runs(run_dirs: list[Path]) -> None:
 def main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(prog="eovrt-inspect-runs")
+    parser = argparse.ArgumentParser(prog="python -m eovrt_media.tools.inspect_runs")
     sub = parser.add_subparsers(dest="cmd", required=True)
     p_inspect = sub.add_parser("inspect", help="Inspeccionar una corrida.")
     p_inspect.add_argument("run_dir", type=Path)

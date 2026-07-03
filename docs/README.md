@@ -11,9 +11,9 @@ históricos.
 | [implementation-status.md](implementation-status.md) | **Fuente de verdad operativa**: capacidades implementadas, interfaces declaradas, límites y próximos pasos. |
 | [architecture.md](architecture.md) | Arquitectura productor/consumidor, responsabilidades y frontera del repositorio. |
 | [contracts.md](contracts.md) | Contratos de datos, transporte, artefactos y versiones de esquema. |
-| [usage.md](usage.md) | Instalación, ejecución (single-host y dos nodos), resultados e inspección de corridas. |
-| [../deploy/README.md](../deploy/README.md) | Guía vigente de despliegue Docker Compose para topología Nodo A (edge) + Nodo B (GPU). |
-| [deployment/two-node-docker.md](deployment/two-node-docker.md) | Redirección histórica hacia la guía vigente de deploy. |
+| [usage.md](usage.md) | **Guía de uso del servicio** (Fase 1): instalación, `make serve`, contrato de `POST /api/runs`, WebSocket, artefactos, dos nodos in-process, resultados e inspección. |
+| [../deploy/README.md](../deploy/README.md) | Despliegue: imagen GPU única single-host (Fase 1, vigente). El split two-node por Docker está **diferido a Fase 2** (artefactos deprecados). |
+| [deployment/two-node-docker.md](deployment/two-node-docker.md) | Redirección histórica; el empaquetado Docker de dos nodos se rehará en Fase 2. |
 
 La referencia para la sintaxis de YAML es [../configs/README.md](../configs/README.md).
 

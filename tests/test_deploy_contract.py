@@ -1,4 +1,12 @@
-"""Contratos estáticos para los artefactos de despliegue Docker."""
+"""Contratos estáticos para los artefactos de despliegue Docker.
+
+Nota (2026-07-03): estos artefactos (`docker-compose*.yml`, `Dockerfile.node-b`) describen
+el empaquetado Docker **two-node**, que está DEPRECADO/ROTO y diferido a Fase 2 (invocan el
+CLI `eovrt-media run-producer/run-consumer`, eliminado al pasar el media-plane a servicio —
+ver `deploy/README.md`). Este test valida solo la FORMA/estructura de esos manifiestos como
+referencia de wiring para cuando se rehaga el empaquetado en Fase 2; no es contrato vigente
+del servicio. Se mantiene en verde a propósito (no se borra ni se skippea).
+"""
 
 from __future__ import annotations
 

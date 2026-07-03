@@ -1,11 +1,39 @@
 # Estado de implementación del andamiaje de despliegue
 
-**Actualizado:** 2026-06-24 (FP16, heartbeat dedicado, entrada tensorial y previews desde payload)
+**Actualizado:** 2026-07-03 (Fase 1 / Spec A: el media-plane pasó de CLI a servicio de inferencia HTTP/WS)
 
 **Alcance:** plano de medios de E-OVRT-VDP; no incluye el plano de control ni reglas de riesgo.
 
 Este documento describe el estado del código, no la arquitectura aspiracional. La decisión de
 despliegue vigente está en [topologías DBE/EBE](contexto/topologias-despliegue-dbe-ebe.md).
+
+## Fase 1 (Spec A): media-plane como servicio
+
+Desde la Fase 1 el media-plane **ya no es un CLI**: es un **servicio FastAPI (HTTP/WS)** que
+carga el modelo una vez al startup (`EOVRT_MODEL_REF`) y mantiene **un único run activo**. El
+CLI `eovrt-media` (Typer) fue eliminado; los utilitarios ex-subcomandos viven en
+`eovrt_media.tools.{evaluate,inspect_runs,debug_run}` (invocables con `python -m`). El pipeline
+descrito abajo (productor/consumidor, transporte, normalización, adaptadores) **no cambió**: el
+servicio lo envuelve. `execute_run()` recibe el adapter ya cargado y un run se dispara con
+`POST /api/runs`. Contrato completo y endpoints en [usage.md](usage.md); diseño en
+[docs/superpowers/specs/2026-07-01-media-plane-service-design.md](superpowers/specs/2026-07-01-media-plane-service-design.md).
+
+El servicio ya tiene un **cliente real externo**: la **webconsole**
+(`../e-ovrt_experimental-setup/webconsole/`, BFF FastAPI + SPA React) dispara y observa
+corridas contra esta API (`POST /api/runs` + WS `/api/runs/{id}/stream`), sin acoplarse
+al proceso del media-plane.
+
+| Pieza del servicio | Estado | Notas |
+|---|---|---|
+| API de runs (`POST/GET/DELETE /api/runs`, stop) | Implementada | Un run activo; segundo `POST` → 409; `model` en el body → 422. |
+| Carga de modelo al startup + `/api/model`, `/healthz`, `/readyz` | Implementada | Sin recarga in-process; ready-gate 503 hasta que el modelo carga. |
+| WebSocket de telemetría (`/api/runs/{id}/stream`) | Implementada | Eventos `detection`/`metric`/`error`/`state`; coalescing de métricas. |
+| Detections paginadas + artefactos con Range | Implementada | Anti-traversal; 404 ante paths hostiles o JSONL malformado. |
+| Catálogos (`/api/catalog/{ingest-plugins,datasets}`) + registro de plugins | Implementada | `image_folder`, `video_file`, `rtsp` disponibles; `oak_d` declarado no disponible. |
+| Redacción de credenciales RTSP | Implementada | URLs `rtsp://user:pass@…` redactadas en logs y artefactos. |
+| Imagen GPU única (Fase 1) + healthchecks | Implementada | `Dockerfile` de la raíz; el split two-node por Docker se difiere a Fase 2. |
+
+El resto de este documento describe el **pipeline interno** que el servicio ejecuta, que sigue vigente.
 
 ## Resumen ejecutivo
 
@@ -18,7 +46,7 @@ declarada y diferida es `oak_d`.
 |---|---|---|
 | DBE + un host | Implementada | `ImageFolderSource` y `VideoFileSource`, transporte en memoria, política determinista. |
 | EBE + un host | Implementada | `RtspSource` con timestamps de pared, `bounded_freshness`, `pixel_data` en `VisualUnit`. Validado con cámara EZVIZ (1920×1080). |
-| DBE + dos nodos | Implementada | `NetworkTransportAdapter` ZeroMQ: REQ/REP para datos y PUSH/PULL dedicado para liveness. CLI `run-producer`/`run-consumer`. |
+| DBE + dos nodos | Implementada | `NetworkTransportAdapter` ZeroMQ: REQ/REP para datos y PUSH/PULL dedicado para liveness. Invocación in-process `run_node_a()`/`run_node_b()` (el empaquetado Docker de dos nodos se difiere a Fase 2). |
 | EBE + dos nodos | Implementada | Combina fuente viva y transporte de red. Docker: `Dockerfile.node-a` (edge) + `Dockerfile.node-b` (CUDA). |
 
 ## Flujo implementado
@@ -114,8 +142,8 @@ Cada corrida genera, según la configuración de outputs:
 | `previews/<unit_id>.preview.jpg` | Renderizado anotado desde `NormalizedUnit.payload`, disponible para imágenes, vídeo, RTSP y Nodo B sin acceder al path fuente. |
 
 Si no se fija `run.id`, el nombre es
-`run_<timestamp>_<scenario>_<model>_<policy>`. Use `eovrt-media inspect-run runs/<run_id>` para
-mostrar descriptor, métricas y procedencia.
+`run_<timestamp>_<scenario>_<model>_<policy>`. Use `python -m eovrt_media.tools.inspect_runs inspect runs/<run_id>`
+para mostrar descriptor, métricas y procedencia.
 
 ## Límites conocidos y trabajo encaminado
 
@@ -129,7 +157,7 @@ La suite incluye pruebas de transporte, configuración, normalización, producto
 trazabilidad y evaluación de percepción. La última verificación local fue:
 
 ```bash
-pytest -q                 # 210 pruebas
+pytest -q                 # 380 pruebas
 ruff check src tests
 ```
 
@@ -146,7 +174,7 @@ temporales y ejercitan el flujo completo sin pesos reales (`make test`).
 Para evaluar una corrida contra el BENCH:
 
 ```bash
-eovrt-media evaluate --run runs/<run_id>
+python -m eovrt_media.tools.evaluate --run runs/<run_id>
 ```
 
 Persiste `runs/<run_id>/eval_perception.json` con AP@0.5 por clase y CR-01 recall.
