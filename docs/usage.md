@@ -263,5 +263,3 @@ corridas DBE reproducibles nunca pasan por compresión lossy.
 make lint    # ruff check src tests
 make test    # pytest -q
 ```
-</content>
-</invoke>
