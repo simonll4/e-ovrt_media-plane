@@ -12,6 +12,8 @@ dependencies = [
     "rich",
     "pyzmq",
     "msgpack",
+    "fastapi>=0.110",
+    "uvicorn[standard]",
 ]
 
 [project.optional-dependencies]
@@ -27,6 +29,7 @@ gpu = [
 dev = [
     "pytest",
     "ruff",
+    "httpx",
 ]
 
 [project.scripts]
