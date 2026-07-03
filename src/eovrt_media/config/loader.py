@@ -19,11 +19,14 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
 from eovrt_media.config.schemas import PromptsFile, RunConfig
+
+if TYPE_CHECKING:
+    from eovrt_media.config.schemas import ModelSection
 
 
 _SUPPORTED_SOURCE_TYPES = ("image_folder", "video_file", "rtsp", "oak_d")
@@ -226,6 +229,70 @@ def _resolve_section_ref(
     raw[section] = {**base, **overrides, "ref": ref}
 
 
+def resolve_model_ref(ref: str, catalog_root: str | Path | None = None) -> ModelSection:
+    """Resuelve un MODEL_REF contra configs/models/ → ModelSection (para el servicio)."""
+    from eovrt_media.config.schemas import ModelSection
+
+    plane_root = find_plane_catalog_root(None, catalog_root)
+    base = _load_catalog_entry(plane_root, "models", ref)
+    return ModelSection(**{**base, "ref": ref})
+
+
+def load_run_config_data(
+    raw: dict[str, Any],
+    *,
+    plane_root: Path,
+    experiment_root: Path | None = None,
+    datasets_root: Path | None = None,  # se usa en Task 4
+    config_path: Path | None = None,
+) -> RunConfig:
+    """Valida una run config desde un dict ya parseado (API del servicio o archivo)."""
+    if not isinstance(raw, dict):
+        raise ValueError("Configuración inválida (se esperaba mapping)")
+    if "sampling" in raw:
+        _raise_sampling_migration_error()
+
+    _resolve_section_ref(raw, "model", "models", plane_root)
+    _resolve_section_ref(raw, "source", "datasets", plane_root)
+    _derive_defaults(raw)
+
+    # prompts.ref → ``prompts/<ref>.yaml`` en la raíz del experimento; si ahí no
+    # existe (configs co-ubicados/generados del plano), cae al catálogo del plano.
+    # ``file`` explícito gana sobre ``ref``.
+    prompts_data = raw.get("prompts")
+    if (
+        isinstance(prompts_data, dict)
+        and prompts_data.get("ref")
+        and not prompts_data.get("file")
+        and not prompts_data.get("set_inline")  # Task 3
+    ):
+        ref = prompts_data["ref"]
+        roots = [experiment_root] if experiment_root is not None else []
+        roots.append(plane_root)
+        for root in roots:
+            candidate = root / "prompts" / f"{ref}.yaml"
+            if candidate.exists():
+                break
+        prompts_data["file"] = str(candidate)
+
+    config = RunConfig(**raw)
+    config.config_path = config_path
+
+    # Resolver ruta del archivo de prompts relativa al config o al CWD
+    if config.prompts.file:
+        prompts_path = Path(config.prompts.file)
+        if not prompts_path.is_absolute() and config_path is not None:
+            # Intentar relativa al directorio del config primero
+            relative_to_config = config_path.parent / prompts_path
+            if relative_to_config.exists():
+                prompts_path = relative_to_config
+            # Si no, usar relativa al CWD
+        config.prompts_file = load_prompts_file(prompts_path)
+
+    _validate_deployment(config)
+    return config
+
+
 def load_run_config(
     config_path: Path, catalog_root: str | Path | None = None
 ) -> RunConfig:
@@ -238,44 +305,13 @@ def load_run_config(
     config_path = Path(config_path)
     if not config_path.exists():
         raise FileNotFoundError(f"Archivo de configuración no encontrado: {config_path}")
-
     with open(config_path) as f:
         raw = yaml.safe_load(f) or {}
     if not isinstance(raw, dict):
         raise ValueError(f"Configuración inválida (se esperaba mapping): {config_path}")
-    if "sampling" in raw:
-        _raise_sampling_migration_error()
-
-    plane_root = find_plane_catalog_root(config_path, catalog_root)
-    experiment_root = find_experiment_root(config_path)
-    _resolve_section_ref(raw, "model", "models", plane_root)
-    _resolve_section_ref(raw, "source", "datasets", plane_root)
-    _derive_defaults(raw)
-
-    # prompts.ref → ``prompts/<ref>.yaml`` en la raíz del experimento; si ahí no
-    # existe (configs co-ubicados/generados del plano), cae al catálogo del plano.
-    # ``file`` explícito gana sobre ``ref``.
-    prompts_data = raw.get("prompts")
-    if isinstance(prompts_data, dict) and prompts_data.get("ref") and not prompts_data.get("file"):
-        ref = prompts_data["ref"]
-        candidate = experiment_root / "prompts" / f"{ref}.yaml"
-        if not candidate.exists():
-            candidate = plane_root / "prompts" / f"{ref}.yaml"
-        prompts_data["file"] = str(candidate)
-
-    config = RunConfig(**raw)
-    config.config_path = config_path
-
-    # Resolver ruta del archivo de prompts relativa al config o al CWD
-    prompts_path = Path(config.prompts.file)
-    if not prompts_path.is_absolute():
-        # Intentar relativa al directorio del config primero
-        relative_to_config = config_path.parent / prompts_path
-        if relative_to_config.exists():
-            prompts_path = relative_to_config
-        # Si no, usar relativa al CWD
-
-    config.prompts_file = load_prompts_file(prompts_path)
-    _validate_deployment(config)
-
-    return config
+    return load_run_config_data(
+        raw,
+        plane_root=find_plane_catalog_root(config_path, catalog_root),
+        experiment_root=find_experiment_root(config_path),
+        config_path=config_path,
+    )
