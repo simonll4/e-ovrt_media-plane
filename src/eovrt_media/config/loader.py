@@ -32,6 +32,21 @@ if TYPE_CHECKING:
 _SUPPORTED_SOURCE_TYPES = ("image_folder", "video_file", "rtsp", "oak_d")
 _PULLEABLE_TYPES = {"image_folder", "video_file"}
 _LIVE_TYPES = {"rtsp", "oak_d"}
+_DATASETS_SIBLING_PREFIX = "../e-ovrt_datasets/"
+
+
+def rebase_dataset_path(path: str, datasets_root: Path | None) -> str:
+    """Rebasa rutas relativas al repo hermano de datasets sobre un root montado.
+
+    Los ``configs/datasets/*.yaml`` usan ``../e-ovrt_datasets/...`` (resuelto
+    contra CWD). En contenedor los datasets se montan en EOVRT_DATASETS_ROOT.
+
+    Si ``datasets_root`` es None o el path no comienza con el prefijo conocido,
+    retorna el path sin cambios (identidad).
+    """
+    if datasets_root is None or not path.startswith(_DATASETS_SIBLING_PREFIX):
+        return path
+    return str(datasets_root / path[len(_DATASETS_SIBLING_PREFIX) :])
 
 
 def _raise_sampling_migration_error() -> None:
@@ -254,6 +269,14 @@ def load_run_config_data(
 
     _resolve_section_ref(raw, "model", "models", plane_root)
     _resolve_section_ref(raw, "source", "datasets", plane_root)
+
+    if datasets_root is None:
+        env_root = os.environ.get("EOVRT_DATASETS_ROOT")
+        datasets_root = Path(env_root) if env_root else None
+    source_data = raw.get("source")
+    if isinstance(source_data, dict) and isinstance(source_data.get("path"), str):
+        source_data["path"] = rebase_dataset_path(source_data["path"], datasets_root)
+
     _derive_defaults(raw)
 
     # prompts.ref → ``prompts/<ref>.yaml`` en la raíz del experimento; si ahí no
