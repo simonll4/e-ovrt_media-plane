@@ -21,6 +21,14 @@ def test_resolve_device_keeps_cpu():
     assert resolve_device("cpu", cuda_available=True) == "cpu"
 
 
+def test_resolve_device_auto_elige_cuda_si_hay_gpu():
+    assert resolve_device("auto", cuda_available=True) == "cuda"
+
+
+def test_resolve_device_auto_cae_a_cpu_sin_gpu():
+    assert resolve_device("auto", cuda_available=False) == "cpu"
+
+
 def test_should_use_half():
     assert should_use_half("cuda", True) is True
     assert should_use_half("cuda:0", True) is True

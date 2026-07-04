@@ -66,3 +66,35 @@ class TestVideoFileSource:
         source = VideoFileSource(video_path, max_units=5)
         assert len(source) == 5
         assert len(list(source)) == 5
+
+    def test_iter_embebe_pixel_data_decodificado(self, tmp_path):
+        # Decodificación secuencial: cada unidad lleva el frame BGR embebido,
+        # así image_loader no reabre el video (open+seek) por cada frame.
+        video_path = tmp_path / "test.avi"
+        _create_dummy_video(video_path, frames=6, fps=30)
+
+        units = list(VideoFileSource(video_path))
+
+        assert len(units) == 6
+        for unit in units:
+            assert unit.pixel_data is not None
+            assert unit.pixel_data.dtype == np.uint8
+            assert unit.pixel_data.shape == (480, 640, 3)
+
+    def test_pixel_data_corresponde_al_frame_muestreado(self, tmp_path):
+        # Con every_n=3 el pixel_data de la unidad i debe ser el frame 3*i del
+        # video, no el siguiente disponible (el dummy pinta B=(i*5)%256 en BGR).
+        video_path = tmp_path / "test.avi"
+        _create_dummy_video(video_path, frames=15, fps=30)
+
+        units = list(VideoFileSource(video_path, every_n=3))
+
+        assert [u.frame_index for u in units] == [0, 3, 6, 9, 12]
+        for unit in units:
+            expected_blue = (unit.frame_index * 5) % 256
+            got_blue = float(unit.pixel_data[:, :, 0].mean())
+            # MJPG es lossy: tolerancia amplia pero suficiente para distinguir
+            # frames (los valores esperados difieren en 15).
+            assert abs(got_blue - expected_blue) < 6, (
+                f"frame {unit.frame_index}: blue medio {got_blue} != {expected_blue}"
+            )

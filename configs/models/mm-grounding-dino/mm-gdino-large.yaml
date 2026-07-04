@@ -13,6 +13,6 @@ license: Apache-2.0
 adapter: grounding_dino
 model_id: openmmlab-community/mm_grounding_dino_large_all
 local_dir: models/mm-grounding-dino/original/mm_grounding_dino_large_all
-device: cpu
+device: auto  # cuda si hay GPU disponible, sino cpu (resolve_device)
 box_threshold: 0.30
 text_threshold: 0.25

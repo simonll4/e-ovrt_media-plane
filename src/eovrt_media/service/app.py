@@ -21,11 +21,16 @@ async def _lifespan(app: FastAPI):
     try:
         from eovrt_media.config.loader import resolve_model_ref
         from eovrt_media.models import create_adapter
+        from eovrt_media.models.runtime_utils import resolve_device
         from eovrt_media.service.run_manager import RunManager
 
         model_section = resolve_model_ref(settings.model_ref, settings.catalog_root)
         if settings.model_device:
             model_section.device = settings.model_device
+        # Resolver acá (además del adapter) para que /api/model y el summary
+        # reporten el device real: "auto" → cuda si hay GPU, y un cuda pedido
+        # sin GPU queda degradado a cpu de forma visible.
+        model_section.device = resolve_device(model_section.device)
         adapter = create_adapter(model_section)
         await run_in_threadpool(adapter.load)  # carga (y warmup) UNA vez
         app.state.model_section = model_section

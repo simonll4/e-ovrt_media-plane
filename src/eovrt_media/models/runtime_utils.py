@@ -9,11 +9,14 @@ logger = logging.getLogger(__name__)
 
 
 def resolve_device(requested: str, cuda_available: bool | None = None) -> str:
-    """Normaliza el device: degrada a cpu si se pide cuda y no hay GPU."""
+    """Normaliza el device: ``auto`` elige cuda si hay GPU (sino cpu), y un
+    cuda pedido explícitamente degrada a cpu si no hay GPU disponible."""
     if cuda_available is None:
         import torch
 
         cuda_available = torch.cuda.is_available()
+    if requested == "auto":
+        return "cuda" if cuda_available else "cpu"
     if requested.startswith("cuda") and not cuda_available:
         logger.warning("device=%s solicitado sin CUDA disponible; usando cpu", requested)
         return "cpu"

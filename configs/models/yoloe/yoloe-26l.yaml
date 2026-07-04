@@ -8,7 +8,7 @@ license: AGPL-3.0
 
 adapter: yoloe
 weights: models/yoloe/original/yoloe-26l-seg.pt
-device: cpu
+device: auto  # cuda si hay GPU disponible, sino cpu (resolve_device)
 confidence_threshold: 0.25
 iou_threshold: 0.50
 image_size: 640

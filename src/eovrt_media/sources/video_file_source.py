@@ -77,27 +77,63 @@ class VideoFileSource(BaseSource):
         return indices
 
     def __iter__(self) -> Iterator[VisualUnit]:
-        """Itera sobre la fuente de video produciendo VisualUnits."""
+        """Itera el video en UNA pasada secuencial produciendo VisualUnits.
+
+        Decodifica con un único VideoCapture y embebe el frame en
+        ``pixel_data`` (BGR), igual que RtspSource: evita que image_loader
+        haga open+seek+decode por cada frame (con seek, cada lectura vuelve a
+        decodificar desde el keyframe anterior). Los frames no seleccionados
+        se saltan con ``grab()`` (decodifica sin retrieve/convertir).
+        """
         indices = self._get_frame_indices()
         if not indices:
             logger.warning(f"No se seleccionaron frames para procesar en: {self.video_path}")
             return
 
         logger.info(f"Procesando {len(indices)} frames del video: {self.video_path.name}")
-        for i, frame_idx in enumerate(indices):
-            # Calcular timestamp estimado en base a FPS
-            timestamp_ms = (frame_idx / self.fps) * 1000.0 if self.fps > 0 else 0.0
-            unit_id = f"frame_{i:06d}"
-            
-            yield VisualUnit(
-                unit_id=unit_id,
-                source_path=str(self.video_path),
-                source_type="video_frame",
-                frame_index=frame_idx,
-                width=self.width,
-                height=self.height,
-                timestamp_ms=round(timestamp_ms, 2),
-            )
+        cap = cv2.VideoCapture(str(self.video_path))
+        if not cap.isOpened():
+            raise ValueError(f"No se pudo abrir el archivo de video: {self.video_path}")
+        try:
+            emitted = 0
+            next_pos = 0  # posición dentro de `indices` (puede repetir frame_idx
+            # si target_fps > fps del video)
+            for frame_pos in range(indices[-1] + 1):
+                if next_pos >= len(indices):
+                    break
+                if frame_pos < indices[next_pos]:
+                    if not cap.grab():
+                        logger.warning(
+                            "Video terminó antes de lo esperado en el frame %d de %s",
+                            frame_pos,
+                            self.video_path.name,
+                        )
+                        return
+                    continue
+                ret, frame = cap.read()
+                if not ret:
+                    logger.warning(
+                        "Video terminó antes de lo esperado en el frame %d de %s",
+                        frame_pos,
+                        self.video_path.name,
+                    )
+                    return
+                timestamp_ms = (frame_pos / self.fps) * 1000.0 if self.fps > 0 else 0.0
+                while next_pos < len(indices) and indices[next_pos] == frame_pos:
+                    yield VisualUnit(
+                        unit_id=f"frame_{emitted:06d}",
+                        source_path=str(self.video_path),
+                        source_type="video_frame",
+                        frame_index=frame_pos,
+                        width=self.width,
+                        height=self.height,
+                        timestamp_ms=round(timestamp_ms, 2),
+                        pixel_data=frame,  # BGR; image_loader lo usa sin reabrir
+                    )
+                    emitted += 1
+                    next_pos += 1
+        finally:
+            cap.release()
 
     def __len__(self) -> int:
         """Devuelve la cantidad de frames a procesar después del muestreo."""
