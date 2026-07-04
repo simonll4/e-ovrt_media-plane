@@ -88,6 +88,8 @@ def run_evaluation(
     bench_coco: Path | None = None,
     person_gt: Path | None = None,
     iou_threshold: float = 0.5,
+    restrict_gt_to_detections: bool = False,
+    persist: bool = True,
 ) -> EvalPerceptionResults:
     run_dir = Path(run_dir)
     detections_path = run_dir / "detections.jsonl"
@@ -101,6 +103,25 @@ def run_evaluation(
         bench_coco_path
     )
     person_gt_records = evaluate_bench.load_person_gt(person_gt_path)
+
+    if restrict_gt_to_detections:
+        # El GT del BENCH es un único COCO (val+test): evaluar un run de un solo
+        # split contra el GT completo deflacta AP/recall. Se restringe el GT a
+        # las imágenes que el run realmente procesó (keys de detections.jsonl,
+        # presentes aun con 0 detecciones).
+        detected = set(detections_by_img)
+        images_by_filename = {
+            name: img for name, img in images_by_filename.items() if name in detected
+        }
+        kept_image_ids = {img["id"] for img in images_by_filename.values()}
+        gt_by_image_id = {
+            image_id: anns
+            for image_id, anns in gt_by_image_id.items()
+            if image_id in kept_image_ids
+        }
+        person_gt_records = [
+            rec for rec in person_gt_records if Path(rec["file_name"]).name in detected
+        ]
 
     per_class = []
     for class_name in cat_by_id.values():
@@ -135,5 +156,6 @@ def run_evaluation(
         cr01_detection_recall=cr01_raw.get("cr01_recall"),
         evaluated_at=datetime.now(timezone.utc).isoformat(),
     )
-    (run_dir / "eval_perception.json").write_text(result.model_dump_json(indent=2))
+    if persist:
+        (run_dir / "eval_perception.json").write_text(result.model_dump_json(indent=2))
     return result

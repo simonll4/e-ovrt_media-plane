@@ -7,9 +7,12 @@ import shutil
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
+from eovrt_media.evaluation.runner import run_evaluation
+from eovrt_media.evaluation.schemas import ClassResult
 from eovrt_media.service.run_ids import require_valid_run_id as _require_valid_run_id
 from eovrt_media.service.run_manager import RunBusyError, RunManager, UnknownRunError
 from eovrt_media.service.run_request import RunRequest
+from eovrt_media.sinks.jsonl_sink import atomic_write_json
 
 router = APIRouter(prefix="/api")
 
@@ -120,3 +123,64 @@ def get_artifact(run_id: str, artifact_path: str, request: Request):
     if not is_valid:
         raise HTTPException(status_code=404, detail="Artefacto no encontrado")
     return FileResponse(target)  # Starlette >=0.36 maneja Range (206) para video
+
+
+def _mean_ap50(per_class: list[ClassResult]) -> float | None:
+    """mAP@0.5 = media de los AP50 no-nulos (incluye 0.0 de clases con GT y
+    0 matches; excluye clases sin GT). None si ninguna clase tiene GT."""
+    values = [item.AP50 for item in per_class if item.AP50 is not None]
+    return round(sum(values) / len(values), 4) if values else None
+
+
+@router.post("/runs/{run_id}/evaluate")
+def evaluate_run(run_id: str, request: Request):
+    _require_valid_run_id(run_id)
+    manager = _manager(request)
+    try:
+        info = manager.get(run_id)
+    except UnknownRunError as exc:
+        raise HTTPException(status_code=404, detail=f"Run desconocido: {run_id}") from exc
+    if info["status"] == "running":
+        raise HTTPException(status_code=409, detail="No se evalúa un run en curso")
+    if info.get("bench_split") is None:
+        raise HTTPException(
+            status_code=422, detail="El run no fue sobre un split del BENCH (no evaluable)"
+        )
+    run_dir = request.app.state.settings.runs_dir / run_id
+    try:
+        result = run_evaluation(
+            run_dir,
+            iou_threshold=request.app.state.settings.eval_iou_threshold,
+            restrict_gt_to_detections=True,
+            persist=False,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "No se pudo evaluar: falta el GT del BENCH o detections.jsonl. "
+                "Verificá que ../e-ovrt_datasets exista como hermano del media-plane "
+                "(y corré build_person_gt.py si falta person_gt.json). "
+                f"Causa: {exc}"
+            ),
+        ) from exc
+    payload = result.model_dump(mode="json")
+    payload["mAP50"] = _mean_ap50(result.per_class)
+    payload["model"] = (info.get("summary") or {}).get("model_name")
+    payload["bench_split"] = info["bench_split"]
+    # El endpoint es dueño de la persistencia enriquecida y atómica (una sola
+    # escritura; run_evaluation se llamó con persist=False).
+    atomic_write_json(run_dir / "eval_perception.json", payload)
+    return payload
+
+
+@router.get("/runs/{run_id}/evaluate")
+def get_evaluation(run_id: str, request: Request):
+    _require_valid_run_id(run_id)
+    _manager(request)  # 503 si no ready
+    path = request.app.state.settings.runs_dir / run_id / "eval_perception.json"
+    try:
+        return _json.loads(path.read_text())
+    except (OSError, ValueError) as exc:
+        # No evaluado, borrado concurrente o JSON ilegible: mismo trato (404).
+        raise HTTPException(status_code=404, detail=f"Run no evaluado: {run_id}") from exc

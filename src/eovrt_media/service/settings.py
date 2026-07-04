@@ -18,6 +18,7 @@ class ServiceSettings:
     retention_max_age_days: float | None
     retention_max_total_gb: float | None
     shutdown_grace_seconds: float
+    eval_iou_threshold: float = 0.5
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> ServiceSettings:
@@ -46,4 +47,5 @@ class ServiceSettings:
             retention_max_age_days=_float("EOVRT_RUNS_MAX_AGE_DAYS"),
             retention_max_total_gb=_float("EOVRT_RUNS_MAX_TOTAL_GB"),
             shutdown_grace_seconds=float(env.get("EOVRT_SHUTDOWN_GRACE_SECONDS", "20")),
+            eval_iou_threshold=float(env.get("EOVRT_EVAL_IOU_THRESHOLD", "0.5")),
         )

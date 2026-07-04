@@ -348,3 +348,89 @@ def test_load_evaluate_bench_missing_script_requires_sibling_evaluator(
     assert "e-ovrt_datasets" in message
     assert "--bench-coco" not in message
     assert "--person-gt" not in message
+
+
+def _capturing_evaluator(captured: dict) -> SimpleNamespace:
+    """Evaluador sintético que captura las estructuras que recibe (para
+    verificar la restricción del GT) y devuelve n_gt derivado del GT recibido."""
+
+    def evaluate_class(
+        class_name, _detections_by_img, images_by_filename, gt_by_image_id, _cat_by_id, _iou
+    ):
+        captured["images_by_filename"] = images_by_filename
+        captured["gt_by_image_id"] = gt_by_image_id
+        n_gt = sum(len(anns) for anns in gt_by_image_id.values())
+        return {"class": class_name, "AP50": 0.5, "n_gt": n_gt, "n_det": 0}
+
+    def evaluate_cr01(person_gt_records, *_args):
+        captured["person_gt_records"] = person_gt_records
+        return {"cr01_recall": None}
+
+    return SimpleNamespace(
+        # El run procesó img001/img002; img003 está en el BENCH pero NO en el run.
+        load_detections=lambda _paths: {"img001.jpg": [], "img002.jpg": []},
+        load_bench_coco=lambda _path: (
+            {"img001.jpg": {"id": 1}, "img002.jpg": {"id": 2}, "img003.jpg": {"id": 3}},
+            {1: [{"category_id": 1}], 3: [{"category_id": 1}, {"category_id": 1}]},
+            {1: "person"},
+        ),
+        load_person_gt=lambda _path: [
+            {"file_name": "/data/img001.jpg", "has_helmet": False, "person_bbox": [0, 0, 10, 30]},
+            {"file_name": "/data/img003.jpg", "has_helmet": False, "person_bbox": [0, 0, 10, 30]},
+        ],
+        evaluate_class=evaluate_class,
+        evaluate_cr01=evaluate_cr01,
+    )
+
+
+def test_restrict_gt_filtra_a_las_imagenes_del_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "run_r1"
+    run_dir.mkdir()
+    _write_detections(run_dir)
+    bench_coco, person_gt = _write_benchmark(tmp_path)
+    captured: dict = {}
+    monkeypatch.setattr(runner, "_load_evaluate_bench", lambda: _capturing_evaluator(captured))
+
+    result = run_evaluation(
+        run_dir, bench_coco=bench_coco, person_gt=person_gt, restrict_gt_to_detections=True
+    )
+
+    assert set(captured["images_by_filename"]) == {"img001.jpg", "img002.jpg"}
+    assert set(captured["gt_by_image_id"]) == {1}
+    assert [Path(r["file_name"]).name for r in captured["person_gt_records"]] == ["img001.jpg"]
+    assert result.per_class[0].n_gt == 1  # no 3: img003 quedó fuera
+
+
+def test_sin_restrict_conserva_el_gt_completo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "run_r2"
+    run_dir.mkdir()
+    _write_detections(run_dir)
+    bench_coco, person_gt = _write_benchmark(tmp_path)
+    captured: dict = {}
+    monkeypatch.setattr(runner, "_load_evaluate_bench", lambda: _capturing_evaluator(captured))
+
+    result = run_evaluation(run_dir, bench_coco=bench_coco, person_gt=person_gt)
+
+    assert set(captured["images_by_filename"]) == {"img001.jpg", "img002.jpg", "img003.jpg"}
+    assert set(captured["gt_by_image_id"]) == {1, 3}
+    assert len(captured["person_gt_records"]) == 2
+    assert result.per_class[0].n_gt == 3
+
+
+def test_persist_false_no_escribe_eval_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "run_r3"
+    run_dir.mkdir()
+    _write_detections(run_dir)
+    bench_coco, person_gt = _write_benchmark(tmp_path)
+    monkeypatch.setattr(runner, "_load_evaluate_bench", _synthetic_evaluator)
+
+    result = run_evaluation(run_dir, bench_coco=bench_coco, person_gt=person_gt, persist=False)
+
+    assert result.type == "perception"
+    assert not (run_dir / "eval_perception.json").exists()

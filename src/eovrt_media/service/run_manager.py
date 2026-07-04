@@ -8,6 +8,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from eovrt_media.config.loader import find_plane_catalog_root, load_run_config_data
@@ -34,6 +35,33 @@ class RunBusyError(RuntimeError):
 
 class UnknownRunError(KeyError):
     pass
+
+
+# Splits del BENCH con GT disponible: un único COCO
+# (construction_site_safety_bench.json) cubre val y test.
+BENCH_SPLITS = frozenset({"bench_v2_test", "bench_v2_val"})
+
+
+def bench_metadata(run_dir: Path) -> dict[str, Any]:
+    """`bench_split`/`evaluated` derivados de los artefactos del run.
+
+    Barato (2 stats por run); la provenance ilegible/ausente degrada a
+    bench_split=None en vez de romper get/list.
+    """
+    bench_split = None
+    provenance_path = run_dir / "run_provenance.json"
+    if provenance_path.exists():
+        try:
+            provenance = json.loads(provenance_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            provenance = {}
+        split = provenance.get("split")
+        if split in BENCH_SPLITS:
+            bench_split = split
+    return {
+        "bench_split": bench_split,
+        "evaluated": (run_dir / "eval_perception.json").exists(),
+    }
 
 
 @dataclass
@@ -126,6 +154,7 @@ class RunManager:
                 "status": active.status,
                 "started_at": active.started_at.isoformat(),
                 "model": self._model_section.ref,
+                **bench_metadata(self._settings.runs_dir / run_id),
             }
         summary_path = self._settings.runs_dir / run_id / "summary.json"
         if not summary_path.exists():
@@ -142,6 +171,7 @@ class RunManager:
             "run_id": run_id,
             "status": summary.get("status", "unknown"),
             "summary": summary,
+            **bench_metadata(self._settings.runs_dir / run_id),
         }
 
     def list_runs(self) -> list[dict[str, Any]]:
@@ -149,7 +179,13 @@ class RunManager:
         with self._lock:
             active = self._active
         if active is not None:
-            runs.append({"run_id": active.run_id, "status": active.status})
+            runs.append(
+                {
+                    "run_id": active.run_id,
+                    "status": active.status,
+                    **bench_metadata(self._settings.runs_dir / active.run_id),
+                }
+            )
         runs_dir = self._settings.runs_dir
         if runs_dir.is_dir():
             dirs = sorted(
@@ -173,7 +209,11 @@ class RunManager:
                         )
                         continue
                     runs.append(
-                        {"run_id": d.name, "status": summary.get("status", "unknown")}
+                        {
+                            "run_id": d.name,
+                            "status": summary.get("status", "unknown"),
+                            **bench_metadata(d),
+                        }
                     )
         return runs
 

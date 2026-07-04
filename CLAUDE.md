@@ -27,9 +27,11 @@ curl -X POST http://localhost:8080/api/runs \
           "active_ids": ["person"]
         }
       }'
-# GET  /api/runs/{run_id}            — estado/resumen de la corrida
+# GET  /api/runs/{run_id}            — estado/resumen (incluye bench_split/evaluated)
 # WS   /api/runs/{run_id}/stream     — eventos en vivo (detecciones/métricas)
 # POST /api/runs/{run_id}/stop       — detener la corrida activa
+# POST /api/runs/{run_id}/evaluate   — evaluar un run BENCH terminado (AP@0.5/CR-01/mAP50)
+# GET  /api/runs/{run_id}/evaluate   — releer eval_perception.json persistido (404 si no evaluado)
 
 # Two-node topology (EBE distributed) — se sigue invocando en proceso, no vía CLI:
 # runtime/two_node.py:run_node_a() / run_node_b(); ver tests/test_two_node.py.

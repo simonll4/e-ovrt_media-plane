@@ -74,7 +74,14 @@ curl -s http://localhost:8080/api/model        # ref/adaptador/device del modelo
 ```
 
 Variables de entorno relevantes: `EOVRT_MODEL_REF` (obligatoria), `EOVRT_RUNS_DIR`
-(directorio de artefactos, default `runs/`), `EOVRT_MEDIA_CATALOG_ROOT`, `EOVRT_DATASETS_ROOT`.
+(directorio de artefactos, default `runs/`), `EOVRT_MEDIA_CATALOG_ROOT`, `EOVRT_DATASETS_ROOT`,
+`EOVRT_MODEL_DEVICE` (pisa el `device` del catálogo; ej. `cuda`/`cpu`),
+`EOVRT_EVAL_IOU_THRESHOLD` (umbral IoU de la evaluación BENCH, default `0.5`).
+
+El `device` de cada catálogo de modelo es **`auto`** por defecto (excepto `mock`, que
+es `cpu` para tests deterministas): resuelve a `cuda` si hay GPU disponible y a `cpu` si
+no, sin pedir configuración. `EOVRT_MODEL_DEVICE` lo fuerza explícitamente. El device
+efectivamente resuelto es el que reportan `/api/model` y el `summary.json` de cada run.
 
 ## Disparar una corrida
 
@@ -130,6 +137,23 @@ curl -X POST http://localhost:8080/api/runs/<run_id>/stop    # 202
 # Borrar un run terminado (409 si sigue activo)
 curl -X DELETE http://localhost:8080/api/runs/<run_id>       # 204
 ```
+
+### Evaluar un run BENCH por HTTP
+
+Un run terminado hecho sobre un split del BENCH se evalúa desde el servicio (calcula
+AP@0.5 por clase, CR-01 recall y mAP@0.5, y persiste `eval_perception.json`):
+
+```bash
+# Dispara la evaluación y devuelve el resultado enriquecido (mAP50/model/bench_split)
+curl -X POST http://localhost:8080/api/runs/<run_id>/evaluate   # 200
+
+# Relee el resultado ya persistido (404 si el run no fue evaluado)
+curl -s http://localhost:8080/api/runs/<run_id>/evaluate        # 200
+```
+
+- **422** si el run no fue sobre un split del BENCH (`bench_split` nulo) o si falta el GT en disco.
+- **409** si el run sigue en curso. El `GET /api/runs/<run_id>` expone `bench_split` y `evaluated`
+  para saber de antemano si un run es evaluable y si ya tiene evaluación.
 
 Stream de eventos en vivo (detecciones/métricas/estado) por WebSocket:
 
@@ -217,6 +241,12 @@ python -m eovrt_media.tools.evaluate \
 
 Imprime una tabla con AP@0.5 y conteos por clase, CR-01 recall, y persiste
 `runs/<run_id>/eval_perception.json` (`type: "perception"`).
+
+> El CLI evalúa contra el **GT completo del BENCH** (val+test combinados, pensado para
+> `--detections` de varios splits a la vez). El endpoint HTTP `POST .../evaluate` en
+> cambio **restringe el GT a las imágenes que el run realmente procesó**, para que un run
+> de un solo split (p.ej. `bench_v2_test`) obtenga `n_gt`/AP@0.5 no deflactados. Para
+> comparar modelos por la consola, use siempre el endpoint HTTP.
 
 ## Knobs de rendimiento
 
