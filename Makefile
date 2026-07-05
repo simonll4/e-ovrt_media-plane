@@ -24,8 +24,8 @@ compare-runs:
 	python -m eovrt_media.tools.inspect_runs compare runs
 
 docker-build:
-	docker build -t eovrt-media-plane .
+	docker build -t eovrt/media-plane:latest -f infra/docker/Dockerfile .
 
 docker-run-mock:
 	docker run --rm -p 8080:8080 -e EOVRT_MODEL_REF=mock \
-	  -v $$(pwd)/runs:/data/runs eovrt-media-plane
+	  -v $$(pwd)/runs:/data/runs eovrt/media-plane:latest

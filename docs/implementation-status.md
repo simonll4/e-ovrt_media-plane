@@ -31,7 +31,7 @@ al proceso del media-plane.
 | Detections paginadas + artefactos con Range | Implementada | Anti-traversal; 404 ante paths hostiles o JSONL malformado. |
 | Catálogos (`/api/catalog/{ingest-plugins,datasets}`) + registro de plugins | Implementada | `image_folder`, `video_file`, `rtsp` disponibles; `oak_d` declarado no disponible. |
 | Redacción de credenciales RTSP | Implementada | URLs `rtsp://user:pass@…` redactadas en logs y artefactos. |
-| Imagen GPU única (Fase 1) + healthchecks | Implementada | `Dockerfile` de la raíz; el split two-node por Docker se difiere a Fase 2. |
+| Imagen GPU única (Fase 1) + healthchecks | Implementada | `infra/docker/Dockerfile`; el split two-node por Docker se difiere a Fase 2. |
 
 El resto de este documento describe el **pipeline interno** que el servicio ejecuta, que sigue vigente.
 

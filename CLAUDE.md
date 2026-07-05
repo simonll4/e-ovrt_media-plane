@@ -52,6 +52,10 @@ pytest -xvs                                     # verbose, stop on first failure
 
 # Lint
 make lint                                       # ruff check src tests
+
+# Docker (deploy standalone de este servicio; la plataforma completa vive en
+# e-ovrt_experimental-setup/infra/platform/):
+cd infra && EOVRT_MODEL_REF=mock docker compose up -d   # imagen: infra/docker/Dockerfile
 ```
 
 ## Architecture

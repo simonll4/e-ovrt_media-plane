@@ -1,0 +1,29 @@
+# Deploy standalone del servicio media-plane: UNA instancia, modelo por env.
+# Uso:  EOVRT_MODEL_REF=grounding-dino/gdino-tiny docker compose up -d
+# Para host sin GPU (solo mock): comentar el bloque deploy.resources.
+name: eovrt-mp
+services:
+  media-plane:
+    build:
+      context: ..
+      dockerfile: infra/docker/Dockerfile
+    image: eovrt/media-plane:latest
+    environment:
+      EOVRT_MODEL_REF: ${EOVRT_MODEL_REF:-mock}
+      EOVRT_DATASETS_ROOT: /e-ovrt_datasets
+    ports: ["8080:8080"]
+    volumes:
+      - ../models:/app/models:ro                      # pesos locales (catálogos usan paths CWD-relativos)
+      - ../mobileclip2_b.ts:/app/mobileclip2_b.ts:ro  # cache del text-encoder de YOLOE (evita descarga)
+      - ../runs:/data/runs                            # artefactos compartidos con el host
+      - ../../e-ovrt_datasets:/e-ovrt_datasets:ro     # GT/datasets: ../e-ovrt_datasets resuelve desde /app
+      - weights-cache:/data/weights                   # HF_HOME (fallback si falta un local_dir)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+volumes:
+  weights-cache: {}

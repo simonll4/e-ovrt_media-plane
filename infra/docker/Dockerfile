@@ -1,9 +1,16 @@
 # Dockerfile — imagen única DBE (Fase 1, Spec A §3.3)
 FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1
+# El python3.11 del universe de jammy queda pineado en un build 3.11.0rc1 (le falta
+# sys.get_int_max_str_digits, agregado en el 3.11 final), lo que rompe torch._dynamo
+# al cargar cualquier modelo real (transformers). deadsnakes trae el release final.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3.11 python3.11-venv python3-pip libgl1 libglib2.0-0 curl \
+        software-properties-common gnupg curl \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 python3.11-venv libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/* \
+    && python3.11 -m ensurepip --upgrade \
     && python3.11 -m pip install --no-cache-dir --upgrade pip
 
 WORKDIR /app

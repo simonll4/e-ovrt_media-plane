@@ -1,0 +1,34 @@
+# Infra — servicio media-plane (deploy standalone)
+
+Imagen y compose para desplegar **solo este servicio** (una instancia). La plataforma
+completa (consola + fleet de modelos) vive en `e-ovrt_experimental-setup/infra/platform/`.
+
+## Build + run
+
+```bash
+cd infra
+docker compose build                                  # imagen eovrt/media-plane:latest
+EOVRT_MODEL_REF=mock docker compose up -d             # o grounding-dino/gdino-tiny, yoloe/yoloe-26s, ...
+curl -s http://localhost:8080/readyz                  # {"status":"ready","model":"..."}
+```
+
+Requisitos: pesos descargados en `../models/` (`make download-models`), repo
+`e-ovrt_datasets` como hermano (para datasets/GT del BENCH), y para modelos GPU el
+runtime NVIDIA (`nvidia-container-toolkit`). En host sin GPU, comentar el bloque
+`deploy.resources` (solo `mock` tiene sentido ahí; `device: auto` cae a cpu solo).
+
+## Smoke
+
+```bash
+curl -s -X POST http://localhost:8080/api/runs -H 'Content-Type: application/json' -d '{
+  "ingest": {"plugin": "image_folder", "config": {"dataset": "demo_v2"}},
+  "prompts": {"set_inline": {"id": "smoke", "classes": [{"id": "person", "phrasings": {"default": ["person"]}}]},
+               "active_ids": null},
+  "run": {"max_units": 3}
+}'
+# esperar succeeded:
+curl -s http://localhost:8080/api/runs/<run_id>
+```
+
+Cambiar de modelo = `docker compose down` + `up` con otro `EOVRT_MODEL_REF` (sin
+recarga in-process, por diseño del Spec A).
