@@ -7,8 +7,6 @@ import json
 import os
 from pathlib import Path
 import socket
-import subprocess
-import sys
 import time
 from typing import Any
 from urllib.parse import urlparse
@@ -252,19 +250,6 @@ def resolve_run_dir_from_node_log(log_path: Path, outputs_base_dir: Path) -> Pat
     return None
 
 
-def _command_for_node(node: str, config_path: Path) -> list[str]:
-    command = "run-producer" if node == "a" else "run-consumer"
-    return [sys.executable, "-m", "eovrt_media.cli", command, "--config", str(config_path)]
-
-
-def _subprocess_env() -> dict[str, str]:
-    env = os.environ.copy()
-    repo_src = Path(__file__).resolve().parents[2]
-    existing = env.get("PYTHONPATH")
-    env["PYTHONPATH"] = f"{repo_src}{os.pathsep}{existing}" if existing else str(repo_src)
-    return env
-
-
 def latest_run_dir(base_dir: Path = Path("runs")) -> Path | None:
     """Return the newest run directory containing summary.json."""
     if not base_dir.exists():
@@ -282,167 +267,13 @@ def probe_rtsp_config(config_path: Path, *, frames: int = 30) -> None:
     probe(config_path, frames=frames)
 
 
-def _endpoints_for_options(options: LocalTwoNodeOptions) -> tuple[str, str]:
-    if options.port_base is not None:
-        return (
-            f"tcp://127.0.0.1:{options.port_base}",
-            f"tcp://127.0.0.1:{options.port_base + 1}",
-        )
-    return unused_tcp_endpoint(), unused_tcp_endpoint()
-
-
-def _open_log(path: Path):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    return path.open("w", encoding="utf-8")
-
-
-def _terminate_process(process: subprocess.Popen[Any] | None) -> None:
-    if process is None or process.poll() is not None:
-        return
-    process.terminate()
-    try:
-        process.wait(timeout=5.0)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait(timeout=5.0)
-
-
 def run_two_node_local(options: LocalTwoNodeOptions) -> LocalTwoNodeResult:
-    """Generate config, launch Nodo A and Nodo B, and collect local bench results.
-
-    NO SOPORTADO desde Task 17: esta orquestación spawnea `python -m eovrt_media.cli
-    run-producer/run-consumer`, pero el CLI fue eliminado. Sin este guard, cada
-    invocación real fallaría con un `ModuleNotFoundError` opaco de los subprocesos.
-    Se conserva el módulo (sus helpers de config siguen usados por debug_run) y la
-    ruta de dos nodos se retoma en Fase 2 con docker-compose.
+    """NO SOPORTADO desde Task 17 (Fase 1): el CLI que esta orquestación spawneaba
+    fue eliminado. El despliegue two-node vive ahora en ``infra/twonode/``
+    (docker compose; ver su README). Se conserva la firma porque
+    ``debugging/session.py`` la importa y los tests la monkeypatchean.
     """
     raise RuntimeError(
         "run_two_node_local ya no está soportado: el CLI `eovrt_media.cli` fue "
-        "eliminado (Task 17). Usar el servicio (docker-compose de dos nodos en Fase 2)."
-    )
-    endpoint, heartbeat_endpoint = _endpoints_for_options(options)
-    raw_config = build_run_config(
-        options,
-        endpoint=endpoint,
-        heartbeat_endpoint=heartbeat_endpoint,
-    )
-    config_path = write_generated_config(
-        raw_config,
-        options.generated_dir,
-        stem=f"{options.source.replace('-', '_')}_{options.codec}",
-    )
-
-    from eovrt_media.config import load_run_config
-
-    load_run_config(config_path)
-    if options.source == "ezviz" and not options.skip_probe:
-        probe_rtsp_config(config_path, frames=30)
-
-    session_name = time.strftime("%Y%m%d-%H%M%S")
-    logs_dir = options.logs_dir / session_name
-    if options.session_dir is not None:
-        logs_dir = options.session_dir / "logs" / f"{options.source}_{options.codec}"
-    node_a_log = logs_dir / "node-a.log"
-    node_b_log = logs_dir / "node-b.log"
-    node_a: subprocess.Popen[Any] | None = None
-    node_b: subprocess.Popen[Any] | None = None
-
-    from eovrt_media.debugging.events import DebugEventWriter
-
-    debug_writer = DebugEventWriter(logs_dir / "debug_events.jsonl", enabled=options.debug)
-    try:
-        with _open_log(node_a_log) as node_a_stream, _open_log(node_b_log) as node_b_stream:
-            try:
-                debug_writer.write(
-                    run_id=None,
-                    node="session",
-                    stage="process",
-                    event="process.start",
-                    codec=options.codec,
-                    extra={"node": "A", "config": str(config_path), "log": str(node_a_log)},
-                )
-                node_a = subprocess.Popen(
-                    _command_for_node("a", config_path),
-                    stdout=node_a_stream,
-                    stderr=subprocess.STDOUT,
-                    cwd=Path.cwd(),
-                    env=_subprocess_env(),
-                )
-                if not wait_for_tcp_endpoint(endpoint, timeout_s=options.startup_timeout_s):
-                    _terminate_process(node_a)
-                    debug_writer.write(
-                        run_id=None,
-                        node="session",
-                        stage="process",
-                        event="process.exit",
-                        codec=options.codec,
-                        extra={"node": "A", "returncode": node_a.returncode},
-                    )
-                    return LocalTwoNodeResult(
-                        config_path=config_path,
-                        logs_dir=logs_dir,
-                        node_a_log=node_a_log,
-                        node_b_log=node_b_log,
-                        run_dir=None,
-                        node_a_returncode=node_a.returncode,
-                        node_b_returncode=None,
-                        summary={},
-                        warnings=scan_log_warnings(node_a_log),
-                    )
-
-                debug_writer.write(
-                    run_id=None,
-                    node="session",
-                    stage="process",
-                    event="process.start",
-                    codec=options.codec,
-                    extra={"node": "B", "config": str(config_path), "log": str(node_b_log)},
-                )
-                node_b = subprocess.Popen(
-                    _command_for_node("b", config_path),
-                    stdout=node_b_stream,
-                    stderr=subprocess.STDOUT,
-                    cwd=Path.cwd(),
-                    env=_subprocess_env(),
-                )
-                node_b.wait()
-                debug_writer.write(
-                    run_id=None,
-                    node="session",
-                    stage="process",
-                    event="process.exit",
-                    codec=options.codec,
-                    extra={"node": "B", "returncode": node_b.returncode},
-                )
-                node_a.wait(timeout=options.startup_timeout_s)
-                debug_writer.write(
-                    run_id=None,
-                    node="session",
-                    stage="process",
-                    event="process.exit",
-                    codec=options.codec,
-                    extra={"node": "A", "returncode": node_a.returncode},
-                )
-            finally:
-                _terminate_process(node_b)
-                _terminate_process(node_a)
-    finally:
-        debug_writer.close()
-
-    node_a_returncode = node_a.returncode if node_a is not None else None
-    node_b_returncode = node_b.returncode if node_b is not None else None
-    run_dir = resolve_run_dir_from_node_log(node_b_log, options.outputs_base_dir)
-    if run_dir is None and node_a_returncode == 0 and node_b_returncode == 0:
-        run_dir = latest_run_dir(options.outputs_base_dir)
-    warnings = [*scan_log_warnings(node_a_log), *scan_log_warnings(node_b_log)]
-    return LocalTwoNodeResult(
-        config_path=config_path,
-        logs_dir=logs_dir,
-        node_a_log=node_a_log,
-        node_b_log=node_b_log,
-        run_dir=run_dir,
-        node_a_returncode=node_a_returncode,
-        node_b_returncode=node_b_returncode,
-        summary=collect_run_summary(run_dir),
-        warnings=warnings,
+        "eliminado (Task 17). Usar el despliegue Docker two-node de infra/twonode/."
     )

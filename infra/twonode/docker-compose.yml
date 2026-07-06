@@ -1,0 +1,57 @@
+# Split two-node EBE en UN host (red bridge interna) — smoke de aceptación y demo.
+# Un run por `up`: ambos contenedores terminan al agotar el stream (batch, no servicio).
+# SEGURIDAD: sin auth ni cifrado entre nodos (LAN de laboratorio, riesgo aceptado
+# — ver README.md). No publicar 5555/5556 fuera de la LAN.
+name: eovrt-twonode
+services:
+  node-a:
+    build:
+      context: ../..
+      dockerfile: infra/twonode/Dockerfile.node-a
+    image: eovrt/media-plane-edge:latest
+    command: ["--config", "/app/twonode-configs/two_node_a.yaml"]
+    networks: [twonode]
+    expose: ["5555", "5556"]
+    volumes:
+      - ./configs:/app/twonode-configs:ro
+      - ../../../e-ovrt_datasets/datasets/raw:/datasets:ro
+      - ../../../e-ovrt_experimental-setup/prompts:/app/configs/prompts:ro
+
+  node-b:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+    image: eovrt/media-plane:latest
+    # Misma imagen del servicio DBE, proceso distinto: run batch del Nodo B.
+    entrypoint: ["python3.11", "-m", "eovrt_media.tools.run_node", "--role", "b"]
+    command: ["--config", "/app/twonode-configs/two_node_b.yaml"]
+    networks: [twonode]
+    depends_on: [node-a]
+    environment:
+      # La imagen DBE define EOVRT_DATASETS_ROOT=/data/datasets; acá el Nodo B no
+      # lee datasets (los frames llegan por ZeroMQ) — se anula para que el loader
+      # no rebasee el path de source del config.
+      EOVRT_DATASETS_ROOT: ""
+    volumes:
+      - ./configs:/app/twonode-configs:ro
+      - ../../models:/app/models:ro
+      - ../../mobileclip2_b.ts:/app/mobileclip2_b.ts:ro
+      - ../../runs:/app/runs
+      - ../../../e-ovrt_experimental-setup/prompts:/app/configs/prompts:ro
+      - weights-cache:/data/weights
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    # Para el smoke con model.ref=mock en un host sin GPU: comentar el bloque
+    # deploy.resources de arriba.
+
+networks:
+  twonode:
+    driver: bridge
+
+volumes:
+  weights-cache: {}

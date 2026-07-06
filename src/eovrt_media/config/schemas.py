@@ -190,6 +190,7 @@ class TransportConfig(BaseModel):
     heartbeat_endpoint: str | None = None
     heartbeat_interval_ms: int = Field(default=1000, gt=0)
     heartbeat_timeout_ms: int = Field(default=5000, gt=0)
+    request_timeout_ms: int = Field(default=10000, gt=0)
     compression: CompressionConfig = Field(default_factory=CompressionConfig)
 
 

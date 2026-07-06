@@ -323,12 +323,11 @@ conceptual de los componentes.
   Nodo B (`run_node_b`) conecta REQ/PUSH y produce artefactos, incluidos previews desde payload.
   Esto sigue vigente y ejercitado por `tests/test_two_node.py`.
 
-  > **Caveat (2026-07-03):** el empaquetado **Docker** de este two-node (`Dockerfile.node-a`,
-  > `Dockerfile.node-b` y los `docker-compose*.yml` de `deploy/`) está **deprecado/roto y
-  > diferido a Fase 2** — esos artefactos invocan el CLI `eovrt-media run-producer/run-consumer`,
-  > eliminado al pasar el media-plane a servicio (Fase 1 / Spec A). Se conservan solo como
-  > referencia del wiring ZeroMQ para rehacer el split edge/GPU sobre el servicio. Detalle en
-  > [deploy/README.md](../../deploy/README.md).
+  > **Actualización (Fase 2, 2026-07-05):** el empaquetado **Docker** de este two-node
+  > (Nodo A edge sin GPU + Nodo B GPU) está implementado en `infra/twonode/`
+  > (`Dockerfile.node-a`, tres `docker-compose*.yml` y el entrypoint
+  > `eovrt_media.tools.run_node`, que reemplaza al CLI eliminado). Detalle en
+  > [infra/twonode/README.md](../../infra/twonode/README.md).
 
 Los modos soportados son `memory` y `network`; ZeroMQ permite usar endpoints TCP o `ipc://`
 sin introducir otro backend. La política de rate control y el formato de payload siguen siendo

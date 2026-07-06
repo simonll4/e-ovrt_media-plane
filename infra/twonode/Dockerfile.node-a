@@ -1,0 +1,17 @@
+# Nodo A — ingesta + rate control + normalización + servidor ZeroMQ. Sin GPU.
+# El extra [edge] es vacío a propósito: solo deps base, sin torch (el Nodo A
+# construye el adaptador únicamente para leer input_spec, nunca llama load()).
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY pyproject.toml ./
+COPY src ./src
+COPY configs ./configs
+RUN pip install --no-cache-dir -e ".[edge]"
+
+ENV EOVRT_MEDIA_CATALOG_ROOT=/app/configs PYTHONUNBUFFERED=1
+ENTRYPOINT ["python", "-m", "eovrt_media.tools.run_node", "--role", "a"]
+CMD ["--config", "/app/twonode-configs/two_node_a.yaml"]

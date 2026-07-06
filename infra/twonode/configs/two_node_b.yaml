@@ -1,0 +1,31 @@
+### Nodo B (GPU) — single-host compose: conecta al Nodo A por el nombre de servicio.
+### Para dos hosts: endpoint tcp://<ip-del-edge>:5555 (y heartbeat :5556).
+run:
+  scenario: EBE
+  name: ebe_node_b
+  description: "Nodo B: inferencia + postproceso + artefactos."
+  max_units: 20
+
+source:
+  type: image_folder
+  path: /datasets/construction_site_safety/valid/images   # no se lee: frames por ZeroMQ
+
+model:
+  ref: mock                # smoke; para real: yoloe/yoloe-26s (mismo ref que Nodo A)
+
+prompts:
+  ref: cr01_cr02_bench_v2
+  active_ids: [person, helmet, vest, bare_head]
+
+topology:
+  mode: two_node
+
+transport:
+  backend: network
+  endpoint: "tcp://node-a:5555"
+  heartbeat_endpoint: "tcp://node-a:5556"
+  payload_format: uint8_rgb
+  request_timeout_ms: 10000
+  compression:
+    codec: jpeg
+    quality: 90

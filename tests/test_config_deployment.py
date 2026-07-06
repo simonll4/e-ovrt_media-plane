@@ -152,7 +152,7 @@ class TestConfigGating:
 
     def test_network_run_configs_declare_dedicated_heartbeat_endpoint(self):
         network_configs = []
-        config_roots = (Path("configs") / "runs", Path("deploy") / "configs")
+        config_roots = (Path("configs") / "runs", Path("infra") / "twonode" / "configs")
         config_paths = sorted(
             path
             for root in config_roots

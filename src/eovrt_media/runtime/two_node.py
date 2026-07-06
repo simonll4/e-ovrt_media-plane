@@ -103,6 +103,7 @@ def run_node_b(config: RunConfig, console: Console | None = None) -> str:
         heartbeat_endpoint=config.transport.heartbeat_endpoint,
         heartbeat_interval_ms=config.transport.heartbeat_interval_ms,
         heartbeat_timeout_ms=config.transport.heartbeat_timeout_ms,
+        request_timeout_ms=config.transport.request_timeout_ms,
     )
     artifact_writer.write_debug_event(node="B", stage="transport", event="transport.start")
     normalizer = DetectionNormalizer(

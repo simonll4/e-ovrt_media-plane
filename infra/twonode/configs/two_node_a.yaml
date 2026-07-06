@@ -1,0 +1,31 @@
+### Nodo A (edge) — single-host compose. Bindea a 0.0.0.0; node-b llega por la bridge.
+### Para el despliegue en dos hosts es idéntico (el bind ya escucha en todas las ifaces).
+run:
+  scenario: EBE
+  name: ebe_node_a
+  description: "Nodo A: ingesta + normalización + servidor ZeroMQ."
+  max_units: 20            # smoke corto; quitar para el stream completo
+
+source:
+  type: image_folder
+  path: /datasets/construction_site_safety/valid/images
+
+model:
+  ref: mock                # smoke sin GPU; para real: yoloe/yoloe-26s (mismo ref que Nodo B)
+
+prompts:
+  ref: cr01_cr02_bench_v2
+  active_ids: [person, helmet, vest, bare_head]
+
+topology:
+  mode: two_node
+
+transport:
+  backend: network
+  endpoint: "tcp://0.0.0.0:5555"
+  heartbeat_endpoint: "tcp://0.0.0.0:5556"
+  payload_format: uint8_rgb
+  request_timeout_ms: 10000
+  compression:
+    codec: jpeg
+    quality: 90

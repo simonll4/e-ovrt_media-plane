@@ -1,0 +1,15 @@
+# Solo Nodo A — host edge real. Publica ZeroMQ hacia la LAN para el Nodo B remoto.
+# SEGURIDAD: 5555/5556 sin auth ni cifrado — solo LAN de laboratorio (ver README.md).
+name: eovrt-twonode-a
+services:
+  node-a:
+    build:
+      context: ../..
+      dockerfile: infra/twonode/Dockerfile.node-a
+    image: eovrt/media-plane-edge:latest
+    command: ["--config", "${NODE_A_CONFIG:-/app/twonode-configs/two_node_a.yaml}"]
+    ports: ["5555:5555", "5556:5556"]
+    volumes:
+      - ./configs:/app/twonode-configs:ro
+      - ../../../e-ovrt_datasets/datasets/raw:/datasets:ro
+      - ../../../e-ovrt_experimental-setup/prompts:/app/configs/prompts:ro

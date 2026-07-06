@@ -43,6 +43,7 @@ def create_transport(
             max_staleness_ms=max_staleness_ms,
             heartbeat_interval_ms=kwargs.get("heartbeat_interval_ms", 1000),
             heartbeat_timeout_ms=kwargs.get("heartbeat_timeout_ms", 5000),
+            request_timeout_ms=kwargs.get("request_timeout_ms", 10000),
             codec=kwargs.get("codec", _NETWORK_COMPRESSION_DEFAULTS.codec),
             quality=kwargs.get("quality", _NETWORK_COMPRESSION_DEFAULTS.quality),
         )

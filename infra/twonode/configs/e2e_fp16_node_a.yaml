@@ -1,10 +1,8 @@
-### Nodo A (edge) — ejemplo para test local two-node en compose.
-### Bindea el REP server a 0.0.0.0 para que node-b conecte vía la red bridge.
-### El dataset se monta en /datasets (ver docker-compose.yml).
 run:
   scenario: EBE
-  name: ebe_node_a
-  description: "Nodo A: ingesta + normalización + servidor ZeroMQ (test local)."
+  name: e2e_fp16_node_a
+  description: "Validacion Docker local: productor FP16 con un frame."
+  max_units: 1
 
 source:
   type: image_folder
@@ -24,7 +22,7 @@ transport:
   backend: network
   endpoint: "tcp://0.0.0.0:5555"
   heartbeat_endpoint: "tcp://0.0.0.0:5556"
-  payload_format: uint8_rgb
+  payload_format: fp16
+  request_timeout_ms: 10000
   compression:
-    codec: jpeg
-    quality: 90
+    codec: raw

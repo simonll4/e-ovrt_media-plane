@@ -268,3 +268,20 @@ def test_wait_for_consumer_timeout_returns_false_when_no_consumer_requests(
 
     assert finished is False
     assert time.monotonic() - started < 0.5
+
+
+def test_consumer_request_times_out_instead_of_hanging_when_producer_is_gone():
+    # Sin productor del otro lado: el REQ encola el send y el recv jamás llega.
+    consumer = NetworkTransportAdapter(
+        role="consumer",
+        endpoint=_unused_tcp_endpoint(),
+        heartbeat_endpoint=_unused_tcp_endpoint(),
+        request_timeout_ms=300,
+    )
+    try:
+        start = time.monotonic()
+        with pytest.raises(RuntimeError, match="no respondió en 300 ms"):
+            consumer.request()
+        assert time.monotonic() - start < 5.0  # cortó por timeout, no colgó
+    finally:
+        consumer.shutdown()

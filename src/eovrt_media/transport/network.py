@@ -38,6 +38,7 @@ class NetworkTransportAdapter(TransportAdapter):
         max_staleness_ms: float | None = None,
         heartbeat_interval_ms: int = 1000,
         heartbeat_timeout_ms: int = 5000,
+        request_timeout_ms: int = 10000,
         codec: str = "jpeg",
         quality: int = 90,
     ) -> None:
@@ -49,6 +50,7 @@ class NetworkTransportAdapter(TransportAdapter):
         self._ctx = zmq.Context.instance()
         self.heartbeat_interval_ms = heartbeat_interval_ms
         self.heartbeat_timeout_ms = heartbeat_timeout_ms
+        self.request_timeout_ms = request_timeout_ms
         self._last_heartbeat: float | None = None
         self.codec = codec
         self.quality = quality
@@ -185,7 +187,17 @@ class NetworkTransportAdapter(TransportAdapter):
 
     def request(self, **kwargs) -> NormalizedUnit | type[END]:
         self._sock.send(REQUEST)
-        data = self._sock.recv()
+        poller = zmq.Poller()
+        poller.register(self._sock, zmq.POLLIN)
+        try:
+            if not dict(poller.poll(timeout=self.request_timeout_ms)):
+                raise RuntimeError(
+                    f"Nodo A no respondió en {self.request_timeout_ms} ms — ¿murió el "
+                    "nodo edge? La corrida se aborta (sin reintento automático)."
+                )
+            data = self._sock.recv()
+        finally:
+            poller.unregister(self._sock)
         if data == END_MSG:
             return END
         return deserialize_unit(data)

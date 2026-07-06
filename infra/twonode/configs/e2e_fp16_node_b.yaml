@@ -1,10 +1,7 @@
-### Nodo B (GPU) — ejemplo para test local two-node en compose.
-### Conecta al REP server de node-a vía el DNS interno de compose (node-a:5555).
-### Para deploy real: copiar a two_node_b.yaml y cambiar endpoint al IP del edge.
 run:
   scenario: EBE
-  name: ebe_node_b
-  description: "Nodo B: cliente ZeroMQ + inferencia + artefactos (test local)."
+  name: e2e_fp16_node_b
+  description: "Validacion Docker local: consumidor CUDA de un frame FP16."
 
 source:
   type: image_folder
@@ -28,7 +25,7 @@ transport:
   backend: network
   endpoint: "tcp://node-a:5555"
   heartbeat_endpoint: "tcp://node-a:5556"
-  payload_format: uint8_rgb
+  payload_format: fp16
+  request_timeout_ms: 10000
   compression:
-    codec: jpeg
-    quality: 90
+    codec: raw

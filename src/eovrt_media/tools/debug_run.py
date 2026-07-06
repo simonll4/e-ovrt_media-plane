@@ -9,7 +9,7 @@ localhost).
 Caveat: la ruta `run_two_node_local` de esta utilidad no funciona tras la eliminación
 del CLI (Fase 1 / Spec A) — spawnea el `eovrt_media.cli` borrado y falla con un
 `RuntimeError` explícito. Pendiente de decisión en Fase 2 (docker-compose de dos
-nodos); ver README.md y deploy/README.md para el estado del empaquetado two-node.
+nodos); ver infra/twonode/README.md para el estado del empaquetado two-node.
 """
 
 from __future__ import annotations

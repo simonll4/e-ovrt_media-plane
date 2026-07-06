@@ -31,7 +31,7 @@ al proceso del media-plane.
 | Detections paginadas + artefactos con Range | Implementada | Anti-traversal; 404 ante paths hostiles o JSONL malformado. |
 | Catálogos (`/api/catalog/{ingest-plugins,datasets}`) + registro de plugins | Implementada | `image_folder`, `video_file`, `rtsp` disponibles; `oak_d` declarado no disponible. |
 | Redacción de credenciales RTSP | Implementada | URLs `rtsp://user:pass@…` redactadas en logs y artefactos. |
-| Imagen GPU única (Fase 1) + healthchecks | Implementada | `infra/docker/Dockerfile`; el split two-node por Docker se difiere a Fase 2. |
+| Imagen GPU única (Fase 1) + healthchecks | Implementada | `infra/docker/Dockerfile`; split two-node disponible en `infra/twonode/` (Fase 2). |
 
 El resto de este documento describe el **pipeline interno** que el servicio ejecuta, que sigue vigente.
 
@@ -46,8 +46,8 @@ declarada y diferida es `oak_d`.
 |---|---|---|
 | DBE + un host | Implementada | `ImageFolderSource` y `VideoFileSource`, transporte en memoria, política determinista. |
 | EBE + un host | Implementada | `RtspSource` con timestamps de pared, `bounded_freshness`, `pixel_data` en `VisualUnit`. Validado con cámara EZVIZ (1920×1080). |
-| DBE + dos nodos | Implementada | `NetworkTransportAdapter` ZeroMQ: REQ/REP para datos y PUSH/PULL dedicado para liveness. Invocación in-process `run_node_a()`/`run_node_b()` (el empaquetado Docker de dos nodos se difiere a Fase 2). |
-| EBE + dos nodos | Implementada | Combina fuente viva y transporte de red. Docker: `Dockerfile.node-a` (edge) + `Dockerfile.node-b` (CUDA). |
+| DBE + dos nodos | Implementada | `NetworkTransportAdapter` ZeroMQ: REQ/REP para datos y PUSH/PULL dedicado para liveness (`request_timeout_ms` corta el consumidor si el productor muere). Invocación in-process `run_node_a()`/`run_node_b()`; empaquetado Docker en `infra/twonode/` (Fase 2). |
+| EBE + dos nodos | Implementada | Combina fuente viva y transporte de red. Docker: `infra/twonode/Dockerfile.node-a` (edge) + imagen `eovrt/media-plane:latest` reusada para el Nodo B (GPU). |
 
 ## Flujo implementado
 

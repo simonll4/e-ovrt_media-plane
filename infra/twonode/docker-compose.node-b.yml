@@ -1,0 +1,30 @@
+# Solo Nodo B — host GPU real. El endpoint del Nodo A remoto va en el YAML de config
+# (transport.endpoint: tcp://<ip-edge>:5555).
+name: eovrt-twonode-b
+services:
+  node-b:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+    image: eovrt/media-plane:latest
+    entrypoint: ["python3.11", "-m", "eovrt_media.tools.run_node", "--role", "b"]
+    command: ["--config", "${NODE_B_CONFIG:-/app/twonode-configs/two_node_b.yaml}"]
+    environment:
+      EOVRT_DATASETS_ROOT: ""
+    volumes:
+      - ./configs:/app/twonode-configs:ro
+      - ../../models:/app/models:ro
+      - ../../mobileclip2_b.ts:/app/mobileclip2_b.ts:ro
+      - ../../runs:/app/runs
+      - ../../../e-ovrt_experimental-setup/prompts:/app/configs/prompts:ro
+      - weights-cache:/data/weights
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  weights-cache: {}

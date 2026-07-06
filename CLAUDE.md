@@ -66,7 +66,7 @@ Python pipeline for open-vocabulary object detection (OVD). All behavior is conf
 
 **Execution path (single-host)**: `POST /api/runs` (`service/routers/runs.py`) → `RunManager` → `runtime/pipeline.py:execute_run()` → producer thread (read → rate-gate → normalize) + consumer thread (inference → postprocess → write), coupled via `MemoryTransportAdapter`. The model is loaded once at service startup (`EOVRT_MODEL_REF`), not per run. The `eovrt-media` CLI no longer exists.
 
-**Execution path (two-node)**: invoked in-process (no CLI) — `runtime/two_node.py:run_node_a()` (ingesta + ZeroMQ REP server) and `run_node_b()` (ZeroMQ REQ client + inference + artifacts); the run config must set `topology.mode: two_node` (loader derives `transport.backend: network`). Transport: `NetworkTransportAdapter` (ZeroMQ REQ/REP, msgpack serialization, heartbeat PUSH/PULL dedicado). Docker packaging of the two-node split is deferred to Fase 2.
+**Execution path (two-node)**: invoked in-process (no CLI) — `runtime/two_node.py:run_node_a()` (ingesta + ZeroMQ REP server) and `run_node_b()` (ZeroMQ REQ client + inference + artifacts); the run config must set `topology.mode: two_node` (loader derives `transport.backend: network`). Transport: `NetworkTransportAdapter` (ZeroMQ REQ/REP, msgpack serialization, heartbeat PUSH/PULL dedicado). Docker packaging of the two-node split lives in `infra/twonode/` (Fase 2, see its README).
 
 **Key abstractions**:
 - `BaseDetectorAdapter` (`models/base.py`) — plugin interface for inference; register new adapters in `models/__init__.py:create_adapter()`
