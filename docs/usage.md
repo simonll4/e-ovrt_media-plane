@@ -180,11 +180,13 @@ inferencia + artefactos + ZeroMQ REQ) se invoca **en proceso** vía
 `runtime/two_node.py:run_node_a()` / `run_node_b()`; el config debe declarar
 `topology.mode: two_node` (el loader deriva `transport.backend: network`). Ver
 [docs/deployment/two-node-docker.md](deployment/two-node-docker.md) para el despliegue
-con Docker Compose (ruta prevista para Fase 2).
+con Docker Compose (Fase 2, `infra/twonode/`, ya completada y verificada).
 
 > **No soportado en Fase 1:** el banco local nativo `run_two_node_local()` y la
 > campaña `debug_run` en modo dos-nodos-local **spawneaban el CLI eliminado** y ahora
-> fallan de forma explícita. Su reemplazo es el docker-compose de dos nodos (Fase 2).
+> fallan de forma explícita. Su reemplazo es el split two-node dockerizado de
+> `infra/twonode/` (Fase 2); la ruta local queda deshabilitada permanentemente y no
+> tiene puente hacia ese despliegue Docker.
 
 ## Leer resultados
 

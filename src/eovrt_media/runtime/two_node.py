@@ -1,7 +1,9 @@
 """Orquestación de los dos nodos para topología distribuida."""
 from __future__ import annotations
 
+import json
 import queue
+from pathlib import Path
 
 from rich.console import Console
 
@@ -13,6 +15,7 @@ from eovrt_media.postprocessing import DetectionNormalizer
 from eovrt_media.runtime.pipeline import create_source, run_consumer_loop, run_producer_loop
 from eovrt_media.runtime.run_context import RunContext
 from eovrt_media.sinks import RunArtifactWriter
+from eovrt_media.sinks.jsonl_sink import atomic_write_json
 from eovrt_media.transport import RateGate, create_transport
 
 
@@ -83,6 +86,18 @@ def run_node_a(config: RunConfig, console: Console | None = None) -> None:
         transport.shutdown()
 
 
+def _finalize_summary_status(summary_path: Path, *, status: str, error: str | None) -> None:
+    """Read-modify-write del summary, mismo patrón que RunManager._finalize():
+    write_summary() no conoce status/error (son del ciclo de vida, no del pipeline)."""
+    try:
+        summary = json.loads(summary_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        summary = {}
+    summary["status"] = status
+    summary["error"] = error
+    atomic_write_json(summary_path, summary)
+
+
 def run_node_b(config: RunConfig, console: Console | None = None) -> str:
     """Nodo B: cliente de red + inferencia + postproceso + artefactos."""
     _ = console or Console()
@@ -114,33 +129,44 @@ def run_node_b(config: RunConfig, console: Console | None = None) -> str:
     adapter = create_adapter(config.model)
     plan = config.build_prompt_plan(adapter.PROMPT_BACKEND)
     reset_gpu_peak_memory()
+    failure: Exception | None = None
     try:
-        artifact_writer.write_debug_event(node="B", stage="model", event="model.load_start")
-        adapter.load()
-        artifact_writer.write_debug_event(node="B", stage="model", event="model.load_end")
-        run_consumer_loop(
-            transport,
-            adapter,
-            normalizer,
-            artifact_writer,
-            run_context,
-            tracker,
-            config,
-            plan,
-            prompt_set_id,
-            timings={},
-            progress=None,
-            task=None,
-            drain_errors=False,
-        )
-    finally:
-        transport.shutdown()
-        adapter.close()
-        artifact_writer.close()
+        try:
+            artifact_writer.write_debug_event(node="B", stage="model", event="model.load_start")
+            adapter.load()
+            artifact_writer.write_debug_event(node="B", stage="model", event="model.load_end")
+            run_consumer_loop(
+                transport,
+                adapter,
+                normalizer,
+                artifact_writer,
+                run_context,
+                tracker,
+                config,
+                plan,
+                prompt_set_id,
+                timings={},
+                progress=None,
+                task=None,
+                drain_errors=False,
+            )
+        finally:
+            transport.shutdown()
+            adapter.close()
+            artifact_writer.close()
+    except Exception as exc:  # noqa: BLE001 — el status failed captura la causa (como RunManager._execute)
+        failure = exc
 
     run_context.gpu_memory_peak_mb = get_gpu_memory_peak_mb()
     run_context.finish()
     artifact_writer.write_summary(tracker)
     artifact_writer.write_provenance()
     artifact_writer.write_manifest()
+    _finalize_summary_status(
+        run_context.run_dir / "summary.json",
+        status="failed" if failure is not None else "succeeded",
+        error=str(failure) if failure is not None else None,
+    )
+    if failure is not None:
+        raise failure
     return run_context.run_id

@@ -88,3 +88,33 @@ al terminar.
 
 **Run real con GPU (Step 4, opcional)**: no ejecutado — no hay GPU/pesos
 disponibles en este entorno.
+
+## Visibilidad en la consola web (2026-07-06, rebuild post-fixes)
+
+Tras implementar la spec `e-ovrt_experimental-setup/docs/superpowers/specs/2026-07-06-webconsole-twonode-visibility-design.md`
+(finalización garantizada de `run_node_b`, `status: running`+`live` en el disk-scan
+del servicio, ownership two-node en `reconcile_orphan_runs`), se reconstruyeron
+ambas imágenes (`docker compose build`, invalida la capa de `pip install` porque
+el Dockerfile copia `src/` antes del `RUN pip install` — ~11min, igual que el
+primer build) y se repitieron los tres escenarios contra un servicio media-plane
+real (`make serve`, mock) + el BFF de la consola (`eovrt_webconsole`) apuntándole:
+
+- **Run mock end-to-end**: ahora `summary.json` tiene `status: "succeeded"`,
+  `error: null` explícitos (antes ausentes). La consola (`GET /api/runs` del BFF)
+  lo muestra `succeeded`, `live: false`, `topology: "two_node"`.
+- **Caso de falla** (kill `node-a` a mitad de corrida): la consola mostró la
+  transición en vivo — `running` (t=2-4s) → `failed` (t=6s) — con
+  `summary.error` = `"Nodo A no respondió en 10000 ms — ¿murió el nodo edge? La
+  corrida se aborta (sin reintento automático)."`, sin intervención manual.
+- **Reconciliación durante un run en vuelo**: se capturó un run two-node recién
+  arrancado (directorio con `effective_config.yaml`, sin `summary.json` aún) y se
+  pausó el contenedor `node-b` (`docker compose pause`) para congelarlo en ese
+  estado sin ambigüedad de timing. Se reinició el servicio media-plane (dispara
+  `reconcile_orphan_runs()` en el arranque) — el run siguió sin `summary.json`
+  después del restart (prueba directa de que NO fue estampado `interrupted`) y la
+  consola lo mostró `running` correctamente. Se despausó `node-b`: el run terminó
+  solo, `status: "succeeded"`, `units_processed: 114`.
+
+Los tres escenarios de la spec quedaron validados de punta a punta (docker →
+servicio → BFF de la consola). `max_units` restaurado a 20 en ambos configs;
+sin contenedores ni procesos de prueba corriendo al terminar.

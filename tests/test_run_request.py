@@ -43,3 +43,22 @@ def test_ingest_config_dataset_ref():
     body = _request(ingest={"plugin": "image_folder", "config": {"dataset": "demo_v2"}})
     raw = to_raw_run_config(RunRequest(**body), resolve_model_ref("mock"))
     assert raw["source"] == {"ref": "demo_v2"}
+
+
+def test_rtsp_request_produce_run_config_valido(tmp_path):
+    """La consola manda solo `url`; el request debe validar sin `path` en disco."""
+    from eovrt_media.config.loader import find_plane_catalog_root, load_run_config_data
+
+    body = _request(
+        ingest={"plugin": "rtsp", "config": {"url": "rtsp://cam:554/live"}},
+        run={"max_units": 3},
+    )
+    raw = to_raw_run_config(RunRequest(**body), resolve_model_ref("mock"))
+    assert raw["source"]["type"] == "rtsp"
+    assert raw["source"]["url"] == "rtsp://cam:554/live"
+
+    raw.setdefault("outputs", {})["run_dir"] = str(tmp_path)
+    cfg = load_run_config_data(raw, plane_root=find_plane_catalog_root(None, None))
+    assert cfg.source.kind == "live"
+    assert cfg.source.path is None
+    assert cfg.rate_control.policy == "bounded_freshness"

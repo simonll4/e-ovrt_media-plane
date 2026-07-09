@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import shutil
 import time
+import yaml
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -47,6 +48,20 @@ def gc_runs_dir(settings: ServiceSettings, *, exclude: set[str] | None = None) -
     return removed
 
 
+def _owned_by_two_node(run_dir: Path) -> bool:
+    """effective_config.yaml con topology.mode: two_node ⇒ el dueño del run es
+    un proceso run_node_b externo, no este servicio — puede estar vivo (spec
+    2026-07-06 §3.3). Ilegible/ausente ⇒ False (se reconcilia como siempre)."""
+    cfg_path = run_dir / "effective_config.yaml"
+    if not cfg_path.exists():
+        return False
+    try:
+        cfg = yaml.safe_load(cfg_path.read_text()) or {}
+        return (cfg.get("topology") or {}).get("mode") == "two_node"
+    except (OSError, yaml.YAMLError, AttributeError):
+        return False
+
+
 def reconcile_orphan_runs(settings: ServiceSettings) -> list[str]:
     """Detecta run dirs huérfanos (el proceso murió con un run activo —
     kill/OOM— antes de que ``RunManager._finalize`` pudiera escribir
@@ -70,6 +85,9 @@ def reconcile_orphan_runs(settings: ServiceSettings) -> list[str]:
             continue
         summary_path = d / "summary.json"
         if summary_path.exists():
+            continue
+        if _owned_by_two_node(d):
+            logger.info("Run huérfano %s pertenece a two-node: no se reconcilia", d.name)
             continue
         try:
             mtime = d.stat().st_mtime

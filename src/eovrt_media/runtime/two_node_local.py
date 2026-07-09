@@ -1,4 +1,12 @@
-"""Native localhost bench for the existing two-node media-plane runtime."""
+"""Native localhost bench for the existing two-node media-plane runtime.
+
+Note: the config-generation/resolution helpers in this module (``resolve_source``,
+``resolve_prompts_ref``, ``build_run_config``, ``write_generated_config``, ...) are kept
+deliberately even though ``run_two_node_local`` itself is disabled — per the Fase 2 spec
+decision (2026-07-05: docs/superpowers/specs/2026-07-05-fase2-ebe-two-node-docker-design.md),
+this config generation is preserved regardless of the local execution path. Today only the
+unit tests exercise them.
+"""
 
 from __future__ import annotations
 

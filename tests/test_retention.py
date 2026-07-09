@@ -5,6 +5,14 @@ from eovrt_media.service.retention import gc_runs_dir, reconcile_orphan_runs
 from eovrt_media.service.settings import ServiceSettings
 
 
+def _settings(tmp_path):
+    """Helper para construir ServiceSettings en tests de retención."""
+    return ServiceSettings.from_env({
+        "EOVRT_MODEL_REF": "mock",
+        "EOVRT_RUNS_DIR": str(tmp_path / "runs"),
+    })
+
+
 def _mkrun(runs: Path, name: str, age_days: float = 0.0, size_bytes: int = 10):
     d = runs / name
     d.mkdir(parents=True)
@@ -103,3 +111,43 @@ def test_reconcile_sin_runs_dir_no_rompe(tmp_path):
         {"EOVRT_MODEL_REF": "mock", "EOVRT_RUNS_DIR": str(tmp_path / "no_existe")}
     )
     assert reconcile_orphan_runs(settings) == []
+
+
+def test_reconcile_saltea_huerfano_two_node(tmp_path):
+    """Spec 2026-07-06 §3.3: el servicio no es dueño de los runs two-node;
+    un huérfano two-node puede estar vivo y no debe estamparse interrupted."""
+    runs = tmp_path / "runs"
+    d = runs / "run_ebe_huerfano"
+    d.mkdir(parents=True)
+    (d / "effective_config.yaml").write_text("topology:\n  mode: two_node\n")
+    settings = _settings(tmp_path)
+
+    assert reconcile_orphan_runs(settings) == []
+    assert not (d / "summary.json").exists()
+
+
+def test_reconcile_sigue_marcando_huerfano_single_host(tmp_path):
+    runs = tmp_path / "runs"
+    d = runs / "run_dbe_huerfano"
+    d.mkdir(parents=True)
+    (d / "effective_config.yaml").write_text("topology:\n  mode: single_host\n")
+    settings = _settings(tmp_path)
+
+    assert reconcile_orphan_runs(settings) == ["run_dbe_huerfano"]
+    assert json.loads((d / "summary.json").read_text())["status"] == "interrupted"
+
+
+def test_reconcile_no_crashea_con_effective_config_mal_formado(tmp_path):
+    """Un effective_config.yaml sintácticamente válido pero con topology como
+    escalar (no mapping) no debe romper el reconcile completo — degrada a
+    reconciliar el huérfano como single-host (comportamiento de 'ilegible')."""
+    runs = tmp_path / "runs"
+    d = runs / "run_mal_formado"
+    d.mkdir(parents=True)
+    (d / "effective_config.yaml").write_text("topology: two_node\n")  # topology es un string, no un mapping
+    settings = _settings(tmp_path)
+
+    reconciled = reconcile_orphan_runs(settings)  # NO debe lanzar AttributeError
+
+    assert reconciled == ["run_mal_formado"]
+    assert json.loads((d / "summary.json").read_text())["status"] == "interrupted"

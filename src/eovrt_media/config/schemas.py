@@ -129,18 +129,27 @@ class RunSection(BaseModel):
     max_units: int | None = None
 
 
+# Tipos cuya fuente es una ruta en disco (incluye los alias de video que
+# `sources/registry.py` colapsa a 'video_file'). Los tipos vivos (rtsp, oak_d)
+# no tienen path.
+_PATH_SOURCE_TYPES = {"image_folder", "video", "video_frame", "video_file"}
+
+
 class SourceSection(BaseModel):
     """Sección 'source' de la configuración.
 
     Puede definirse inline (type + path) o por referencia al catálogo de
     datasets: ``ref: <nombre>`` resuelve ``configs/datasets/<nombre>.yaml``.
+
+    Una fuente viva (rtsp) se identifica por ``url``, no por una ruta en disco:
+    para esos tipos ``path`` queda vacío.
     """
 
     ref: str | None = None
     description: str | None = None
 
     type: str = "image_folder"
-    path: str
+    path: str | None = None
     extensions: list[str] = Field(default_factory=lambda: [".jpg", ".jpeg", ".png"])
     kind: str | None = None
     dataset_id: str | None = None
@@ -152,6 +161,16 @@ class SourceSection(BaseModel):
     url: str | None = None
     reconnect_retries: int = 5
     reconnect_delay_ms: int = 1000
+
+    @model_validator(mode="after")
+    def _check_locator(self) -> SourceSection:
+        source_type = self.type.lower().strip()
+        if source_type == "rtsp":
+            if not (self.url or self.path):
+                raise ValueError("source.url es requerido para source.type='rtsp'")
+        elif source_type in _PATH_SOURCE_TYPES and not self.path:
+            raise ValueError(f"source.path es requerido para source.type={source_type!r}")
+        return self
 
 
 class SamplingConfig(BaseModel):

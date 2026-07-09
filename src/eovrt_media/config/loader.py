@@ -9,8 +9,8 @@ Las run configs componen secciones por referencia, resueltas contra DOS raíces
 - ``prompts.ref: <nombre>``          → ``<raíz-experimento>/prompts/<nombre>.yaml``
   (con fallback al catálogo del plano para configs co-ubicados/generados)
 
-El catálogo del plano se autodescubre repo-relative (override ``--catalog-root`` /
-``EOVRT_MEDIA_CATALOG_ROOT``); la raíz del experimento es el dir que contiene
+El catálogo del plano se autodescubre repo-relative (override ``EOVRT_MEDIA_CATALOG_ROOT``
+o el parámetro programático); la raíz del experimento es el dir que contiene
 ``prompts/`` (p.ej. el repo ``e-ovrt_experimental-setup``). Los campos inline pisan
 los del catálogo; el formato inline completo (sin refs) sigue siendo válido.
 """
@@ -175,7 +175,7 @@ def find_plane_catalog_root(
     """Raíz del catálogo de capacidades del media-plane (``configs/``).
 
     Orden de resolución:
-    1. ``override`` explícito (flag CLI ``--catalog-root``).
+    1. ``override`` explícito (parámetro programático).
     2. variable de entorno ``EOVRT_MEDIA_CATALOG_ROOT``.
     3. un ancestro ``configs`` del propio ``config_path`` (configs co-ubicados:
        los del repo y los árboles temporales de tests).

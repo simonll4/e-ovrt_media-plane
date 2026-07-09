@@ -8,6 +8,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 
 from eovrt_media.config import load_run_config
 from eovrt_media.runtime import two_node
@@ -56,6 +57,9 @@ def test_two_node_loopback_produces_detections(tmp_path):
     detections = (Path(cfg.outputs.base_dir) / run_id / "detections.jsonl").read_text()
     events = [json.loads(line) for line in detections.splitlines()]
     assert len(events) == 4
+    summary = json.loads((Path(cfg.outputs.base_dir) / run_id / "summary.json").read_text())
+    assert summary["status"] == "succeeded"
+    assert summary["error"] is None
 
 
 def test_node_b_starts_transport_before_loading_model(tmp_path, monkeypatch):
@@ -198,3 +202,37 @@ def test_node_b_writes_model_load_debug_events(tmp_path, monkeypatch):
 
     assert "model.load_start" in events
     assert "model.load_end" in events
+
+
+def test_node_b_ante_fallo_escribe_summary_failed(tmp_path, monkeypatch):
+    """Spec 2026-07-06 §3.1: un run two-node que falla debe dejar summary.json
+    con status=failed + error, y manifest/provenance igual presentes."""
+    images = tmp_path / "imgs"
+    _images(images, 2)
+
+    cfg = load_run_config(CONFIGS_DIR / "runs" / "mock.yaml")
+    cfg.model.adapter = "mock"
+    cfg.source.path = str(images)
+    cfg.topology.mode = "two_node"
+    cfg.transport.backend = "network"
+    cfg.transport.endpoint = _loopback_endpoint()
+    cfg.transport.heartbeat_endpoint = _loopback_endpoint()
+    cfg.outputs.base_dir = str(tmp_path / "runs")
+    cfg.outputs.run_dir = str(tmp_path / "runs")
+    cfg.outputs.save_previews = False
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("Nodo A no respondió en 10000 ms")
+
+    monkeypatch.setattr("eovrt_media.runtime.two_node.run_consumer_loop", _boom)
+
+    with pytest.raises(RuntimeError, match="no respondió"):
+        run_node_b(cfg)
+
+    run_dirs = [d for d in (tmp_path / "runs").iterdir() if d.is_dir()]
+    assert len(run_dirs) == 1
+    summary = json.loads((run_dirs[0] / "summary.json").read_text())
+    assert summary["status"] == "failed"
+    assert "no respondió" in summary["error"]
+    assert (run_dirs[0] / "run_manifest.json").exists()
+    assert (run_dirs[0] / "run_provenance.json").exists()

@@ -41,8 +41,13 @@ def _get_code_version() -> str | None:
     return None
 
 
-def _compute_source_fingerprint(source_path: str) -> str:
-    """Devuelve SHA-256 del listado ordenado ``path:tamaño`` de una fuente."""
+def _compute_source_fingerprint(source_path: str | None) -> str:
+    """Devuelve SHA-256 del listado ordenado ``path:tamaño`` de una fuente.
+
+    Una fuente viva (rtsp) no tiene contenido en disco que huellar: devuelve "".
+    """
+    if not source_path:
+        return ""
     folder = Path(source_path)
     if not folder.is_dir():
         return ""

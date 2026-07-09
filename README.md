@@ -115,8 +115,10 @@ src/eovrt_media/        # Paquete principal
 
 > **Caveat `debug_run`:** la ruta de dos-nodos-local de `python -m eovrt_media.tools.debug_run`
 > (`run_two_node_local`) no funciona tras la eliminación del CLI — spawnea el
-> `eovrt_media.cli` borrado y falla con un `RuntimeError` explícito. Pendiente de decisión
-> en Fase 2 (docker-compose de dos nodos); `evaluate` e `inspect_runs` no están afectados.
+> `eovrt_media.cli` borrado y falla con un `RuntimeError` explícito. Su reemplazo es el
+> split two-node dockerizado de `infra/twonode/` (Fase 2, ya completada y verificada); el
+> banco de debug local queda permanentemente deshabilitado y no tiene puente hacia ese
+> despliegue Docker. `evaluate` e `inspect_runs` no están afectados.
 
 ```
 configs/                # Catálogos de capacidades (ver configs/README.md)

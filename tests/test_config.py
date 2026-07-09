@@ -139,3 +139,32 @@ class TestRunConfig:
             experiment={"id": "bench_v2_gdino_tiny"},
         )
         assert cfg.experiment.id == "bench_v2_gdino_tiny"
+
+
+class TestLiveSourceSchema:
+    """Una fuente viva se identifica por `url`, no por `path` en disco."""
+
+    def _config(self, source: dict):
+        from eovrt_media.config.schemas import RunConfig
+
+        return RunConfig(
+            run={"name": "x"}, source=source,
+            model={"name": "mock"}, prompts={"ref": "r"},
+        )
+
+    def test_rtsp_source_does_not_require_path(self):
+        cfg = self._config({"type": "rtsp", "url": "rtsp://cam/live"})
+        assert cfg.source.url == "rtsp://cam/live"
+        assert cfg.source.path is None
+
+    def test_rtsp_source_without_url_is_rejected(self):
+        with pytest.raises(ValueError, match="url"):
+            self._config({"type": "rtsp"})
+
+    def test_pulleable_source_still_requires_path(self):
+        with pytest.raises(ValueError, match="path"):
+            self._config({"type": "image_folder"})
+
+    def test_video_file_source_still_requires_path(self):
+        with pytest.raises(ValueError, match="path"):
+            self._config({"type": "video_file"})

@@ -210,3 +210,34 @@ def test_watchdog_tick_run_terminado_no_crashea(manager, tmp_path):
     assert manager._active is None
     # No debe lanzar, aunque no haya run activo.
     manager._watchdog_tick()
+
+
+def test_run_externo_en_curso_es_visible_como_running(manager, tmp_path):
+    """Spec 2026-07-06 §3.2: dir con effective_config.yaml y sin summary.json
+    (p.ej. un run two-node en vuelo) se reporta running con live=False."""
+    d = tmp_path / "runs" / "run_20260706_000000_ebe_mock_abc123"
+    d.mkdir(parents=True)
+    (d / "effective_config.yaml").write_text("topology:\n  mode: two_node\n")
+
+    info = manager.get(d.name)
+    assert info["status"] == "running"
+    assert info["live"] is False
+
+    listed = {r["run_id"]: r for r in manager.list_runs()}
+    assert listed[d.name]["status"] == "running"
+    assert listed[d.name]["live"] is False
+
+
+def test_dir_sin_effective_config_sigue_siendo_desconocido(manager, tmp_path):
+    d = tmp_path / "runs" / "run_basura"
+    d.mkdir(parents=True)
+    with pytest.raises(UnknownRunError):
+        manager.get("run_basura")
+    assert all(r["run_id"] != "run_basura" for r in manager.list_runs())
+
+
+def test_live_true_solo_para_el_run_activo_propio(manager, tmp_path):
+    run_id = manager.start_run(_request(_images(tmp_path)))
+    assert manager.get(run_id)["live"] is True
+    _wait_final(manager, run_id)
+    assert manager.get(run_id)["live"] is False

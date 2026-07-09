@@ -154,10 +154,20 @@ class RunManager:
                 "status": active.status,
                 "started_at": active.started_at.isoformat(),
                 "model": self._model_section.ref,
+                "live": True,
                 **bench_metadata(self._settings.runs_dir / run_id),
             }
         summary_path = self._settings.runs_dir / run_id / "summary.json"
         if not summary_path.exists():
+            # Sin summary pero con effective_config: run en curso de otro proceso
+            # (p.ej. two-node) que comparte runs_dir — visible como running.
+            if (self._settings.runs_dir / run_id / "effective_config.yaml").exists():
+                return {
+                    "run_id": run_id,
+                    "status": "running",
+                    "live": False,
+                    **bench_metadata(self._settings.runs_dir / run_id),
+                }
             raise UnknownRunError(run_id)
         try:
             summary = json.loads(summary_path.read_text())
@@ -171,6 +181,7 @@ class RunManager:
             "run_id": run_id,
             "status": summary.get("status", "unknown"),
             "summary": summary,
+            "live": False,
             **bench_metadata(self._settings.runs_dir / run_id),
         }
 
@@ -183,6 +194,7 @@ class RunManager:
                 {
                     "run_id": active.run_id,
                     "status": active.status,
+                    "live": True,
                     **bench_metadata(self._settings.runs_dir / active.run_id),
                 }
             )
@@ -212,6 +224,16 @@ class RunManager:
                         {
                             "run_id": d.name,
                             "status": summary.get("status", "unknown"),
+                            "live": False,
+                            **bench_metadata(d),
+                        }
+                    )
+                elif (d / "effective_config.yaml").exists():
+                    runs.append(
+                        {
+                            "run_id": d.name,
+                            "status": "running",
+                            "live": False,
                             **bench_metadata(d),
                         }
                     )
