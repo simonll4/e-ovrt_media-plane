@@ -165,6 +165,20 @@ class RunArtifactWriter:
             p99_lat = tracker.p99_latency_ms()
 
         config = self.context.config
+        # Two-node: la captura la estampa el Nodo A y el G2A lo cerraria el
+        # Nodo B. `time.monotonic()` es del sistema: entre hosts distintos la
+        # resta no significa nada (spec 40 SS4). Se declara, no se publica un
+        # numero falso.
+        if config.topology.mode == "two_node":
+            g2a_state, g2a_causes = "not_interpretable", ["cross_node_monotonic_clock"]
+        else:
+            g2a_state, g2a_causes = "computed", []
+        g2a_summary = self.context.g2a.summarize(
+            warmup_units=config.run.warmup_units,
+            applicability_state=g2a_state,
+            causes=g2a_causes,
+        )
+
         descriptor = RunDescriptor(
             scenario=config.run.scenario,
             topology=config.topology.mode,
@@ -221,6 +235,8 @@ class RunArtifactWriter:
             backpressure_wait_ms=round(self.context.backpressure_wait_ms, 2),
             max_staleness_observed_ms=round(self.context.max_staleness_observed_ms, 2),
             run_descriptor=descriptor,
+            source_clock=self.context.source_clock,
+            g2a=g2a_summary,
         )
 
         summary_sink = SummarySink(self.run_dir / "summary.json")

@@ -15,6 +15,8 @@ class OakDSource(BaseSource):
     Ver docs/contexto/oak-d-integration.md cuando se implemente.
     """
 
+    SOURCE_CLOCK = "wallclock"
+
     def __init__(self, url: str | None = None, max_units: int | None = None) -> None:
         self.url = url
         self.max_units = max_units

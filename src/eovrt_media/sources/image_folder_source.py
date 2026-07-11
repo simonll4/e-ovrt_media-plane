@@ -24,6 +24,8 @@ class ImageFolderSource(BaseSource):
         max_units: Límite máximo de imágenes a procesar (aplicado tras every_n).
     """
 
+    SOURCE_CLOCK = "none"
+
     def __init__(
         self,
         folder_path: str | Path,
@@ -73,6 +75,7 @@ class ImageFolderSource(BaseSource):
             width=width,
             height=height,
             timestamp_ms=None,
+            source_clock=self.SOURCE_CLOCK,
         )
 
     def __iter__(self) -> Iterator[VisualUnit]:

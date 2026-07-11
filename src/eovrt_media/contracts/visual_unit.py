@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class VisualUnit(BaseModel):
@@ -16,6 +17,14 @@ class VisualUnit(BaseModel):
     unit_id: str
     source_id: str | None = None
     source_type: str  # "image" | "video_frame"
+    # Instante en que el PROCESO leyo la unidad (spec 42 SS5.1). El default_factory
+    # se evalua al construir el VisualUnit, que es exactamente el momento de lectura:
+    # ninguna fuente puede olvidarse de estamparlo.
+    capture_monotonic_ns: int = Field(default_factory=time.monotonic_ns)
+    capture_wallclock_ms: float = Field(default_factory=lambda: time.time() * 1000.0)
+    # Que reloj emite `timestamp_ms` esta fuente: wallclock | media | none.
+    # Decide la aplicabilidad de t_capture->alert (spec 40 SS5.2.3).
+    source_clock: str = "none"
     frame_index: int | None = None
     timestamp_ms: float | None = None
     width: int

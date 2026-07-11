@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from enum import Enum
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PayloadFormat(str, Enum):
@@ -46,6 +47,10 @@ class NormalizedUnit(BaseModel):
     source_path: str | None = None
     frame_index: int | None = None
     timestamp_ms: float | None = None
+    # Cruzan el canal productor->consumidor (y el wire, en two-node).
+    capture_monotonic_ns: int = Field(default_factory=time.monotonic_ns)
+    capture_wallclock_ms: float = Field(default_factory=lambda: time.time() * 1000.0)
+    source_clock: str = "none"
 
     orig_width: int
     orig_height: int

@@ -227,6 +227,25 @@ def run_consumer_loop(
             continue
         timer.end_inference()
 
+        # G2A = captura -> resultado algoritmico disponible (spec 40 SS5.1). Se cierra
+        # aca, antes del postproceso: la descomposicion de spec 42 SS5 es
+        # t_capture + t_transport + t_preprocess + t_inference. Mismo reloj monotonico
+        # que estampo la captura.
+        g2a_ms = (time.monotonic_ns() - item.capture_monotonic_ns) / 1_000_000.0
+
+        # En topologia two_node la captura la estampa el Nodo A y el G2A se
+        # cierra en el Nodo B: `time.monotonic_ns()` es del sistema, con
+        # origen arbitrario por host, asi que la resta entre dos maquinas no
+        # significa nada (spec 40 SS4). No se acumula ni se publica un
+        # g2a_ms fabricado: la fila trae `null` y el consumidor aguas abajo
+        # (que joinea por unit_id) no puede confundirlo con un valor real.
+        if config.topology.mode == "two_node":
+            g2a_ms_for_metric = None
+        else:
+            run_context.g2a.add(g2a_ms)
+            g2a_ms_for_metric = round(g2a_ms, 3)
+        run_context.source_clock = item.source_clock
+
         if (
             config.outputs.save_previews
             and preview_attempts < config.outputs.preview_max
@@ -324,6 +343,9 @@ def run_consumer_loop(
                     run_id=run_context.run_id,
                     unit_id=item.unit_id,
                     source_path=item.source_id,
+                    capture_monotonic_ns=item.capture_monotonic_ns,
+                    capture_wallclock_ms=item.capture_wallclock_ms,
+                    g2a_ms=g2a_ms_for_metric,
                     fps_effective=(
                         round(1000.0 / granular.total_ms, 2)
                         if granular.total_ms > 0
@@ -400,129 +422,172 @@ def execute_run(
         from eovrt_media.service.events import EventEmittingArtifactWriter
 
         artifact_writer = EventEmittingArtifactWriter(artifact_writer, event_sink)
+
+    bus_publisher = None
+    if config.bus.enabled:
+        from eovrt_media.service.bus_writer import BusPublishingArtifactWriter
+        from eovrt_media.transport.bus import BusPublisher
+
+        try:
+            bus_publisher = BusPublisher(
+                config.bus.endpoint,
+                hwm=config.bus.hwm,
+                wait_for_subscriber_ms=config.bus.wait_for_subscriber_ms,
+            )
+            artifact_writer = BusPublishingArtifactWriter(
+                artifact_writer, bus_publisher, run_context.run_id
+            )
+        except Exception:  # noqa: BLE001 — el bus nunca rompe la corrida
+            logger.warning(
+                "bus: no se pudo levantar el publicador (endpoint=%s); "
+                "la corrida continua sin bus, el JSONL es la verdad",
+                config.bus.endpoint,
+                exc_info=True,
+            )
+            if bus_publisher is not None:
+                bus_publisher.close()
+            bus_publisher = None
+
     tracker = LatencyTracker()
     producer = None
     consumer_stalled = False
+    bus_status = "succeeded"
 
     if console is not None:
         console.print(f"[bold green]▶ Corrida:[/bold green] {run_context.run_id}")
         console.print(f"[dim]  Directorio de salida: {run_context.run_dir}[/dim]")
 
     try:
-        if config.config_path:
-            artifact_writer.write_original_config(config.config_path)
-        artifact_writer.write_effective_config()
-
-        source = create_source(config)
-        if control is not None:
-            control.bind_source(source)
         try:
-            source_count = len(source)
-            progress_total: int | None = source_count if source_count >= 0 else None
-        except TypeError:
-            progress_total = None
-        normalizer = DetectionNormalizer(
-            min_confidence=config.postprocess.min_confidence,
-            min_box_area_px=config.postprocess.min_box_area_px,
-            normalize_boxes=config.postprocess.normalize_boxes,
-        )
-        plan = config.build_prompt_plan(adapter.PROMPT_BACKEND)
-        prompt_set_id = (
-            config.prompts_file.resolved_set_id() if config.prompts_file else "unknown"
-        )
-        reset_gpu_peak_memory()
+            if config.config_path:
+                artifact_writer.write_original_config(config.config_path)
+            artifact_writer.write_effective_config()
 
-        rate_control = config.rate_control
-        transport = create_transport(
-            backend=config.transport.backend,
-            policy=rate_control.policy,
-            max_queue_size=rate_control.max_queue_size,
-            buffer_size=rate_control.buffer_size,
-            max_staleness_ms=rate_control.max_staleness_ms,
-            endpoint=config.transport.endpoint,
-        )
-        should_continue = (
-            (lambda: not control.stop_requested) if control is not None else None
-        )
-        timings: dict[str, float] = {"backpressure_wait_ms": 0.0}
-        producer = threading.Thread(
-            target=run_producer_loop,
-            args=(
-                source,
-                RateGate(stride=rate_control.stride),
-                adapter.input_spec,
-                PayloadFormat(config.transport.payload_format),
-                transport,
-                run_context.run_id,
-                run_context._errors_queue,
-                timings,
-                should_continue,
-            ),
-            daemon=True,
-            name="pipeline-producer",
-        )
-        producer.start()
-
-        def _consume(progress=None, task=None) -> None:
-            nonlocal consumer_stalled
-            consumer_stalled = run_consumer_loop(
-                transport=transport,
-                adapter=adapter,
-                normalizer=normalizer,
-                artifact_writer=artifact_writer,
-                run_context=run_context,
-                tracker=tracker,
-                config=config,
-                plan=plan,
-                prompt_set_id=prompt_set_id,
-                timings=timings,
-                progress=progress,
-                task=task,
-                drain_errors=True,
-                control=control,
+            source = create_source(config)
+            run_context.source_clock = getattr(source, "SOURCE_CLOCK", "none")
+            if control is not None:
+                control.bind_source(source)
+            try:
+                source_count = len(source)
+                progress_total: int | None = source_count if source_count >= 0 else None
+            except TypeError:
+                progress_total = None
+            normalizer = DetectionNormalizer(
+                min_confidence=config.postprocess.min_confidence,
+                min_box_area_px=config.postprocess.min_box_area_px,
+                normalize_boxes=config.postprocess.normalize_boxes,
             )
+            plan = config.build_prompt_plan(adapter.PROMPT_BACKEND)
+            prompt_set_id = (
+                config.prompts_file.resolved_set_id() if config.prompts_file else "unknown"
+            )
+            reset_gpu_peak_memory()
 
-        try:
-            if console is not None:
-                with Progress(
-                    SpinnerColumn(),
-                    TextColumn("[progress.description]{task.description}"),
-                    BarColumn(),
-                    TaskProgressColumn(),
-                    console=console,
-                ) as progress:
-                    task = progress.add_task(
-                        "Procesando unidades visuales...", total=progress_total
-                    )
-                    _consume(progress, task)
-            else:
-                _consume()
-        except KeyboardInterrupt:
-            if console is not None:
-                console.print(
-                    "\n[yellow]⚠ Corrida interrumpida — guardando artefactos...[/yellow]"
+            rate_control = config.rate_control
+            transport = create_transport(
+                backend=config.transport.backend,
+                policy=rate_control.policy,
+                max_queue_size=rate_control.max_queue_size,
+                buffer_size=rate_control.buffer_size,
+                max_staleness_ms=rate_control.max_staleness_ms,
+                endpoint=config.transport.endpoint,
+            )
+            should_continue = (
+                (lambda: not control.stop_requested) if control is not None else None
+            )
+            timings: dict[str, float] = {"backpressure_wait_ms": 0.0}
+            producer = threading.Thread(
+                target=run_producer_loop,
+                args=(
+                    source,
+                    RateGate(stride=rate_control.stride),
+                    adapter.input_spec,
+                    PayloadFormat(config.transport.payload_format),
+                    transport,
+                    run_context.run_id,
+                    run_context._errors_queue,
+                    timings,
+                    should_continue,
+                ),
+                daemon=True,
+                name="pipeline-producer",
+            )
+            producer.start()
+
+            def _consume(progress=None, task=None) -> None:
+                nonlocal consumer_stalled
+                consumer_stalled = run_consumer_loop(
+                    transport=transport,
+                    adapter=adapter,
+                    normalizer=normalizer,
+                    artifact_writer=artifact_writer,
+                    run_context=run_context,
+                    tracker=tracker,
+                    config=config,
+                    plan=plan,
+                    prompt_set_id=prompt_set_id,
+                    timings=timings,
+                    progress=progress,
+                    task=task,
+                    drain_errors=True,
+                    control=control,
                 )
-            source.stop()
-            transport.close()
-            producer.join(timeout=5.0)
 
-        _drain_producer_errors(run_context._errors_queue, artifact_writer, run_context)
-        run_context.units_dropped = getattr(transport, "units_dropped", 0)
-        run_context.backpressure_wait_ms = timings["backpressure_wait_ms"]
+            try:
+                if console is not None:
+                    with Progress(
+                        SpinnerColumn(),
+                        TextColumn("[progress.description]{task.description}"),
+                        BarColumn(),
+                        TaskProgressColumn(),
+                        console=console,
+                    ) as progress:
+                        task = progress.add_task(
+                            "Procesando unidades visuales...", total=progress_total
+                        )
+                        _consume(progress, task)
+                else:
+                    _consume()
+            except KeyboardInterrupt:
+                if console is not None:
+                    console.print(
+                        "\n[yellow]⚠ Corrida interrumpida — guardando artefactos...[/yellow]"
+                    )
+                source.stop()
+                transport.close()
+                producer.join(timeout=5.0)
+
+            _drain_producer_errors(run_context._errors_queue, artifact_writer, run_context)
+            run_context.units_dropped = getattr(transport, "units_dropped", 0)
+            run_context.backpressure_wait_ms = timings["backpressure_wait_ms"]
+        finally:
+            if producer is not None:
+                join_timeout = (
+                    PRODUCER_JOIN_TIMEOUT_AFTER_STALL_S if consumer_stalled else 30.0
+                )
+                producer.join(timeout=join_timeout)
+            artifact_writer.close()
+
+        run_context.gpu_memory_peak_mb = get_gpu_memory_peak_mb()
+        run_context.finish()
+        artifact_writer.write_summary(tracker)
+        artifact_writer.write_provenance()
+        artifact_writer.write_manifest()
+        if control is not None and control.stop_requested:
+            bus_status = "stopped"
+        return run_context.run_id
+    except BaseException:
+        bus_status = "failed"
+        raise
     finally:
-        if producer is not None:
-            join_timeout = (
-                PRODUCER_JOIN_TIMEOUT_AFTER_STALL_S if consumer_stalled else 30.0
-            )
-            producer.join(timeout=join_timeout)
-        artifact_writer.close()
-
-    run_context.gpu_memory_peak_mb = get_gpu_memory_peak_mb()
-    run_context.finish()
-    artifact_writer.write_summary(tracker)
-    artifact_writer.write_provenance()
-    artifact_writer.write_manifest()
-    return run_context.run_id
+        if bus_publisher is not None:
+            # Sentinela END de la corrida 1:1 (ADR-007): sale pase lo que pase,
+            # incluso si el run murio. Nunca deja al consumidor colgado.
+            try:
+                artifact_writer.publish_run_finished(bus_status)
+            except Exception:  # noqa: BLE001 — el bus nunca rompe la corrida
+                logger.warning("bus: no se pudo publicar run_finished", exc_info=True)
+            bus_publisher.close()
 
 
 def run_pipeline(config: RunConfig, console: Console | None = None) -> str:

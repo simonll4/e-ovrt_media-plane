@@ -11,6 +11,10 @@ from eovrt_media.contracts import VisualUnit
 class BaseSource(ABC):
     """Interfaz común para todas las fuentes de unidades visuales."""
 
+    # Reloj que emite `timestamp_ms` esta fuente: wallclock | media | none.
+    # El default conservador es "none": una fuente que no lo declara no promete tiempo.
+    SOURCE_CLOCK: str = "none"
+
     @abstractmethod
     def __iter__(self) -> Iterator[VisualUnit]:
         """Itera sobre la fuente produciendo instancias de VisualUnit."""

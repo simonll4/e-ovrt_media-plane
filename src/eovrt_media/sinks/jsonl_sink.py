@@ -62,7 +62,14 @@ class JSONLSink:
         """Escribe un MetricSample como una línea JSON."""
         if self._file is None:
             raise RuntimeError("Sink no abierto. Llamar open() primero.")
-        line = metric.model_dump_json(exclude_none=True)
+        data = metric.model_dump(mode="json", exclude_none=True)
+        # g2a_ms=None es informativo (no medible, p.ej. topologia two_node: spec
+        # 40 SS4), no un campo ausente: a diferencia del resto de los campos
+        # opcionales, NUNCA se omite. Si se omitiera, un consumidor que joinea
+        # por unit_id no podria distinguir "no interpretable en esta topologia"
+        # de "artefacto de un schema anterior a esta metrica".
+        data["g2a_ms"] = metric.g2a_ms
+        line = json.dumps(data, ensure_ascii=False)
         self._file.write(line + "\n")
         self._file.flush()
 

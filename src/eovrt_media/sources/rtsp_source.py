@@ -23,6 +23,8 @@ class RtspSource(BaseSource):
     reintenta la conexión ante cortes de red.
     """
 
+    SOURCE_CLOCK = "wallclock"
+
     def __init__(
         self,
         url: str,
@@ -93,6 +95,7 @@ class RtspSource(BaseSource):
                     height=height,
                     timestamp_ms=round(timestamp_ms, 2),
                     pixel_data=frame,  # BGR; evita que image_loader reabra el stream
+                    source_clock=self.SOURCE_CLOCK,
                 )
                 emitted += 1
         finally:

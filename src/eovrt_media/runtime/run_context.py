@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from eovrt_media.config import RunConfig
+from eovrt_media.metrics.g2a import G2AAccumulator
 
 
 class RunContext:
@@ -42,6 +43,9 @@ class RunContext:
         self.backpressure_wait_ms = 0.0
         self.max_staleness_observed_ms = 0.0
         self._errors_queue: queue.SimpleQueue = queue.SimpleQueue()
+
+        self.g2a = G2AAccumulator()
+        self.source_clock: str = "none"
 
     def record_detections(self, detections) -> None:
         """Acumula conteos de detecciones por label y por prompt_id."""

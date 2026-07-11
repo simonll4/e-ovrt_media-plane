@@ -79,6 +79,9 @@ def normalize_spatial(
         payload_format=payload_format,
         target_size=(target_h, target_w),
         transform=transform,
+        capture_monotonic_ns=unit.capture_monotonic_ns,
+        capture_wallclock_ms=unit.capture_wallclock_ms,
+        source_clock=unit.source_clock,
         run_id=unit.run_id,
     )
 

@@ -36,12 +36,23 @@ class RunParams(BaseModel):
     name: str | None = None
 
 
+class BusSpec(BaseModel):
+    """Bus media->control por payload (ADR-009): es del experimento, no del despliegue."""
+
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool = False
+    endpoint: str | None = None
+    hwm: int | None = None
+    wait_for_subscriber_ms: int | None = None
+
+
 class RunRequest(BaseModel):
     # extra="forbid": una sección 'model' (u otra desconocida) en el body → 422.
     model_config = ConfigDict(extra="forbid")
     ingest: IngestSpec
     prompts: PromptsSpec
     run: RunParams = Field(default_factory=RunParams)
+    bus: BusSpec | None = None
 
 
 def to_raw_run_config(request: RunRequest, model_section: ModelSection) -> dict[str, Any]:
@@ -86,4 +97,6 @@ def to_raw_run_config(request: RunRequest, model_section: ModelSection) -> dict[
     }
     if request.run.stride is not None:
         raw["rate_control"] = {"stride": request.run.stride}
+    if request.bus is not None:
+        raw["bus"] = request.bus.model_dump(exclude_none=True)
     return raw

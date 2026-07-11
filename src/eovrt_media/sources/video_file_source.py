@@ -24,6 +24,8 @@ class VideoFileSource(BaseSource):
         max_units: Límite máximo de frames a procesar.
     """
 
+    SOURCE_CLOCK = "media"
+
     def __init__(
         self,
         video_path: str | Path,
@@ -129,6 +131,7 @@ class VideoFileSource(BaseSource):
                         height=self.height,
                         timestamp_ms=round(timestamp_ms, 2),
                         pixel_data=frame,  # BGR; image_loader lo usa sin reabrir
+                        source_clock=self.SOURCE_CLOCK,
                     )
                     emitted += 1
                     next_pos += 1

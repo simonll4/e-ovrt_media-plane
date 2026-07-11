@@ -75,11 +75,15 @@ Python pipeline for open-vocabulary object detection (OVD). All behavior is conf
 - `RunContext` (`runtime/run_context.py`) — stateful execution context (run_id, unit counts, timing); owns the output directory
 - `RunArtifactWriter` (`sinks/run_artifact_writer.py`) — persists to `runs/<run_id>/`: `detections.jsonl`, `metrics.jsonl`, `errors.jsonl`, `summary.json`, `previews/`
 
+**Bus media→control (ADR-003)**: apagado por default. Con `bus.enabled: true` en la run config —o una sección `"bus"` en el body de `POST /api/runs`— el `BusPublishingArtifactWriter` (`service/bus_writer.py`) decora el `RunArtifactWriter` y publica cada `DetectionEvent` **ya persistido** por un socket ZeroMQ XPUB (`transport/bus.py`), dentro de un envelope msgpack `bus.envelope.v1`, en el topic `media.detection.v1.<run_id>`; al cerrar el run emite `run.lifecycle.v1.<run_id>` con `{event: run_finished, status}`. El `payload` es **byte-idéntico a la línea de `detections.jsonl`** (invariante del test de paridad del control-plane). El bus nunca bloquea ni rompe la corrida: HWM finito, `NOBLOCK`, y **el JSONL es la fuente de verdad**. Un PUB/XPUB dropea en silencio al llenarse el HWM, así que el `seq` monótono del envelope (que se incrementa aunque el envío se descarte) es la única señal de pérdida — la detecta el consumidor. Ver `docs/operacion/37` del repo `docs`.
+
 **Data contracts** (`contracts/`) — Pydantic models flow through the pipeline: `VisualUnit` → `RawDetection` → `Detection` → `DetectionEvent`/`MetricSample` for persistence.
 
 **Error handling**: each pipeline stage catches independently; failures are logged to `errors.jsonl` and execution continues to the next unit.
 
 **Metrics**: sub-stage latency tracked at microsecond granularity via `metrics/timers.py`; aggregated (p95, p99, FPS) in `metrics/collector.py`.
+
+**Instrumentación de `t_capture→alert`** (spec 40 §5.2.4): `metrics.jsonl` trae, por `unit_id` —que es la clave de join con las alertas del control-plane—, `capture_monotonic_ns`, `capture_wallclock_ms` y `g2a_ms` (la compuesta captura → resultado algorítmico, que **cierra al terminar la inferencia**, antes del postproceso). El instante de captura se estampa con un `default_factory` en `VisualUnit`: se evalúa al construirlo, o sea al leer la unidad, y **`normalize_spatial` lo copia explícitamente** — si alguien borra ese copiado, el `NormalizedUnit` lo re-estampa en silencio y el G2A colapsa a cero (hay un test con un `sleep` que lo caza). `summary.json` declara `source_clock` (`wallclock` RTSP / `media` archivo de video / `none` imágenes: decide la aplicabilidad de la métrica aguas abajo) y el bloque `g2a` con percentiles, `warmup_units` excluidas y el presupuesto 50–250 ms. **En two-node `g2a_ms` es `null` por fila** y el bloque sale `not_interpretable / cross_node_monotonic_clock`: los relojes monotónicos de dos hosts no se restan. Ver `docs/operacion/39` del repo `docs`.
 
 ## Testing
 

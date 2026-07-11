@@ -69,6 +69,22 @@ class RunDescriptor(BaseModel):
     code_version: str | None = None
 
 
+class G2ASummary(BaseModel):
+    """Compuesta captura -> resultado algoritmico, con su estado de aplicabilidad."""
+
+    state: str  # computed | applicable_not_computed | not_applicable | not_interpretable
+    causes: list[str] = Field(default_factory=list)
+    count: int = 0
+    warmup_units: int = 0
+    avg_ms: float = 0.0
+    p50_ms: float = 0.0
+    p95_ms: float = 0.0
+    p99_ms: float = 0.0
+    budget_min_ms: float = 50.0
+    budget_max_ms: float = 250.0
+    p95_within_budget: bool = False
+
+
 class RunSummary(BaseModel):
     """Resumen de una corrida completa."""
 
@@ -99,3 +115,7 @@ class RunSummary(BaseModel):
     backpressure_wait_ms: float = 0.0
     max_staleness_observed_ms: float = 0.0
     run_descriptor: RunDescriptor | None = None
+    # Que reloj emite la fuente: decide la aplicabilidad de t_capture->alert
+    # aguas abajo (spec 40 SS5.2.3). None = corridas previas a esta task.
+    source_clock: str | None = None
+    g2a: G2ASummary | None = None

@@ -7,12 +7,15 @@ import threading
 from pathlib import Path
 
 import cv2
+import msgpack
 import numpy as np
 import pytest
+import zmq
 
 from eovrt_media.config import load_run_config
 from eovrt_media.runtime import two_node
 from eovrt_media.runtime.two_node import run_node_a, run_node_b
+from eovrt_media.transport.bus import LIFECYCLE_TOPIC_PREFIX, BusPublisher
 
 
 CONFIGS_DIR = Path(__file__).parent / "fixtures"
@@ -236,3 +239,66 @@ def test_node_b_ante_fallo_escribe_summary_failed(tmp_path, monkeypatch):
     assert "no respondió" in summary["error"]
     assert (run_dirs[0] / "run_manifest.json").exists()
     assert (run_dirs[0] / "run_provenance.json").exists()
+
+
+def test_node_b_fallo_temprano_con_bus_publica_run_finished_y_cierra(tmp_path, monkeypatch):
+    """Hallazgo 1 (segunda ronda): si run_node_b falla ANTES del try interno
+    (p.ej. create_adapter no puede resolver el modelo, o create_transport no
+    puede bindear), el run_finished debe salir igual por el bus con
+    status=failed y el publicador debe cerrarse. El run_finished es el
+    centinela de cierre del plano de control: sin el, el consumidor queda
+    colgado esperando eventos que nunca llegan."""
+    cfg = load_run_config(CONFIGS_DIR / "runs" / "mock.yaml")
+    cfg.model.adapter = "mock"
+    cfg.run.id = "r_two_node_early_fail"
+    cfg.topology.mode = "two_node"
+    cfg.transport.backend = "network"
+    cfg.transport.endpoint = _loopback_endpoint()
+    cfg.transport.heartbeat_endpoint = _loopback_endpoint()
+    cfg.outputs.base_dir = str(tmp_path / "runs")
+    cfg.outputs.run_dir = str(tmp_path / "runs")
+    cfg.outputs.save_previews = False
+    cfg.bus.enabled = True
+    cfg.bus.endpoint = _loopback_endpoint()
+    cfg.bus.wait_for_subscriber_ms = 3000
+
+    subscriber = zmq.Context.instance().socket(zmq.SUB)
+    subscriber.setsockopt_string(zmq.SUBSCRIBE, LIFECYCLE_TOPIC_PREFIX)
+    subscriber.connect(cfg.bus.endpoint)
+
+    def _boom(model):
+        raise RuntimeError("no se pudo resolver el modelo")
+
+    monkeypatch.setattr("eovrt_media.runtime.two_node.create_adapter", _boom)
+
+    # Espia BusPublisher.close para verificar de verdad que el publicador se
+    # cierra (el nombre del test lo promete: "..._y_cierra").
+    close_calls = []
+    original_close = BusPublisher.close
+
+    def _spy_close(self):
+        close_calls.append(self)
+        return original_close(self)
+
+    monkeypatch.setattr(BusPublisher, "close", _spy_close)
+
+    try:
+        with pytest.raises(RuntimeError, match="no se pudo resolver el modelo"):
+            run_node_b(cfg)
+
+        poller = zmq.Poller()
+        poller.register(subscriber, zmq.POLLIN)
+        assert dict(poller.poll(timeout=3000)), "run_finished nunca llego al SUB"
+        topic, raw = subscriber.recv_multipart()
+        envelope = msgpack.unpackb(raw, raw=False)
+        lifecycle = json.loads(envelope["payload"])
+        assert topic.decode() == f"run.lifecycle.v1.{cfg.run.id}"
+        assert lifecycle == {
+            "schema_version": "run.lifecycle.v1",
+            "event": "run_finished",
+            "media_run_id": cfg.run.id,
+            "status": "failed",
+        }
+        assert len(close_calls) == 1, "BusPublisher.close() debe llamarse exactamente una vez"
+    finally:
+        subscriber.close(linger=0)

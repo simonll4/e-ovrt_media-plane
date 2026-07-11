@@ -127,6 +127,9 @@ class RunSection(BaseModel):
     description: str | None = None
     seed: int = 42
     max_units: int | None = None
+    # Unidades iniciales excluidas de los percentiles de G2A (carga de kernels,
+    # cache de cuDNN). Se DECLARA en el summary (spec 42 SS5). 0 = comportamiento actual.
+    warmup_units: int = 0
 
 
 # Tipos cuya fuente es una ruta en disco (incluye los alias de video que
@@ -217,6 +220,17 @@ class TopologyConfig(BaseModel):
     """Sección ``topology``: disposición de nodos del despliegue."""
 
     mode: str = "single_host"
+
+
+class BusConfig(BaseModel):
+    """Bus media->control (ADR-003). Apagado por default: el JSONL es la verdad."""
+
+    enabled: bool = False
+    endpoint: str = "tcp://0.0.0.0:5557"
+    hwm: int = Field(default=1000, gt=0)
+    # > 0 bloquea el arranque del run hasta que un SUB se suscriba (spec 40
+    # SS3.2 regla 1). 0 = no esperar (comportamiento de un PUB comun).
+    wait_for_subscriber_ms: int = Field(default=0, ge=0)
 
 
 class ModelRuntimeConfig(BaseModel):
@@ -388,6 +402,7 @@ class RunConfig(BaseModel):
     rate_control: RateControlConfig = Field(default_factory=RateControlConfig)
     transport: TransportConfig = Field(default_factory=TransportConfig)
     topology: TopologyConfig = Field(default_factory=TopologyConfig)
+    bus: BusConfig = Field(default_factory=BusConfig)
     postprocess: PostprocessConfig = Field(default_factory=PostprocessConfig)
     outputs: OutputsConfig = Field(default_factory=OutputsConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
