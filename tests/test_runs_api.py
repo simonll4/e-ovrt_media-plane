@@ -160,6 +160,18 @@ def test_summary_escrito_atomico(client, tmp_path):
     assert summary["status"] == "succeeded"
 
 
+def test_experiment_id_llega_al_summary_end_to_end(client, tmp_path):
+    # Spec 42 §4.1: experiment_id viaja request -> raw config -> RunConfig.experiment.id
+    # -> RunArtifactWriter (run_artifact_writer.py:212) -> summary.json.
+    body = _body(_images(tmp_path))
+    body["experiment_id"] = "exp-e2e"
+    run_id = client.post("/api/runs", json=body).json()["run_id"]
+    assert _wait_final(client, run_id) == "succeeded"
+    run_dir = tmp_path / "runs" / run_id
+    summary = json.loads((run_dir / "summary.json").read_text())
+    assert summary["experiment_id"] == "exp-e2e"
+
+
 def test_list_runs_summary_corrupto_no_rompe(client, tmp_path):
     # Ancla Fix 2/3: un summary.json truncado/corrupto (kill/OOM a mitad de
     # escritura, o borrado a mitad de lectura) no debe tumbar el listado

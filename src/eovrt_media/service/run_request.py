@@ -53,6 +53,9 @@ class RunRequest(BaseModel):
     prompts: PromptsSpec
     run: RunParams = Field(default_factory=RunParams)
     bus: BusSpec | None = None
+    # Metadata cross-plano (ADR-004): no es del experimento en si, es una referencia
+    # externa que el control-plane usa para correlacionar. Top-level, no dentro de 'run'.
+    experiment_id: str | None = None
 
 
 def to_raw_run_config(request: RunRequest, model_section: ModelSection) -> dict[str, Any]:
@@ -99,4 +102,6 @@ def to_raw_run_config(request: RunRequest, model_section: ModelSection) -> dict[
         raw["rate_control"] = {"stride": request.run.stride}
     if request.bus is not None:
         raw["bus"] = request.bus.model_dump(exclude_none=True)
+    if request.experiment_id is not None:
+        raw["experiment"] = {"id": request.experiment_id}
     return raw
