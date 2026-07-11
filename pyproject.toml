@@ -29,6 +29,7 @@ dev = [
     "pytest",
     "ruff",
     "httpx",
+    "supervision",
 ]
 
 [build-system]
