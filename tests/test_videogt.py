@@ -9,6 +9,7 @@ from eovrt_media.tools.videogt import (
     build_cvat_xml,
     head_region,
     infer_attributes,
+    mark_evidence_gaps,
     smooth_bool,
     thin_track,
     torso_region,
@@ -85,6 +86,53 @@ def test_thin_track_conserva_lo_esencial():
     assert [b["frame"] for b in thinned] == [0, 6, 9, 12]
 
 
+def test_thin_track_conserva_marcadores_outside_y_reinicio():
+    # Un marcador outside=True (hueco de evidencia) y el keyframe que reinicia
+    # el track tras el hueco deben sobrevivir al adelgazado SIEMPRE, aunque la
+    # geometría/atributos no varíen lo suficiente para disparar el criterio
+    # normal de thin_track — son marcadores de contrato, no keyframes de forma.
+    attrs = {"has_helmet": True, "has_vest": False}
+    boxes = [
+        {"frame": 0, "box": (0.0, 0.0, 10.0, 10.0), "attributes": attrs},
+        {"frame": 1, "box": (0.0, 0.0, 10.0, 10.0), "attributes": attrs, "outside": True},
+        {"frame": 20, "box": (0.0, 0.0, 10.0, 10.0), "attributes": attrs},  # reinicio, sin cambios
+        {"frame": 40, "box": (0.0, 0.0, 10.0, 10.0), "attributes": attrs},  # último
+    ]
+    thinned = thin_track(boxes, eps_px=5.0)
+    assert [b["frame"] for b in thinned] == [0, 1, 20, 40]
+    assert thinned[1]["outside"] is True
+
+
+def test_mark_evidence_gaps_inserta_marcador_en_hueco_grande():
+    # Hueco de 20 frames entre las boxes en frame=0 y frame=20, con umbral 10:
+    # debe insertarse un marcador outside=True justo después de la última
+    # evidencia (frame=1) para que el tramo sin detección no se lea como
+    # "sigue siendo True" (semántica escalón del parser hermano).
+    attrs = {"has_helmet": True, "has_vest": False}
+    boxes = [
+        {"frame": 0, "box": (0.0, 0.0, 10.0, 10.0), "attributes": attrs},
+        {"frame": 20, "box": (50.0, 0.0, 60.0, 10.0), "attributes": attrs},
+    ]
+    marked = mark_evidence_gaps(boxes, max_gap_frames=10)
+    assert [b["frame"] for b in marked] == [0, 1, 20]
+    marker = marked[1]
+    assert marker["outside"] is True
+    assert marker["box"] == boxes[0]["box"]
+    assert marker["attributes"] == attrs
+
+
+def test_mark_evidence_gaps_no_inserta_en_parpadeo_chico():
+    # Hueco de 3 frames con umbral 10: parpadeo normal del detector, no se marca.
+    attrs = {"has_helmet": True, "has_vest": False}
+    boxes = [
+        {"frame": 0, "box": (0.0, 0.0, 10.0, 10.0), "attributes": attrs},
+        {"frame": 3, "box": (1.0, 0.0, 11.0, 10.0), "attributes": attrs},
+    ]
+    marked = mark_evidence_gaps(boxes, max_gap_frames=10)
+    assert marked == boxes
+    assert all(not b.get("outside") for b in marked)
+
+
 def _track():
     return {"track_id": 0, "boxes": [
         {"frame": 0, "box": (10.0, 20.0, 110.0, 220.0),
@@ -124,6 +172,28 @@ def test_build_cvat_xml_ignora_tracks_vacios():
     tracks = ET.fromstring(xml).findall("track")
     assert len(tracks) == 1
     assert tracks[0].get("id") == "0"
+
+
+def test_build_cvat_xml_emite_outside_para_marcador_interno():
+    # Marcador interno de hueco de evidencia (no el cierre final del track):
+    # debe emitirse con outside="1" para que el parser hermano lo lea como
+    # "no evaluable" en vez de interpolar/sostener el último atributo.
+    track = {"track_id": 0, "boxes": [
+        {"frame": 0, "box": (10.0, 20.0, 110.0, 220.0),
+         "attributes": {"has_helmet": True, "has_vest": False}},
+        {"frame": 1, "box": (10.0, 20.0, 110.0, 220.0),
+         "attributes": {"has_helmet": True, "has_vest": False}, "outside": True},
+        {"frame": 20, "box": (15.0, 20.0, 115.0, 220.0),
+         "attributes": {"has_helmet": False, "has_vest": False}},
+    ]}
+    xml = build_cvat_xml([track], stop_frame=99, width=1280, height=720, task_name="t")
+    boxes = ET.fromstring(xml).find("track").findall("box")
+    by_frame = {b.get("frame"): b for b in boxes}
+    assert by_frame["1"].get("outside") == "1"
+    assert by_frame["0"].get("outside") == "0"
+    assert by_frame["20"].get("outside") == "0"
+    # sigue cerrando el track al final como antes (no se rompe el cierre existente)
+    assert boxes[-1].get("frame") == "21" and boxes[-1].get("outside") == "1"
 
 
 def test_build_cvat_xml_omite_atributo_none():

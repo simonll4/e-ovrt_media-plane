@@ -19,6 +19,7 @@ from rich.console import Console
 from eovrt_media.tools.videogt import (
     assign_ppe_to_persons,
     build_cvat_xml,
+    mark_evidence_gaps,
     nms,
     smooth_bool,
     thin_track,
@@ -224,7 +225,9 @@ def _make_detector(
     return detect, unmatched_spans
 
 
-def _write_preview(video_path: Path, tracks: list[dict], out_path: Path) -> None:
+def _write_preview(
+    video_path: Path, tracks: list[dict], out_path: Path, hold_frames: int
+) -> None:
     """MP4 con overlay (caja + id + estado EPP) para inspección pre-CVAT.
 
     ``tracks[i]["boxes"]`` solo trae entradas en los frames muestreados
@@ -234,6 +237,16 @@ def _write_preview(video_path: Path, tracks: list[dict], out_path: Path) -> None
     puntero por track que avanza monótonamente con ``frame_idx`` (las boxes de
     cada track ya están ordenadas por frame ascendente) y se reusa la última
     caja con ``frame <= frame_idx``.
+
+    Esa caja sostenida NO se dibuja indefinidamente: solo dentro de una
+    ventana de ``hold_frames`` (el paso de muestreo, lo justo para tapar el
+    hueco entre dos muestras consecutivas) desde su propio frame. Sin este
+    límite, un track que termina hace rato — o que entra en un hueco de
+    evidencia largo — dejaba el puntero clavado en la última caja conocida y
+    esta se seguía dibujando hasta el final del video, acumulando cajas
+    fantasma donde ya no hay nadie. Tampoco se dibuja si la caja vigente es un
+    marcador ``outside=True`` de ``mark_evidence_gaps``: ese marcador
+    documenta la ausencia de evidencia, no una posición real de la persona.
 
     OpenCV en este entorno no puede codificar H.264 (su build de FFMPEG solo
     trae ``h264_v4l2m2m``, que necesita un device que WSL no expone), así que
@@ -269,6 +282,10 @@ def _write_preview(video_path: Path, tracks: list[dict], out_path: Path) -> None
             b = boxes[idx]
             if b["frame"] > frame_idx:
                 continue  # el track todavía no empezó en este frame
+            if b.get("outside"):
+                continue  # marcador de hueco de evidencia: no hay nada que mostrar
+            if frame_idx - b["frame"] > hold_frames:
+                continue  # caja vieja fuera de la ventana de sostenimiento
             x1, y1, x2, y2 = (int(v) for v in b["box"])
             ok_ppe = b["attributes"]["has_helmet"] and b["attributes"]["has_vest"]
             color = (0, 200, 0) if ok_ppe else (0, 0, 255)
@@ -324,6 +341,12 @@ def main(argv=None) -> int:
     parser.add_argument("--ppe-threshold", type=float, default=0.35)
     parser.add_argument("--smooth-window", type=int, default=11)
     parser.add_argument("--thin-eps-px", type=float, default=10.0)
+    parser.add_argument(
+        "--max-gap-frames", type=int, default=None,
+        help="huecos de evidencia (frames muestreados consecutivos sin detección) "
+             "por encima de este umbral se marcan outside=1 en vez de interpolarse; "
+             "default max(step * 3, 10) con step = round(fps / sample_fps)",
+    )
     parser.add_argument("--nms-iou", type=float, default=0.5,
                         help="IoU de NMS por clase; suprime cajas duplicadas del mismo objeto")
     parser.add_argument("--preview", action="store_true")
@@ -343,8 +366,17 @@ def main(argv=None) -> int:
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     step = max(1, round(fps / args.sample_fps))
+    # 1-2 muestras perdidas es parpadeo normal del detector (interpolar está
+    # bien); medio segundo sin detección no lo es. max(step * 3, 10) cubre
+    # ambos regímenes de sample_fps: a muestreo denso (step chico) escala con
+    # el paso real, a muestreo ralo (step<=3) el piso de 10 evita marcar
+    # huecos de 1-2 muestras como huecos de evidencia.
+    max_gap_frames = (
+        args.max_gap_frames if args.max_gap_frames is not None else max(step * 3, 10)
+    )
     console.print(f"[cyan]{args.video.name}[/cyan]: {width}x{height} @ {fps:.0f} fps, "
-                  f"{n_frames} frames — muestreo cada {step} frames")
+                  f"{n_frames} frames — muestreo cada {step} frames, "
+                  f"max-gap-frames={max_gap_frames}")
 
     detect, unmatched_spans = _make_detector(
         args.device, args.person_threshold, args.ppe_threshold, args.nms_iou
@@ -365,12 +397,22 @@ def main(argv=None) -> int:
         frame_dets, frame_rate=args.sample_fps, person_threshold=args.person_threshold
     )
     tracks = smooth_tracks(tracks, window=args.smooth_window)
+    gapped = [
+        {"track_id": t["track_id"], "boxes": mark_evidence_gaps(t["boxes"], max_gap_frames)}
+        for t in tracks
+    ]
+    n_gaps = sum(len(g["boxes"]) - len(t["boxes"]) for g, t in zip(gapped, tracks))
+    if n_gaps:
+        console.print(
+            f"[yellow]huecos de evidencia marcados:[/yellow] {n_gaps} (revisar en CVAT: "
+            "¿la persona estaba ocluida —restaurar continuidad— o salió de cuadro?)"
+        )
     if args.preview:
         preview_path = args.out.with_suffix(".preview.mp4")
-        _write_preview(args.video, tracks, preview_path)
+        _write_preview(args.video, gapped, preview_path, hold_frames=step)
         console.print(f"[dim]preview:[/dim] {preview_path}")
     thinned = [{"track_id": t["track_id"], "boxes": thin_track(t["boxes"], args.thin_eps_px)}
-               for t in tracks]
+               for t in gapped]
 
     xml = build_cvat_xml(thinned, stop_frame=n_frames - 1, width=width,
                          height=height, task_name=args.video.stem)

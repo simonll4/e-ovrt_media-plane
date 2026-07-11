@@ -159,18 +159,75 @@ def smooth_bool(values: list, window: int = 11) -> list:
     return out
 
 
+def mark_evidence_gaps(boxes: list[dict], max_gap_frames: int) -> list[dict]:
+    """Marca con ``outside=True`` los huecos de EVIDENCIA (no de adelgazamiento).
+
+    Invariante central del proyecto: la incertidumbre nunca fabrica una
+    infracción. Si el detector pierde a la persona entre dos frames
+    muestreados, ese tramo no tiene evidencia — no es lo mismo que una persona
+    quieta cuyo estado de EPP no cambió. Sin marcar, dos consumidores aguas
+    abajo prolongan el último estado conocido sobre el hueco: CVAT interpola
+    linealmente la caja, y el parser del repo hermano (``attribute_states``,
+    semántica de escalón) sostiene el último atributo hasta el próximo
+    keyframe. El resultado es una infracción (o su ausencia) afirmada sobre un
+    tramo donde nadie vio nada.
+
+    Debe aplicarse sobre las boxes SIN adelgazar (todas las detecciones frame
+    a frame de ``track_persons``, antes de ``thin_track``): ahí está toda la
+    evidencia disponible. Si se aplicara después del adelgazado, un hueco por
+    adelgazamiento legítimo (persona quieta, keyframes redundantes borrados)
+    se confundiría con un hueco por falta de detección.
+
+    Por cada par consecutivo cuyo salto de frame supera ``max_gap_frames``,
+    inserta justo después de la primera un marcador
+    ``{"frame": prev["frame"] + 1, "box": prev["box"],
+    "attributes": prev["attributes"], "outside": True}``. Las boxes originales
+    no se modifican (no llevan la clave ``outside``, tratada como falsy por
+    los consumidores vía ``.get``).
+    """
+    if not boxes:
+        return []
+    result = [boxes[0]]
+    for prev, nxt in zip(boxes, boxes[1:]):
+        if nxt["frame"] - prev["frame"] > max_gap_frames:
+            result.append({
+                "frame": prev["frame"] + 1,
+                "box": prev["box"],
+                "attributes": prev["attributes"],
+                "outside": True,
+            })
+        result.append(nxt)
+    return result
+
+
 def thin_track(boxes: list[dict], eps_px: float = 10.0) -> list[dict]:
     """Adelgaza keyframes: conserva primero, último, cambios de atributo y
     desviaciones geométricas > eps respecto del último conservado.
 
     CVAT interpola linealmente entre keyframes; eps acota el error de la caja
     interpolada. Un track detectado a 10 fps queda en decenas de keyframes.
+
+    Los marcadores ``outside=True`` de ``mark_evidence_gaps`` (huecos de
+    evidencia) y el keyframe que reinicia el track inmediatamente después de
+    uno se conservan SIEMPRE, sin pasar por el criterio de movimiento/cambio
+    de atributo: son marcadores de contrato (cierran/abren un tramo sin
+    evidencia), no keyframes de forma, y adelgazarlos rompería la garantía de
+    ``mark_evidence_gaps``.
     """
     if not boxes:
         return []
     kept = [boxes[0]]
+    force_next = False
     for box in boxes[1:-1]:
         last = kept[-1]
+        if box.get("outside"):
+            kept.append(box)
+            force_next = True
+            continue
+        if force_next:
+            kept.append(box)
+            force_next = False
+            continue
         moved = max(abs(a - b) for a, b in zip(box["box"], last["box"])) > eps_px
         if moved or box["attributes"] != last["attributes"]:
             kept.append(box)
@@ -188,6 +245,10 @@ def build_cvat_xml(tracks: list[dict], stop_frame: int, width: int, height: int,
     boxes se saltean (no hay nada que anotar). Atributos con valor None
     (no evaluable) se omiten del XML en vez de serializarse como "false"
     (ver ``_emit``): la ausencia nunca debe fabricar una violación de EPP.
+    Boxes marcadas con ``outside=True`` (huecos de evidencia, ver
+    ``mark_evidence_gaps``) se emiten también con outside="1", además del
+    cierre final que esta función fabrica cuando el track termina antes de
+    ``stop_frame``.
     """
     root = ET.Element("annotations")
     ET.SubElement(root, "version").text = "1.1"
@@ -220,7 +281,7 @@ def build_cvat_xml(tracks: list[dict], stop_frame: int, width: int, height: int,
             "id": str(track["track_id"]), "label": "person", "source": "semi-auto",
         })
         for b in track["boxes"]:
-            _emit(el, b["frame"], b["box"], b["attributes"], outside=False)
+            _emit(el, b["frame"], b["box"], b["attributes"], outside=bool(b.get("outside")))
         last = track["boxes"][-1]
         if last["frame"] < stop_frame:
             _emit(el, last["frame"] + 1, last["box"], last["attributes"], outside=True)
