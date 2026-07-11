@@ -56,6 +56,7 @@ def create_source(config: "RunConfig") -> BaseSource:
             extensions=config.source.extensions,
             every_n=1,
             max_units=config.run.max_units,
+            source_id=config.source.source_id,
         )
     if plugin_id == "video_file":
         return VideoFileSource(
@@ -63,6 +64,7 @@ def create_source(config: "RunConfig") -> BaseSource:
             every_n=1,
             target_fps=None,
             max_units=config.run.max_units,
+            source_id=config.source.source_id,
         )
     # rtsp (live)
     from eovrt_media.sources import RtspSource
@@ -72,4 +74,5 @@ def create_source(config: "RunConfig") -> BaseSource:
         reconnect_retries=config.source.reconnect_retries,
         reconnect_delay_ms=config.source.reconnect_delay_ms,
         max_units=config.run.max_units,
+        source_id=config.source.source_id,
     )

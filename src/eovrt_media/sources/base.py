@@ -15,6 +15,12 @@ class BaseSource(ABC):
     # El default conservador es "none": una fuente que no lo declara no promete tiempo.
     SOURCE_CLOCK: str = "none"
 
+    # Identidad lógica opcional de la fuente (spec: knob source_id). Cuando está
+    # seteada, las implementaciones deben estamparla en cada VisualUnit emitido
+    # en lugar de dejar que el validador derive el basename. None = comportamiento
+    # actual (cada implementación decide su derivación por defecto).
+    source_id: str | None = None
+
     @abstractmethod
     def __iter__(self) -> Iterator[VisualUnit]:
         """Itera sobre la fuente produciendo instancias de VisualUnit."""

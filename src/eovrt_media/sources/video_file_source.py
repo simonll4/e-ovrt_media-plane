@@ -22,6 +22,10 @@ class VideoFileSource(BaseSource):
         every_n: Procesar un frame cada N frames.
         target_fps: FPS objetivo para el procesamiento (si se define, ignora every_n).
         max_units: Límite máximo de frames a procesar.
+        source_id: Identidad lógica de la fuente (p.ej. clip_id del banco de
+            clips). Si se define, se estampa tal cual en cada VisualUnit;
+            si no, VisualUnit deriva el basename del archivo (con extensión),
+            comportamiento actual.
     """
 
     SOURCE_CLOCK = "media"
@@ -32,6 +36,7 @@ class VideoFileSource(BaseSource):
         every_n: int = 1,
         target_fps: float | None = None,
         max_units: int | None = None,
+        source_id: str | None = None,
     ) -> None:
         self.video_path = Path(video_path)
         if not self.video_path.exists():
@@ -40,6 +45,7 @@ class VideoFileSource(BaseSource):
         self.every_n = every_n
         self.target_fps = target_fps
         self.max_units = max_units
+        self.source_id = source_id
 
         # Obtener metadatos del video
         cap = cv2.VideoCapture(str(self.video_path))
@@ -124,6 +130,7 @@ class VideoFileSource(BaseSource):
                 while next_pos < len(indices) and indices[next_pos] == frame_pos:
                     yield VisualUnit(
                         unit_id=f"frame_{emitted:06d}",
+                        source_id=self.source_id,
                         source_path=str(self.video_path),
                         source_type="video_frame",
                         frame_index=frame_pos,

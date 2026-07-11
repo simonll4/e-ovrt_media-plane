@@ -22,6 +22,8 @@ class ImageFolderSource(BaseSource):
         extensions: Extensiones de archivo soportadas (e.g., [".jpg", ".jpeg", ".png"]).
         every_n: Procesar una imagen cada N (orden alfabético). Por defecto 1 (todas).
         max_units: Límite máximo de imágenes a procesar (aplicado tras every_n).
+        source_id: Identidad lógica de la fuente. Si se define, se estampa en
+            cada VisualUnit; si no, se deriva del basename (comportamiento actual).
     """
 
     SOURCE_CLOCK = "none"
@@ -32,11 +34,13 @@ class ImageFolderSource(BaseSource):
         extensions: list[str] | None = None,
         every_n: int = 1,
         max_units: int | None = None,
+        source_id: str | None = None,
     ) -> None:
         self.folder_path = Path(folder_path)
         self.extensions = [ext.lower() for ext in (extensions or [".jpg", ".jpeg", ".png"])]
         self.every_n = every_n
         self.max_units = max_units
+        self.source_id = source_id
 
         if not self.folder_path.exists():
             raise FileNotFoundError(f"Carpeta de imágenes no encontrada: {self.folder_path}")
@@ -69,6 +73,7 @@ class ImageFolderSource(BaseSource):
         unit_id = f"img_{index:06d}"
         return VisualUnit(
             unit_id=unit_id,
+            source_id=self.source_id,
             source_path=str(image_path),
             source_type="image",
             frame_index=None,

@@ -153,6 +153,11 @@ class SourceSection(BaseModel):
 
     type: str = "image_folder"
     path: str | None = None
+    # Identidad lógica de la fuente para el join aguas abajo (GT del banco de
+    # clips por clip_id, claves de escena del control-plane). Default None:
+    # sin este knob, el VisualUnit sigue derivando el basename del archivo
+    # como hoy (comportamiento inalterado).
+    source_id: str | None = None
     extensions: list[str] = Field(default_factory=lambda: [".jpg", ".jpeg", ".png"])
     kind: str | None = None
     dataset_id: str | None = None

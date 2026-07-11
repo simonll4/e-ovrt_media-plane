@@ -269,6 +269,95 @@ def test_smooth_tracks_elimina_parpadeo_de_atributo():
     assert all(helmet_states)  # el parpadeo del frame 9 desaparece
 
 
+def test_smooth_tracks_no_cruza_huecos_de_evidencia():
+    # Reproducción del hallazgo CRITICAL: raw [F,F,F,F,F | hueco | T,T,T,T,T,T].
+    # Con smooth_bool centrando la ventana por ÍNDICE DE LISTA (sin conocer el
+    # salto real de frames), la última muestra False pre-hueco quedaba adyacente
+    # en la lista a las primeras True post-hueco y el voto las mezclaba. El
+    # marcador outside=True debe cortar la ventana: ninguna muestra de un lado
+    # del hueco puede votar sobre las del otro lado.
+    attrs_false = {"has_helmet": True, "has_vest": False}
+    attrs_true = {"has_helmet": True, "has_vest": True}
+    pre_hueco = [
+        {"frame": i * 3, "box": (0.0, 0.0, 10.0, 10.0), "attributes": dict(attrs_false)}
+        for i in range(5)
+    ]
+    marker = {
+        "frame": pre_hueco[-1]["frame"] + 1, "box": pre_hueco[-1]["box"],
+        "attributes": dict(attrs_false), "outside": True,
+    }
+    post_hueco = [
+        {"frame": 300 + i * 3, "box": (0.0, 0.0, 10.0, 10.0), "attributes": dict(attrs_true)}
+        for i in range(6)
+    ]
+    track = {"track_id": 0, "boxes": pre_hueco + [marker] + post_hueco}
+    # window=21 (> longitud de la lista, 12) fuerza que TODO el track entre en
+    # una sola ventana bajo la implementación sin segmentar: 6 False (5 pre +
+    # marcador) contra 6 True (post) empata, y el desempate de smooth_bool
+    # (sum*2 >= len) resuelve a True en cada posición — contamina el pre-hueco
+    # entero. Es el discriminante más nítido del bug con estos conteos.
+    (smoothed,) = smooth_tracks([track], window=21)
+    boxes = smoothed["boxes"]
+    pre = boxes[:5]
+    post = boxes[6:]
+    assert all(b["attributes"]["has_vest"] is False for b in pre)
+    assert all(b["attributes"]["has_vest"] is True for b in post)
+
+
+def test_smooth_tracks_ventana_funciona_dentro_del_segmento():
+    # El fix no debe desactivar el suavizado dentro de un mismo segmento de
+    # evidencia contigua: un False aislado entre True sigue matando el parpadeo.
+    attrs_true = {"has_helmet": True, "has_vest": True}
+    attrs_false = {"has_helmet": True, "has_vest": False}
+    boxes = [
+        {"frame": i, "box": (0.0, 0.0, 10.0, 10.0),
+         "attributes": dict(attrs_false) if i == 2 else dict(attrs_true)}
+        for i in range(5)
+    ]
+    track = {"track_id": 0, "boxes": boxes}
+    (smoothed,) = smooth_tracks([track], window=3)
+    assert all(b["attributes"]["has_vest"] is True for b in smoothed["boxes"])
+
+
+def _synthetic_frames_con_hueco():
+    """Persona estática sin chaleco (frames 0-12), hueco de evidencia, luego con
+    chaleco (frames 300-315) — reproduce el escenario del auditor a nivel de
+    ``track_persons`` real (no un track fabricado a mano)."""
+    frames = []
+    for i in range(5):
+        x = 100.0 + i * 2
+        person = ((x, 50.0, x + 60.0, 250.0), 0.9)
+        frames.append({"frame": i * 3, "persons": [person], "helmets": [], "vests": []})
+    for i in range(6):
+        x = 100.0 + i * 2
+        person = ((x, 50.0, x + 60.0, 250.0), 0.9)
+        vest = [(x + 10.0, 100.0, x + 50.0, 200.0)]
+        frames.append({"frame": 300 + i * 3, "persons": [person], "helmets": [], "vests": vest})
+    return frames
+
+
+def test_pipeline_orden_mark_antes_de_smooth_no_cruza_hueco():
+    # Integración del orden nuevo (track_persons -> mark_evidence_gaps ->
+    # smooth_tracks -> thin_track), sin pasar por main() (requiere GDINO real).
+    # Es el discriminante exacto que reportó el auditor: con el orden viejo
+    # (smooth antes de mark) esto fallaba.
+    frames = _synthetic_frames_con_hueco()
+    tracks = track_persons(frames, frame_rate=10.0)
+    assert len(tracks) == 1
+    gapped = [
+        {"track_id": t["track_id"], "boxes": mark_evidence_gaps(t["boxes"], max_gap_frames=10)}
+        for t in tracks
+    ]
+    # window=21 (> longitud de la lista): mismo discriminante que
+    # test_smooth_tracks_no_cruza_huecos_de_evidencia, ahora sobre boxes reales
+    # de track_persons en vez de una lista armada a mano.
+    smoothed = smooth_tracks(gapped, window=21)
+    thinned = thin_track(smoothed[0]["boxes"], eps_px=10.0)
+    pre_hueco = [b for b in thinned if not b.get("outside") and b["frame"] < 20]
+    assert pre_hueco, "debe sobrevivir al menos una box pre-hueco al thin_track"
+    assert all(b["attributes"]["has_vest"] is False for b in pre_hueco)
+
+
 def test_track_persons_no_duplica_casco_en_multitud():
     # I4 a nivel de orquestación: dos personas con cajas solapadas y estáticas,
     # un solo casco puesto sobre la cabeza de A en todos los frames. Con any()

@@ -97,16 +97,53 @@ def track_persons(
 
 
 def smooth_tracks(tracks: list[dict], window: int = 11) -> list[dict]:
-    """Suaviza los atributos de cada track (voto por mayoría, ventana centrada)."""
-    out = []
-    for track in tracks:
-        boxes = [dict(b) for b in track["boxes"]]
+    """Suaviza los atributos de cada track (voto por mayoría, ventana centrada).
+
+    Debe correr DESPUÉS de ``mark_evidence_gaps`` (ver orden en ``main``): sus
+    marcadores ``outside=True`` cortan cada track en segmentos de evidencia
+    contigua y el voto se aplica por segmento, nunca sobre el track entero
+    (ver ``_smooth_evidence_segments``).
+    """
+    return [
+        {"track_id": track["track_id"],
+         "boxes": _smooth_evidence_segments([dict(b) for b in track["boxes"]], window)}
+        for track in tracks
+    ]
+
+
+def _smooth_evidence_segments(boxes: list[dict], window: int) -> list[dict]:
+    """Aplica ``smooth_bool`` por separado a cada segmento entre marcadores ``outside``.
+
+    ``smooth_bool`` centra su ventana por ÍNDICE DE LISTA, no por frame. Como
+    ``boxes`` solo trae los frames con detección, las muestras justo antes y
+    después de un hueco de evidencia son adyacentes en la lista aunque estén a
+    cientos de frames de distancia — sin este corte, el voto de un lado del
+    hueco contamina al otro (puede fabricar o borrar una infracción justo en
+    el borde). Los marcadores ``outside=True`` de ``mark_evidence_gaps`` pasan
+    intactos, sin votar y sin ser votados: no son evidencia, son el cierre de
+    un tramo sin evidencia.
+    """
+    result: list[dict] = []
+    segment: list[dict] = []
+
+    def flush_segment() -> None:
+        if not segment:
+            return
         for attr in ("has_helmet", "has_vest"):
-            smoothed = smooth_bool([b["attributes"][attr] for b in boxes], window)
-            for b, value in zip(boxes, smoothed):
+            smoothed = smooth_bool([b["attributes"][attr] for b in segment], window)
+            for b, value in zip(segment, smoothed):
                 b["attributes"] = {**b["attributes"], attr: value}
-        out.append({"track_id": track["track_id"], "boxes": boxes})
-    return out
+        result.extend(segment)
+        segment.clear()
+
+    for box in boxes:
+        if box.get("outside"):
+            flush_segment()
+            result.append(box)
+        else:
+            segment.append(box)
+    flush_segment()
+    return result
 
 
 def _bind_label(label: str) -> str | None:
@@ -396,7 +433,16 @@ def main(argv=None) -> int:
     tracks = track_persons(
         frame_dets, frame_rate=args.sample_fps, person_threshold=args.person_threshold
     )
-    tracks = smooth_tracks(tracks, window=args.smooth_window)
+    # Orden: track_persons -> mark_evidence_gaps -> smooth_tracks -> thin_track.
+    # mark_evidence_gaps debe correr sobre las boxes CRUDAS (evidencia completa,
+    # antes de adelgazar) para distinguir un hueco real de un hueco por
+    # adelgazamiento. Y debe correr ANTES de smooth_tracks: sus marcadores
+    # outside=True son los que le dicen a smooth_tracks dónde cortar la ventana
+    # de voto para que la evidencia de un lado del hueco no contamine al otro
+    # (ver docstring de _smooth_evidence_segments). Los atributos que el
+    # marcador copia de `prev` en este punto son crudos (sin suavizar) — no
+    # importa: el marcador es outside, ningún consumidor aguas abajo lee sus
+    # atributos (build_cvat_xml los omite si son None, y aquí nunca lo son).
     gapped = [
         {"track_id": t["track_id"], "boxes": mark_evidence_gaps(t["boxes"], max_gap_frames)}
         for t in tracks
@@ -407,12 +453,13 @@ def main(argv=None) -> int:
             f"[yellow]huecos de evidencia marcados:[/yellow] {n_gaps} (revisar en CVAT: "
             "¿la persona estaba ocluida —restaurar continuidad— o salió de cuadro?)"
         )
+    smoothed = smooth_tracks(gapped, window=args.smooth_window)
     if args.preview:
         preview_path = args.out.with_suffix(".preview.mp4")
-        _write_preview(args.video, gapped, preview_path, hold_frames=step)
+        _write_preview(args.video, smoothed, preview_path, hold_frames=step)
         console.print(f"[dim]preview:[/dim] {preview_path}")
     thinned = [{"track_id": t["track_id"], "boxes": thin_track(t["boxes"], args.thin_eps_px)}
-               for t in gapped]
+               for t in smoothed]
 
     xml = build_cvat_xml(thinned, stop_frame=n_frames - 1, width=width,
                          height=height, task_name=args.video.stem)

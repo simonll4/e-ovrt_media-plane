@@ -81,6 +81,29 @@ class TestVideoFileSource:
             assert unit.pixel_data.dtype == np.uint8
             assert unit.pixel_data.shape == (480, 640, 3)
 
+    def test_source_id_explicito_se_estampa_sin_extension(self, tmp_path):
+        # GT del banco de clips matchea alertas por source_id == clip_id
+        # (p.ej. "cb_b01_p7"); sin el knob, VisualUnit derivaba el basename
+        # con extensión ("cb_b01_p7.mp4") y el join nunca cerraba.
+        video_path = tmp_path / "cb_b01_p7.mp4"
+        _create_dummy_video(video_path, frames=6, fps=30)
+
+        units = list(VideoFileSource(video_path, source_id="cb_b01_p7", max_units=2))
+
+        assert len(units) == 2
+        for unit in units:
+            assert unit.source_id == "cb_b01_p7"
+
+    def test_sin_source_id_comportamiento_actual_basename_con_extension(self, tmp_path):
+        video_path = tmp_path / "cb_b01_p7.mp4"
+        _create_dummy_video(video_path, frames=6, fps=30)
+
+        units = list(VideoFileSource(video_path, max_units=2))
+
+        assert len(units) == 2
+        for unit in units:
+            assert unit.source_id == "cb_b01_p7.mp4"
+
     def test_pixel_data_corresponde_al_frame_muestreado(self, tmp_path):
         # Con every_n=3 el pixel_data de la unidad i debe ser el frame 3*i del
         # video, no el siguiente disponible (el dummy pinta B=(i*5)%256 en BGR).

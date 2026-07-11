@@ -109,6 +109,22 @@ class TestPipelineMock:
         assert "source_path" not in event
         assert isinstance(event["detections"], list)
 
+    def test_source_id_custom_llega_al_detection_event(self, mock_config):
+        """source.source_id explícito debe llegar al `source.source_id` del
+        DetectionEvent persistido (join con el GT del banco de clips por
+        clip_id) en vez de derivarse del unit_id/basename."""
+        mock_config.source.source_id = "cb_b01_p7"
+        run_id = run_pipeline(mock_config)
+        run_dir = Path(mock_config.output.base_dir) / run_id
+
+        with open(run_dir / "detections.jsonl") as f:
+            lines = f.readlines()
+
+        assert len(lines) == 3
+        for line in lines:
+            event = json.loads(line)
+            assert event["source"]["source_id"] == "cb_b01_p7"
+
     def test_creates_summary_json(self, mock_config):
         """Se genera summary.json con métricas válidas."""
         run_id = run_pipeline(mock_config)

@@ -31,11 +31,13 @@ class RtspSource(BaseSource):
         reconnect_retries: int = 5,
         reconnect_delay_ms: int = 1000,
         max_units: int | None = None,
+        source_id: str | None = None,
     ) -> None:
         self.url = url
         self.reconnect_retries = reconnect_retries
         self.reconnect_delay_ms = reconnect_delay_ms
         self.max_units = max_units
+        self.source_id = source_id
         self._stop_event = threading.Event()
 
     def _open_capture(self, url: str) -> cv2.VideoCapture:
@@ -88,6 +90,7 @@ class RtspSource(BaseSource):
                 timestamp_ms = time.time() * 1000.0
                 yield VisualUnit(
                     unit_id=f"frame_{emitted:06d}",
+                    source_id=self.source_id,
                     source_path=self.url,
                     source_type="video_frame",
                     frame_index=emitted,
