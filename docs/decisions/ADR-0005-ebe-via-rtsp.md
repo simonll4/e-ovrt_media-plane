@@ -52,6 +52,8 @@ eliminada del árbol porque:
 - **A monitorear:** `OakDSource` queda diferido y lanza `NotImplementedError` hasta
   integrar el SDK DepthAI. Cuando se integre, deberá seguir el mismo patrón de
   `RtspSource` (pixel_data en VisualUnit, stop() para interrumpir el loop).
+  **Resuelto (2026-07-13):** `OakDSource` implementado siguiendo exactamente ese
+  patrón, con hardware real verificado. Ver docs/contexto/oak-d-integration.md.
 - **FP16:** el formato de payload `fp16` está implementado de extremo a extremo:
   normalización a `[0, 1]`, serialización raw preservando `float16` y transporte
   two-node. JPEG permanece limitado a `uint8_rgb`; una configuración JPEG+FP16

@@ -331,6 +331,6 @@ conceptual de los componentes.
 
 Los modos soportados son `memory` y `network`; ZeroMQ permite usar endpoints TCP o `ipc://`
 sin introducir otro backend. La política de rate control y el formato de payload siguen siendo
-configurables mediante YAML. La única fuente declarada y diferida es OAK-D Pro PoE. El detalle
+configurables mediante YAML. Las cuatro fuentes declaradas están implementadas (OAK-D Pro PoE desde 2026-07-13). El detalle
 operativo y los límites conocidos viven en
 [implementation-status.md](../implementation-status.md).

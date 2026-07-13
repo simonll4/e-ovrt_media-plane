@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-edge = []
+edge = ["depthai>=2.24,<3"]
 gpu = [
     "torch",
     "torchvision",

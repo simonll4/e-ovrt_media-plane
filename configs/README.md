@@ -85,8 +85,8 @@ Los defaults se derivan antes de validar: una fuente `pulleable` usa
 `deterministic`, una `live` usa `bounded_freshness`; `single_host` usa `memory`
 y `two_node` usa `network`.
 
-La única fuente declarada pero no disponible, `oak_d`, falla de forma explícita
-al cargar la config. Las entradas de `datasets/`
+Las cuatro fuentes declaradas están implementadas (`oak_d` desde 2026-07-13;
+requiere el SDK DepthAI del extra `edge`). Las entradas de `datasets/`
 incluyen `dataset_id`, `view`, `split`, `vocabulary` y `kind`; esos campos se
 persisten en `run_provenance.json`.
 
@@ -100,8 +100,9 @@ Convención de nombre para finetunes: `<variante>-ft-<tag>.yaml`.
 
 **`datasets/<nombre>.yaml`** — una fuente de datos: `type`
 (`image_folder` | `video_file` | `rtsp` | `oak_d`), `path` y opcionales.
-`rtsp` está implementado (fuente live, política `bounded_freshness`).
-`oak_d` está declarado pero pendiente de implementación (falla explícita al cargar).
+`rtsp` y `oak_d` están implementados (fuentes live, política `bounded_freshness`);
+`oak_d` requiere `url` = IP fija de la cámara y admite `resolution`/`fps`/`orientation`
+(ver docs/contexto/oak-d-integration.md).
 
 Los **prompt sets** versionados (`id`, `items`, aliases, rol) NO son un catálogo
 del plano: viven en `e-ovrt_experimental-setup/prompts/<nombre>.yaml` y se

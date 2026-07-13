@@ -124,15 +124,34 @@ def test_ingest_plugin_desconocido_es_422(client, tmp_path):
     assert "plugin_inexistente" in r.json()["detail"]
 
 
-def test_ingest_plugin_no_disponible_es_4xx(client, tmp_path):
-    # oak_d está en el registro pero available:false. Antes escapaba como 500
-    # (NotImplementedError del loader); ahora es un 4xx claro y no un 500.
+def test_ingest_plugin_no_disponible_es_4xx(client, tmp_path, monkeypatch):
+    # La rama available:false debe dar un 4xx claro, no un 500. Ya no hay
+    # plugins no disponibles de fábrica (oak_d se implementó), así que se
+    # simula uno vía monkeypatch del registro.
+    from eovrt_media.sources import registry
+
+    monkeypatch.setitem(
+        registry.PLUGINS,
+        "oak_d",
+        registry.IngestPlugin("oak_d", "live", False, "deshabilitado para test"),
+    )
     body = _body(_images(tmp_path))
     body["ingest"]["plugin"] = "oak_d"
     r = client.post("/api/runs", json=body)
     assert 400 <= r.status_code < 500
     assert r.status_code != 500
     assert "oak_d" in r.json()["detail"]
+
+
+def test_ingest_config_clave_desconocida_es_422(client, tmp_path):
+    # SourceSection ignora claves desconocidas; sin este gate, un typo en un
+    # knob ('rotation' por 'orientation') correría el run con el default en
+    # silencio. to_raw_run_config lo rechaza → 422.
+    body = _body(_images(tmp_path))
+    body["ingest"]["config"]["rotacion"] = "rotate_180"
+    r = client.post("/api/runs", json=body)
+    assert r.status_code == 422
+    assert "rotacion" in r.json()["detail"]
 
 
 def test_detections_run_id_con_path_traversal_es_404(client):

@@ -1,6 +1,7 @@
 """Registro explícito de plugins de ingesta visual (Spec A §5)."""
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING
 
@@ -8,6 +9,12 @@ from eovrt_media.sources import BaseSource, ImageFolderSource, VideoFileSource
 
 if TYPE_CHECKING:
     from eovrt_media.config import RunConfig
+
+# La disponibilidad de oak_d depende de que el SDK DepthAI esté instalado
+# (extra opcional `edge`). El flag `available` es la fuente de verdad que
+# consumen el catálogo y el gate 4xx del run request: hardcodearlo en True
+# haría que una build sin depthai anuncie un plugin que solo puede fallar.
+_DEPTHAI_AVAILABLE = importlib.util.find_spec("depthai") is not None
 
 
 class PluginUnavailableError(ValueError):
@@ -26,7 +33,14 @@ PLUGINS: dict[str, IngestPlugin] = {
     "image_folder": IngestPlugin("image_folder", "bounded", True, "Carpeta de imágenes (datasets)"),
     "video_file": IngestPlugin("video_file", "bounded", True, "Archivo de video local"),
     "rtsp": IngestPlugin("rtsp", "live", True, "Stream RTSP (cámara IP)"),
-    "oak_d": IngestPlugin("oak_d", "live", False, "OAK-D Pro PoE (hardware no disponible)"),
+    "oak_d": IngestPlugin(
+        "oak_d",
+        "live",
+        _DEPTHAI_AVAILABLE,
+        "OAK-D Pro PoE (RGB vía DepthAI, IP fija)"
+        if _DEPTHAI_AVAILABLE
+        else "OAK-D Pro PoE (requiere el SDK DepthAI: pip install -e '.[edge]')",
+    ),
 }
 
 _VIDEO_ALIASES = {"video", "video_frame", "video_file"}
@@ -66,13 +80,29 @@ def create_source(config: "RunConfig") -> BaseSource:
             max_units=config.run.max_units,
             source_id=config.source.source_id,
         )
-    # rtsp (live)
-    from eovrt_media.sources import RtspSource
+    if plugin_id == "rtsp":
+        from eovrt_media.sources import RtspSource
 
-    return RtspSource(
-        url=config.source.url or config.source.path,
-        reconnect_retries=config.source.reconnect_retries,
-        reconnect_delay_ms=config.source.reconnect_delay_ms,
-        max_units=config.run.max_units,
-        source_id=config.source.source_id,
-    )
+        return RtspSource(
+            url=config.source.url or config.source.path,
+            reconnect_retries=config.source.reconnect_retries,
+            reconnect_delay_ms=config.source.reconnect_delay_ms,
+            max_units=config.run.max_units,
+            source_id=config.source.source_id,
+        )
+    if plugin_id == "oak_d":
+        from eovrt_media.sources import OakDSource
+
+        return OakDSource(
+            url=config.source.url,
+            resolution=config.source.resolution,
+            fps=config.source.fps,
+            orientation=config.source.orientation,
+            reconnect_retries=config.source.reconnect_retries,
+            reconnect_delay_ms=config.source.reconnect_delay_ms,
+            max_units=config.run.max_units,
+            source_id=config.source.source_id,
+        )
+    # Inalcanzable con PLUGINS actual; protege al próximo plugin que se agregue
+    # al registro sin su rama correspondiente acá.
+    raise ValueError(f"Plugin '{plugin_id}' registrado pero sin constructor en create_source.")

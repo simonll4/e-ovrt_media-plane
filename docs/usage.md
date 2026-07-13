@@ -115,7 +115,8 @@ curl -X POST http://localhost:8080/api/runs \
 
 Notas:
 - `ingest.plugin` puede ser `image_folder`, `video_file`, `rtsp` (vivo) o `oak_d`
-  (advertido pero **no disponible** en Fase 1 → responde 4xx claro, no 500).
+  (vivo, OAK-D Pro PoE; requiere el SDK DepthAI —`pip install -e ".[edge]"`— y la
+  cámara en la LAN con IP fija; ver `docs/contexto/oak-d-integration.md`).
 - Para usar un dataset del catálogo, pasar `config.dataset: <nombre>` en vez de `path`.
 - Incluir una sección `model` en el body es un error (**422**): el modelo es fijo por instancia.
 - Solo puede haber **un run activo**: un segundo `POST /api/runs` mientras hay uno en curso responde **409**.

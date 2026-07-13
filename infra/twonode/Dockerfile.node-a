@@ -1,5 +1,5 @@
 # Nodo A — ingesta + rate control + normalización + servidor ZeroMQ. Sin GPU.
-# El extra [edge] es vacío a propósito: solo deps base, sin torch (el Nodo A
+# El extra [edge] trae solo depthai (fuente oak_d) — sin torch (el Nodo A
 # construye el adaptador únicamente para leer input_spec, nunca llama load()).
 FROM python:3.11-slim
 

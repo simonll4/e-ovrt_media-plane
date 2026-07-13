@@ -30,8 +30,12 @@ def client(tmp_path):
 
 
 def test_ingest_plugins(client):
+    import importlib.util
+
     plugins = {p["id"]: p for p in client.get("/api/catalog/ingest-plugins").json()}
-    assert plugins["oak_d"]["available"] is False
+    # available refleja si el SDK DepthAI está instalado en esta build.
+    depthai_instalado = importlib.util.find_spec("depthai") is not None
+    assert plugins["oak_d"]["available"] is depthai_instalado
     assert plugins["image_folder"]["kind"] == "bounded"
 
 

@@ -137,6 +137,12 @@ class RunSection(BaseModel):
 # no tienen path.
 _PATH_SOURCE_TYPES = {"image_folder", "video", "video_frame", "video_file"}
 
+# Valores válidos de los knobs de oak_d. El schema es la única fuente de verdad
+# (falla con 422 en el POST); OakDSource solo mapea estos valores a la API
+# DepthAI y verifica en import-time que ambos conjuntos coincidan.
+OAK_D_RESOLUTIONS = ("720p", "1080p", "4k")
+OAK_D_ORIENTATIONS = ("normal", "rotate_180", "mirror", "flip")
+
 
 class SourceSection(BaseModel):
     """Sección 'source' de la configuración.
@@ -170,12 +176,36 @@ class SourceSection(BaseModel):
     reconnect_retries: int = 5
     reconnect_delay_ms: int = 1000
 
+    # Fuente viva OAK-D (DepthAI). `url` = IP fija de la cámara.
+    # `resolution`/`fps`/`orientation` solo aplican a source.type=oak_d.
+    # orientation: normal | rotate_180 | mirror | flip. La rota el ISP de la
+    # cámara (gratis), no la CPU del host. Necesario si está montada invertida.
+    resolution: str = "1080p"
+    fps: int = Field(default=10, gt=0)
+    orientation: str = "normal"
+
     @model_validator(mode="after")
     def _check_locator(self) -> SourceSection:
         source_type = self.type.lower().strip()
         if source_type == "rtsp":
             if not (self.url or self.path):
                 raise ValueError("source.url es requerido para source.type='rtsp'")
+        elif source_type == "oak_d":
+            if not self.url:
+                raise ValueError(
+                    "source.url (IP de la cámara, ej. '192.168.1.50') es requerido "
+                    "para source.type='oak_d'"
+                )
+            if self.resolution.lower().strip() not in OAK_D_RESOLUTIONS:
+                raise ValueError(
+                    f"source.resolution {self.resolution!r} no soportada para oak_d. "
+                    f"Opciones: {sorted(OAK_D_RESOLUTIONS)}."
+                )
+            if self.orientation.lower().strip() not in OAK_D_ORIENTATIONS:
+                raise ValueError(
+                    f"source.orientation {self.orientation!r} no soportada para oak_d. "
+                    f"Opciones: {sorted(OAK_D_ORIENTATIONS)}."
+                )
         elif source_type in _PATH_SOURCE_TYPES and not self.path:
             raise ValueError(f"source.path es requerido para source.type={source_type!r}")
         return self

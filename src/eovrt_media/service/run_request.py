@@ -79,6 +79,17 @@ def to_raw_run_config(request: RunRequest, model_section: ModelSection) -> dict[
             f"Plugin de ingesta '{request.ingest.plugin}' no disponible: {plugin.description}"
         )
     ingest_config = dict(request.ingest.config)
+    # SourceSection ignora claves desconocidas (default de Pydantic), así que un
+    # typo en un knob ('rotation' por 'orientation') se descartaría en silencio y
+    # el run correría con el default sin ninguna señal. Rechazarlo acá → 422.
+    from eovrt_media.config.schemas import SourceSection
+
+    unknown = set(ingest_config) - set(SourceSection.model_fields) - {"dataset"}
+    if unknown:
+        raise ValueError(
+            f"Campos desconocidos en ingest.config: {sorted(unknown)}. "
+            f"Válidos: {sorted(SourceSection.model_fields)}"
+        )
     dataset = ingest_config.pop("dataset", None)
     if dataset:
         source: dict[str, Any] = {"ref": dataset, **ingest_config}

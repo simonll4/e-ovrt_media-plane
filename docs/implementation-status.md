@@ -29,7 +29,7 @@ al proceso del media-plane.
 | Carga de modelo al startup + `/api/model`, `/healthz`, `/readyz` | Implementada | Sin recarga in-process; ready-gate 503 hasta que el modelo carga. |
 | WebSocket de telemetría (`/api/runs/{id}/stream`) | Implementada | Eventos `detection`/`metric`/`error`/`state`; coalescing de métricas. |
 | Detections paginadas + artefactos con Range | Implementada | Anti-traversal; 404 ante paths hostiles o JSONL malformado. |
-| Catálogos (`/api/catalog/{ingest-plugins,datasets}`) + registro de plugins | Implementada | `image_folder`, `video_file`, `rtsp` disponibles; `oak_d` declarado no disponible. |
+| Catálogos (`/api/catalog/{ingest-plugins,datasets}`) + registro de plugins | Implementada | `image_folder`, `video_file`, `rtsp` y `oak_d` disponibles. |
 | Redacción de credenciales RTSP | Implementada | URLs `rtsp://user:pass@…` redactadas en logs y artefactos. |
 | Imagen GPU única (Fase 1) + healthchecks | Implementada | `infra/docker/Dockerfile`; split two-node disponible en `infra/twonode/` (Fase 2). |
 
@@ -39,8 +39,9 @@ El resto de este documento describe el **pipeline interno** que el servicio ejec
 
 El plano de medios tiene las cuatro combinaciones de escenario × topología implementadas. El camino
 más simple sigue siendo **DBE en un host**; las capacidades EBE y dos nodos están disponibles y
-validadas. `fp16` está implementado para normalización, wire y transporte de red; la única capacidad
-declarada y diferida es `oak_d`.
+validadas. `fp16` está implementado para normalización, wire y transporte de red; `oak_d`
+(OAK-D Pro PoE) está implementado desde 2026-07-13 (ver
+[contexto/oak-d-integration.md](contexto/oak-d-integration.md)).
 
 | Combinación | Estado | Notas |
 |---|---|---|
@@ -53,7 +54,7 @@ declarada y diferida es `oak_d`.
 
 **Un host (single-host):**
 ```
-BaseSource (ImageFolderSource / VideoFileSource / RtspSource)
+BaseSource (ImageFolderSource / VideoFileSource / RtspSource / OakDSource)
          │
          ▼  VisualUnit (+ pixel_data para fuentes vivas)
 RateGate → normalize_spatial → NormalizedUnit
@@ -75,7 +76,7 @@ Nodo A:                                      PULL heartbeat ←─────�
 ```
 
 1. El productor itera la fuente y aplica `RateGate`.
-2. `normalize_spatial()` decodifica imágenes o frames; fuentes vivas (RTSP) usan `pixel_data`
+2. `normalize_spatial()` decodifica imágenes o frames; fuentes vivas (RTSP, OAK-D) usan `pixel_data`
    directamente sin reabrir el stream. Genera `NormalizedUnit` con `ResizeTransform`.
 3. El productor ofrece la unidad al canal; al terminar emite `END` mediante `close()`.
    En dos nodos, si Nodo A ya observó heartbeats de Nodo B y luego expira
@@ -149,7 +150,7 @@ para mostrar descriptor, métricas y procedencia.
 
 | Ítem | Estado | Notas |
 |---|---|---|
-| OAK-D Pro PoE | Declarado/deferred | `OakDSource.__iter__` lanza `NotImplementedError`; requiere SDK y hardware DepthAI. |
+| OAK-D Pro PoE | Implementada (2026-07-13) | `OakDSource` vía DepthAI v2 (extra `edge`), RGB por IP fija, reconexión, stop cooperativo, watchdog de stream mudo, knobs `resolution`/`fps`/`orientation`. Verificada E2E con hardware real. |
 
 ## Operación y validación
 

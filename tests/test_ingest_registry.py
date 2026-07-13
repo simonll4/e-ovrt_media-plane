@@ -20,11 +20,16 @@ def _config(tmp_path, **source):
 
 
 def test_list_plugins_expone_los_cuatro():
+    import importlib.util
+
     plugins = {p["id"]: p for p in list_plugins()}
     assert set(plugins) == {"image_folder", "video_file", "rtsp", "oak_d"}
     assert plugins["image_folder"]["kind"] == "bounded"
     assert plugins["rtsp"]["kind"] == "live"
-    assert plugins["oak_d"]["available"] is False
+    # oak_d disponible si y solo si el SDK DepthAI está instalado (extra edge):
+    # el catálogo nunca debe anunciar un plugin que solo puede fallar.
+    depthai_instalado = importlib.util.find_spec("depthai") is not None
+    assert plugins["oak_d"]["available"] is depthai_instalado
     assert plugins["image_folder"]["available"] is True
 
 
@@ -64,3 +69,17 @@ def test_create_source_sin_source_id_no_lo_setea(tmp_path):
     config = _config(tmp_path, type="image_folder", path=str(tmp_path))
     source = create_source(config)
     assert source.source_id is None
+
+
+def test_create_source_oak_d(tmp_path):
+    from eovrt_media.sources.oak_d_source import OakDSource
+
+    config = _config(
+        tmp_path, type="oak_d", url="192.168.1.50", fps=5, resolution="720p"
+    )
+    source = create_source(config)
+    assert isinstance(source, OakDSource)
+    assert source.url == "192.168.1.50"
+    assert source.fps == 5
+    assert source.resolution == "720p"
+    assert source.reconnect_retries == 5

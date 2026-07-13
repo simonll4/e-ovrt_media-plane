@@ -153,11 +153,6 @@ def _validate_deployment(config: RunConfig) -> None:
             "transport.backend=network requiere transport.heartbeat_endpoint."
         )
 
-    if config.source.type.lower() == "oak_d":
-        raise NotImplementedError(
-            "source.type=oak_d (OAK-D Pro PoE) está declarado pero no implementado."
-        )
-
 
 def load_prompts_file(path: Path) -> PromptsFile:
     """Carga y valida un archivo de prompts YAML."""

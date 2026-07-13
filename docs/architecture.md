@@ -15,8 +15,8 @@ productor/consumidor descrito abajo, que no cambió.
 Las cuatro combinaciones escenario × topología están implementadas y validadas:
 DBE/EBE en un host (`memory`) y en dos nodos (`network`/ZeroMQ, hoy invocado en proceso;
 el empaquetado Docker de dos nodos se difiere a Fase 2). Dentro del alcance funcional actual
-del plano de medios, `fp16` forma parte del contrato de payload y la única capacidad declarada
-para implementación futura es `OAK-D`.
+del plano de medios, `fp16` forma parte del contrato de payload; la fuente `OAK-D` está
+implementada (ver [contexto/oak-d-integration.md](contexto/oak-d-integration.md)).
 Ver [implementation-status.md](implementation-status.md) para la matriz completa.
 
 El servicio tiene un cliente externo real: la **webconsole**
@@ -28,8 +28,8 @@ WS `/api/runs/{id}/stream`) para disparar y observar corridas. El contrato compl
 ## Qué entra y qué sale
 
 ### Entrada
-- **Fuente visual**: carpeta de imágenes, video local (DBE) o stream RTSP (EBE), declarada
-  en el request como `ingest: {plugin, config}`.
+- **Fuente visual**: carpeta de imágenes, video local (DBE), stream RTSP o cámara OAK-D
+  Pro PoE (EBE), declarada en el request como `ingest: {plugin, config}`.
 - **Run request** (`POST /api/runs`): fuente de ingesta, prompts y parámetros de corrida
   (`run.stride`, `run.max_units`, outputs). El **modelo es fijo por instancia** (cargado al
   startup), no viaja en el request.
@@ -51,7 +51,7 @@ WS `/api/runs/{id}/stream`) para disparar y observar corridas. El contrato compl
 ```
 RunConfig YAML
     ↓
-BaseSource (ImageFolderSource | VideoFileSource | RtspSource | OakDSource†)
+BaseSource (ImageFolderSource | VideoFileSource | RtspSource | OakDSource)
     ↓
 VisualUnit (+ pixel_data para fuentes vivas)
     ↓
@@ -64,8 +64,6 @@ Consumidor: TransportAdapter.request() → ModelAdapter.forward() → RawDetecti
 DetectionNormalizer (reproyección con ResizeTransform) → Detection
     ↓
 Sinks: detections.jsonl, metrics.jsonl, summary.json, provenance y errores
-
-† OakDSource declarado, pendiente SDK DepthAI.
 ```
 
 ## Por qué DBE primero
@@ -88,7 +86,6 @@ Cada modelo OVD (Grounding DINO, YOLOE, etc.) tiene su propia API. Los adaptador
 
 - **Plano de control**: patrones de riesgo (CR-01, CR-02), alertas, persistencia de episodios, motor de estados.
 - **UI / Dashboard**.
-- **OAK-D Pro PoE** (`OakDSource` declarado; requiere SDK DepthAI, pendiente).
 - **MOT formal / tracking multi-objeto**.
 - **Fine-tuning / entrenamiento** (los checkpoints finetuneados se entrenan fuera de este repo; acá solo se catalogan como pesos en `models/<familia>/finetuned/` con su entrada en `configs/models/`).
 - **Zonas o reglas espaciales**.

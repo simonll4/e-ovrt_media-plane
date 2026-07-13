@@ -222,9 +222,40 @@ class TestRtspSourceConfig:
         assert cfg.source.reconnect_retries == 5
         assert cfg.source.reconnect_delay_ms == 1000
 
-    def test_oak_d_source_type_is_gated(self, tmp_path: Path):
-        with pytest.raises(NotImplementedError, match="oak_d.*implementad"):
+    def test_oak_d_derives_live_and_bounded_freshness(self, tmp_path: Path):
+        cfg = _minimal_config(
+            tmp_path,
+            source={"type": "oak_d", "url": "192.168.1.50"},
+        )
+        assert cfg.source.kind == "live"
+        assert cfg.rate_control.policy == "bounded_freshness"
+
+    def test_oak_d_fields_have_defaults(self, tmp_path: Path):
+        cfg = _minimal_config(
+            tmp_path,
+            source={"type": "oak_d", "url": "192.168.1.50"},
+        )
+        assert cfg.source.resolution == "1080p"
+        assert cfg.source.fps == 10
+        assert cfg.source.reconnect_retries == 5
+        assert cfg.source.reconnect_delay_ms == 1000
+
+    def test_oak_d_requires_url(self, tmp_path: Path):
+        with pytest.raises(ValueError, match="url.*oak_d"):
+            _minimal_config(tmp_path, source={"type": "oak_d"})
+
+    def test_oak_d_resolution_invalida_falla_en_config(self, tmp_path: Path):
+        # La validación vive en el schema: config inválida → 422 en el POST,
+        # no muerte asíncrona del run.
+        with pytest.raises(ValueError, match="resolution"):
             _minimal_config(
                 tmp_path,
-                source={"type": "oak_d", "path": "oak://device"},
+                source={"type": "oak_d", "url": "192.168.1.50", "resolution": "8k"},
+            )
+
+    def test_oak_d_orientation_invalida_falla_en_config(self, tmp_path: Path):
+        with pytest.raises(ValueError, match="orientation"):
+            _minimal_config(
+                tmp_path,
+                source={"type": "oak_d", "url": "192.168.1.50", "orientation": "diagonal"},
             )

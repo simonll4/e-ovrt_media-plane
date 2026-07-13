@@ -41,10 +41,11 @@ Para un run real: cambiar `model.ref` a `yoloe/yoloe-26s` en AMBAS configs
 
 ## Fuentes
 
-`image_folder` (dataset montado en `/datasets`), `video_file`, `rtsp`. La cámara
-**OAK-D Pro PoE** (`source.type: oak_d`) está declarada con contrato de config
-(`url` = IP del dispositivo PoE o null para autodescubrimiento; fuente live sin
-`len()`, como rtsp) pero NO implementada — requiere DepthAI y el hardware.
+`image_folder` (dataset montado en `/datasets`), `video_file`, `rtsp` y `oak_d`
+(**OAK-D Pro PoE**, implementada 2026-07-13: `url` = IP fija del dispositivo PoE —
+nunca autodescubrimiento—, fuente live sin `len()`, como rtsp). El extra `edge`
+ahora incluye `depthai`, así que la imagen del Nodo A la trae al hacer rebuild;
+ver ../../docs/contexto/oak-d-integration.md.
 
 ## Seguridad (riesgo aceptado)
 
