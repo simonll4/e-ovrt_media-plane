@@ -29,6 +29,14 @@ class Detection(BaseModel):
     """Detección normalizada producida por el plano de medios."""
 
     detection_id: str | None = None
+
+    # Aditivo (spec 40 §1, spec 42 §3): identidad de sujeto emitida por el tracker
+    # del media-plane. Única identidad válida entre frames; detection_id NO lo es
+    # (es un índice por frame). Hoy ningún productor lo emite: queda None y no se
+    # serializa (exclude_none), sin bump de media.detection.v1. El contrato espejo
+    # del control-plane ya lo consume como clave de estado bajo granularity=subject.
+    track_id: str | None = None
+
     label: str
     prompt_id: str | None = None
     source_prompt: str | None = None
