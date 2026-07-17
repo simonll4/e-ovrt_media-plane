@@ -13,6 +13,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn
 
 from eovrt_media.config import RunConfig
 from eovrt_media.contracts import DetectionEvent, ErrorEvent, MetricSample
+from eovrt_media.contracts.dropped_unit import build_dropped_record
 from eovrt_media.contracts.normalized_unit import END, STALL, PayloadFormat
 from eovrt_media.metrics import (
     LatencyTracker,
@@ -25,6 +26,7 @@ from eovrt_media.postprocessing import DetectionNormalizer
 from eovrt_media.preprocessing import normalize_spatial
 from eovrt_media.runtime.run_context import RunContext
 from eovrt_media.sinks import RunArtifactWriter
+from eovrt_media.sinks.dropped_units_sink import DroppedUnitsSink
 from eovrt_media.sinks.video_annotation_writer import VideoAnnotationWriter
 from eovrt_media.sources import BaseSource
 from eovrt_media.sources.registry import create_source  # noqa: F401  (API pública estable)
@@ -75,11 +77,17 @@ def run_producer_loop(
     errors_queue: queue.SimpleQueue,
     timings: dict[str, float],
     should_continue: Callable[[], bool] | None = None,
+    on_drop=None,
 ) -> None:
     """Ingesta, filtra, normaliza y ofrece unidades al canal."""
     try:
         for source_index, unit in enumerate(source):
             if not rate_gate.should_pass(source_index):
+                if on_drop is not None:
+                    try:
+                        on_drop(unit, "rate_gate")
+                    except Exception:
+                        pass  # el ledger jamas voltea el pipeline
                 continue
             if should_continue is not None and not should_continue():
                 logger.warning("Productor detenido por pérdida de liveness del consumidor.")
@@ -453,6 +461,7 @@ def execute_run(
 
     tracker = LatencyTracker()
     producer = None
+    dropped_sink = None
     consumer_stalled = False
     bus_status = "succeeded"
 
@@ -487,6 +496,12 @@ def execute_run(
             reset_gpu_peak_memory()
 
             rate_control = config.rate_control
+
+            dropped_sink = DroppedUnitsSink(run_context.run_dir / "dropped_units.jsonl")
+
+            def _on_drop(unit, reason: str) -> None:
+                dropped_sink.write(build_dropped_record(unit, reason, run_context.run_id))
+
             transport = create_transport(
                 backend=config.transport.backend,
                 policy=rate_control.policy,
@@ -494,6 +509,7 @@ def execute_run(
                 buffer_size=rate_control.buffer_size,
                 max_staleness_ms=rate_control.max_staleness_ms,
                 endpoint=config.transport.endpoint,
+                on_drop=_on_drop,
             )
             should_continue = (
                 (lambda: not control.stop_requested) if control is not None else None
@@ -511,6 +527,7 @@ def execute_run(
                     run_context._errors_queue,
                     timings,
                     should_continue,
+                    _on_drop,
                 ),
                 daemon=True,
                 name="pipeline-producer",
@@ -578,6 +595,8 @@ def execute_run(
                 )
                 producer.join(timeout=join_timeout)
             artifact_writer.close()
+            if dropped_sink is not None:
+                dropped_sink.close()
 
         run_context.gpu_memory_peak_mb = get_gpu_memory_peak_mb()
         run_context.finish()

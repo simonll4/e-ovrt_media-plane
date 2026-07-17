@@ -32,6 +32,7 @@ curl -X POST http://localhost:8080/api/runs \
 # POST /api/runs/{run_id}/stop       — detener la corrida activa
 # POST /api/runs/{run_id}/evaluate   — evaluar un run BENCH terminado (AP@0.5/CR-01/mAP50)
 # GET  /api/runs/{run_id}/evaluate   — releer eval_perception.json persistido (404 si no evaluado)
+# GET  /api/runs/{run_id}/dropped    — ledger por-frame de descartes (paginado; run sin descartes → 200 vacío)
 
 # Two-node topology (EBE distributed) — se sigue invocando en proceso, no vía CLI:
 # runtime/two_node.py:run_node_a() / run_node_b(); ver tests/test_two_node.py.
@@ -74,6 +75,8 @@ Python pipeline for open-vocabulary object detection (OVD). All behavior is conf
 - `BaseSource` (`sources/base.py`) — yields `VisualUnit` objects; implementations: `ImageFolderSource`, `VideoFileSource`, `RtspSource` (live RTSP with wall-clock timestamps and reconnect), `OakDSource` (OAK-D Pro PoE via DepthAI, live RGB por IP fija — ver `docs/contexto/oak-d-integration.md`; opcional: prefilter EN-2 on-device y knobs de latencia, spec 2026-07-15, default off)
 - `RunContext` (`runtime/run_context.py`) — stateful execution context (run_id, unit counts, timing); owns the output directory
 - `RunArtifactWriter` (`sinks/run_artifact_writer.py`) — persists to `runs/<run_id>/`: `detections.jsonl`, `metrics.jsonl`, `errors.jsonl`, `summary.json`, `previews/`
+
+**Ledger de descartes** (spec 2026-07-17-dropped-frames-ledger): `dropped_units.jsonl` registra por-frame cada descarte con identidad completa y `reason` (`rate_gate` intencional vs `queue_full`/`staleness_timeout`/`channel_closed` por sobrecarga), vía callback `on_drop` inyectado al transporte y al productor (`DroppedUnitsSink`, thread-safe, lazy: cero descartes = sin archivo; write tras close es no-op — nunca trunca). `units_dropped` del summary conserva su semántica (solo sobrecarga). **Solo single-host**: en two-node no se escribe (los drops ocurren en Nodo A, sin `run_dir`) y `GET /dropped` devuelve vacío = "no instrumentado", no "cero descartes".
 
 **Bus media→control (ADR-003)**: apagado por default. Con `bus.enabled: true` en la run config —o una sección `"bus"` en el body de `POST /api/runs`— el `BusPublishingArtifactWriter` (`service/bus_writer.py`) decora el `RunArtifactWriter` y publica cada `DetectionEvent` **ya persistido** por un socket ZeroMQ XPUB (`transport/bus.py`), dentro de un envelope msgpack `bus.envelope.v1`, en el topic `media.detection.v1.<run_id>`; al cerrar el run emite `run.lifecycle.v1.<run_id>` con `{event: run_finished, status}`. El `payload` es **byte-idéntico a la línea de `detections.jsonl`** (invariante del test de paridad del control-plane). El bus nunca bloquea ni rompe la corrida: HWM finito, `NOBLOCK`, y **el JSONL es la fuente de verdad**. Un PUB/XPUB dropea en silencio al llenarse el HWM, así que el `seq` monótono del envelope (que se incrementa aunque el envío se descarte) es la única señal de pérdida — la detecta el consumidor. Ver `docs/operacion/37` del repo `docs`.
 

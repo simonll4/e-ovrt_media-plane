@@ -41,6 +41,7 @@ class NetworkTransportAdapter(TransportAdapter):
         request_timeout_ms: int = 10000,
         codec: str = "jpeg",
         quality: int = 90,
+        on_drop=None,
     ) -> None:
         if role not in {"producer", "consumer"}:
             raise ValueError(f"role debe ser 'producer' o 'consumer', no {role!r}.")
@@ -57,7 +58,8 @@ class NetworkTransportAdapter(TransportAdapter):
 
         if role == "producer":
             self._buffer = MemoryTransportAdapter(
-                policy=policy, buffer_size=buffer_size, max_staleness_ms=max_staleness_ms
+                policy=policy, buffer_size=buffer_size, max_staleness_ms=max_staleness_ms,
+                on_drop=on_drop,
             )
             self.units_dropped = 0
             self._closed = False

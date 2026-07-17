@@ -20,10 +20,12 @@ class MemoryTransportAdapter(TransportAdapter):
         max_queue_size: int = 8,
         buffer_size: int = 2,
         max_staleness_ms: float | None = None,
+        on_drop=None,
     ) -> None:
         self.policy = policy
         self.max_staleness_ms = max_staleness_ms
         self.units_dropped: int = 0
+        self._on_drop = on_drop
 
         if policy == "deterministic":
             self._q: queue.Queue = queue.Queue(maxsize=max_queue_size)
@@ -38,6 +40,13 @@ class MemoryTransportAdapter(TransportAdapter):
 
     # --- productor ---
 
+    def _notify_drop(self, unit, reason: str) -> None:
+        if self._on_drop is not None:
+            try:
+                self._on_drop(unit, reason)
+            except Exception:  # el ledger jamas voltea el pipeline
+                pass
+
     def offer(self, unit: NormalizedUnit) -> None:
         if self.policy == "deterministic":
             while not self._det_closed:
@@ -47,13 +56,17 @@ class MemoryTransportAdapter(TransportAdapter):
                 except queue.Full:
                     continue
             self.units_dropped += 1  # canal cerrado: descartar
+            self._notify_drop(unit, "channel_closed")
         else:
+            dropped = None
             with self._not_empty:
                 if len(self._buf) == self._buf.maxlen:
-                    self._buf.popleft()
+                    dropped = self._buf.popleft()
                     self.units_dropped += 1
                 self._buf.append(unit)
                 self._not_empty.notify()
+            if dropped is not None:
+                self._notify_drop(dropped, "queue_full")
 
     def close(self) -> None:
         if self.policy == "deterministic":
@@ -103,6 +116,7 @@ class MemoryTransportAdapter(TransportAdapter):
                     continue
                 return END if item is END else item
         else:
+            purged: list = []
             with self._not_empty:
                 while True:
                     if self._buf:
@@ -111,14 +125,21 @@ class MemoryTransportAdapter(TransportAdapter):
                             now = (current_time_ms() if current_time_ms else time.time() * 1000)
                             if now - unit.timestamp_ms > self.max_staleness_ms:
                                 self.units_dropped += 1
+                                purged.append(unit)
                                 continue
-                        return unit
+                        result = unit
+                        break
                     if self._closed:
-                        return END
+                        result = END
+                        break
                     if deadline is not None:
                         remaining = deadline - time.monotonic()
                         if remaining <= 0:
-                            return STALL
+                            result = STALL
+                            break
                         self._not_empty.wait(timeout=remaining)
                     else:
                         self._not_empty.wait()
+            for unit in purged:
+                self._notify_drop(unit, "staleness_timeout")
+            return result

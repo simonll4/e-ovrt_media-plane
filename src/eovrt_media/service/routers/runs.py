@@ -110,6 +110,38 @@ def get_detections(
     return {"page": page, "page_size": page_size, "total": len(records), "items": items}
 
 
+@router.get("/runs/{run_id}/dropped")
+def get_dropped_units(
+    run_id: str,
+    request: Request,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=1000),
+):
+    _manager(request)  # 503 si no ready
+    _require_valid_run_id(run_id)
+    run_dir = request.app.state.settings.runs_dir / run_id
+    if not run_dir.is_dir():
+        raise HTTPException(status_code=404, detail=f"Run desconocido: {run_id}")
+    path = run_dir / "dropped_units.jsonl"
+    try:
+        text = path.read_text()
+    except FileNotFoundError:
+        # Cero descartes es un resultado válido y bueno (spec §6): 200 vacío,
+        # a diferencia de /detections (donde la ausencia del archivo es 404).
+        return {"page": page, "page_size": page_size, "total": 0, "items": []}
+    records = []
+    for line in text.splitlines():
+        if not line:
+            continue
+        try:
+            records.append(_json.loads(line))
+        except ValueError:
+            continue  # línea malformada: se omite en vez de 500
+    start = (page - 1) * page_size
+    items = records[start : start + page_size]
+    return {"page": page, "page_size": page_size, "total": len(records), "items": items}
+
+
 @router.get("/runs/{run_id}/artifacts/{artifact_path:path}")
 def get_artifact(run_id: str, artifact_path: str, request: Request):
     _require_valid_run_id(run_id)

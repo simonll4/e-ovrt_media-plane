@@ -20,6 +20,7 @@ def create_transport(
     max_staleness_ms: float | None = None,
     endpoint: str | None = None,
     heartbeat_endpoint: str | None = None,
+    on_drop=None,
     **kwargs,
 ) -> TransportAdapter:
     if backend == "memory":
@@ -28,6 +29,7 @@ def create_transport(
             max_queue_size=max_queue_size,
             buffer_size=buffer_size,
             max_staleness_ms=max_staleness_ms,
+            on_drop=on_drop,
         )
     if backend == "network":
         if not endpoint:
@@ -46,5 +48,6 @@ def create_transport(
             request_timeout_ms=kwargs.get("request_timeout_ms", 10000),
             codec=kwargs.get("codec", _NETWORK_COMPRESSION_DEFAULTS.codec),
             quality=kwargs.get("quality", _NETWORK_COMPRESSION_DEFAULTS.quality),
+            on_drop=on_drop,
         )
     raise ValueError(f"backend desconocido: {backend!r}. Opciones: memory, network.")

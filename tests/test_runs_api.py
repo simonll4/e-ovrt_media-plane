@@ -269,3 +269,50 @@ def test_run_id_dotdot_no_permite_traversal_real(client, tmp_path):
     # El archivo fuera de runs_dir no debe haber sido leído ni borrado.
     assert outside_summary.exists()
     assert json.loads(outside_summary.read_text())["status"] == "leaked"
+
+
+def test_dropped_endpoint_serves_ledger(client, tmp_path):
+    # Task 5: /dropped es espejo de /detections pero sobre dropped_units.jsonl.
+    run_id = client.post("/api/runs", json=_body(_images(tmp_path))).json()["run_id"]
+    assert _wait_final(client, run_id) == "succeeded"
+    run_dir = tmp_path / "runs" / run_id
+    lines = [
+        json.dumps({"unit_id": "u1", "reason": "rate_gate"}),
+        json.dumps({"unit_id": "u2", "reason": "queue_full"}),
+        json.dumps({"unit_id": "u3", "reason": "staleness_timeout"}),
+    ]
+    (run_dir / "dropped_units.jsonl").write_text("\n".join(lines) + "\n")
+
+    response = client.get(f"/api/runs/{run_id}/dropped?page=1&page_size=2")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["page"] == 1 and body["page_size"] == 2
+    assert body["total"] == 3
+    assert len(body["items"]) == 2
+    assert body["items"][0]["reason"] in {
+        "rate_gate",
+        "queue_full",
+        "staleness_timeout",
+        "channel_closed",
+    }
+
+
+def test_dropped_endpoint_no_file_returns_empty(client, tmp_path):
+    # Run válido sin dropped_units.jsonl (cero descartes) -> 200 vacío, no 404.
+    run_id = client.post("/api/runs", json=_body(_images(tmp_path))).json()["run_id"]
+    assert _wait_final(client, run_id) == "succeeded"
+
+    response = client.get(f"/api/runs/{run_id}/dropped")
+    assert response.status_code == 200
+    assert response.json() == {"page": 1, "page_size": 100, "total": 0, "items": []}
+
+
+def test_dropped_run_id_desconocido_es_404(client):
+    assert client.get("/api/runs/nope/dropped").status_code == 404
+
+
+def test_dropped_run_id_con_path_traversal_es_404(client):
+    r = client.get("/api/runs/..%2F..%2Fetc/dropped")
+    assert r.status_code == 404
+    r2 = client.get("/api/runs/bad..id/dropped")
+    assert r2.status_code == 404
