@@ -98,10 +98,13 @@ def create_source(config: "RunConfig") -> BaseSource:
             resolution=config.source.resolution,
             fps=config.source.fps,
             orientation=config.source.orientation,
+            isp_scale=config.source.isp_scale,
+            xlink_chunk_size=config.source.xlink_chunk_size,
             reconnect_retries=config.source.reconnect_retries,
             reconnect_delay_ms=config.source.reconnect_delay_ms,
             max_units=config.run.max_units,
             source_id=config.source.source_id,
+            prefilter=config.source.prefilter,
         )
     # Inalcanzable con PLUGINS actual; protege al próximo plugin que se agregue
     # al registro sin su rama correspondiente acá.

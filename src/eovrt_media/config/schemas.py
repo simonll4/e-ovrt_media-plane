@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -144,6 +145,31 @@ OAK_D_RESOLUTIONS = ("720p", "1080p", "4k")
 OAK_D_ORIENTATIONS = ("normal", "rotate_180", "mirror", "flip")
 
 
+class OakDPrefilterConfig(BaseModel):
+    """Prefilter EN-2 on-device (spec 2026-07-15): gate de personas en la cámara.
+
+    Sesgo fail-open estructural: umbral bajo + ventana de evidencia + heartbeat
+    incondicional + apertura total ante silencio de la NN. Solo source.type=oak_d.
+    """
+
+    enabled: bool = False
+    # Ruta relativa a la raíz del repo (convención de pesos); ver Task 6 (fail-fast).
+    model_blob: str = "models/edge/person-detection-retail-0013_6shave.blob"
+    confidence: float = Field(default=0.25, gt=0.0, lt=1.0)
+    keepalive_window_ms: int = Field(default=1500, gt=0)
+    heartbeat_interval_ms: int = Field(default=2000, gt=0)
+    stall_failopen_ms: int = Field(default=3000, gt=0)
+
+    @model_validator(mode="after")
+    def _check_windows(self) -> OakDPrefilterConfig:
+        if self.stall_failopen_ms < self.keepalive_window_ms:
+            raise ValueError(
+                "prefilter.stall_failopen_ms debe ser >= prefilter.keepalive_window_ms "
+                "(el fail-open no puede dispararse antes de que venza la evidencia)."
+            )
+        return self
+
+
 class SourceSection(BaseModel):
     """Sección 'source' de la configuración.
 
@@ -184,9 +210,27 @@ class SourceSection(BaseModel):
     fps: int = Field(default=10, gt=0)
     orientation: str = "normal"
 
+    # Prefilter EN-2 on-device y knobs de latencia (spec 2026-07-15 §6/§7).
+    # Solo válidos para source.type=oak_d; seteados en otro tipo -> 422.
+    prefilter: OakDPrefilterConfig | None = None
+    isp_scale: tuple[int, int] | None = None
+    # 0 = sin chunking XLink (baseline oficial de baja latencia); -1 = default
+    # del device (64 KiB). Solo lo lee OakDSource.
+    xlink_chunk_size: int = 0
+
     @model_validator(mode="after")
     def _check_locator(self) -> SourceSection:
         source_type = self.type.lower().strip()
+        if source_type != "oak_d":
+            # §8.2: setear knobs de oak_d en otra fuente es error explícito, no
+            # silencio. Para xlink_chunk_size (default 0, indistinguible por
+            # valor) se usa model_fields_set.
+            if self.prefilter is not None:
+                raise ValueError("source.prefilter solo aplica a source.type='oak_d'")
+            if self.isp_scale is not None:
+                raise ValueError("source.isp_scale solo aplica a source.type='oak_d'")
+            if "xlink_chunk_size" in self.model_fields_set:
+                raise ValueError("source.xlink_chunk_size solo aplica a source.type='oak_d'")
         if source_type == "rtsp":
             if not (self.url or self.path):
                 raise ValueError("source.url es requerido para source.type='rtsp'")
@@ -205,6 +249,21 @@ class SourceSection(BaseModel):
                 raise ValueError(
                     f"source.orientation {self.orientation!r} no soportada para oak_d. "
                     f"Opciones: {sorted(OAK_D_ORIENTATIONS)}."
+                )
+            if self.isp_scale is not None:
+                num, den = self.isp_scale
+                if num <= 0 or den <= 0:
+                    raise ValueError("source.isp_scale debe ser [num, den] con enteros > 0")
+                g = math.gcd(num, den)
+                if num // g > 16 or den // g > 63:
+                    raise ValueError(
+                        f"source.isp_scale {list(self.isp_scale)!r} fuera del rango del "
+                        "scaler ISP (tras simplificar: num <= 16, den <= 63)."
+                    )
+            if self.xlink_chunk_size < -1:
+                raise ValueError(
+                    "source.xlink_chunk_size debe ser >= -1 "
+                    "(0 = sin chunking, -1 = default del device)."
                 )
         elif source_type in _PATH_SOURCE_TYPES and not self.path:
             raise ValueError(f"source.path es requerido para source.type={source_type!r}")

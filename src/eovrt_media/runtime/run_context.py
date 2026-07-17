@@ -42,6 +42,9 @@ class RunContext:
         self.units_dropped = 0
         self.backpressure_wait_ms = 0.0
         self.max_staleness_observed_ms = 0.0
+        self.capture_to_host_samples: list[float] = []
+        self.prefilter_stats: dict | None = None
+        self.prefilter_stats_age_s: float | None = None
         self._errors_queue: queue.SimpleQueue = queue.SimpleQueue()
 
         self.g2a = G2AAccumulator()

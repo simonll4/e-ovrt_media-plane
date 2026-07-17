@@ -22,6 +22,9 @@ class VisualUnit(BaseModel):
     # ninguna fuente puede olvidarse de estamparlo.
     capture_monotonic_ns: int = Field(default_factory=time.monotonic_ns)
     capture_wallclock_ms: float = Field(default_factory=lambda: time.time() * 1000.0)
+    # Latencia sensor->host medida con el timestamp de device sincronizado
+    # (spec 2026-07-15 §7.3). Solo la emite OakDSource; None = no medida.
+    capture_to_host_ms: float | None = None
     # Que reloj emite `timestamp_ms` esta fuente: wallclock | media | none.
     # Decide la aplicabilidad de t_capture->alert (spec 40 SS5.2.3).
     source_clock: str = "none"

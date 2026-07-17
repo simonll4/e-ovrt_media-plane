@@ -48,6 +48,7 @@ def serialize_unit(unit: NormalizedUnit, codec: str = "raw", quality: int = 90) 
         "timestamp_ms": unit.timestamp_ms,
         "capture_monotonic_ns": unit.capture_monotonic_ns,
         "capture_wallclock_ms": unit.capture_wallclock_ms,
+        "capture_to_host_ms": unit.capture_to_host_ms,
         "source_clock": unit.source_clock,
         "orig_width": unit.orig_width,
         "orig_height": unit.orig_height,
@@ -108,6 +109,7 @@ def deserialize_unit(data: bytes) -> NormalizedUnit:
         # `.get` con default: un Nodo A viejo (sin estos campos) sigue interoperando.
         capture_monotonic_ns=meta.get("capture_monotonic_ns", 0),
         capture_wallclock_ms=meta.get("capture_wallclock_ms", 0.0),
+        capture_to_host_ms=meta.get("capture_to_host_ms"),
         source_clock=meta.get("source_clock", "none"),
         orig_width=meta["orig_width"],
         orig_height=meta["orig_height"],

@@ -141,6 +141,33 @@ class RunArtifactWriter:
         }
         atomic_write_json(self.run_dir / "run_provenance.json", provenance)
 
+    def _build_prefilter_block(self) -> dict:
+        """Bloque EN-2 (spec §6): registro de descartes del prefilter on-device."""
+        cfg = getattr(self.context.config.source, "prefilter", None)
+        if cfg is None or not cfg.enabled:
+            return {"enabled": False}
+        block = {
+            "enabled": True,
+            "model_blob": cfg.model_blob,
+            "confidence": cfg.confidence,
+            "keepalive_window_ms": cfg.keepalive_window_ms,
+            "heartbeat_interval_ms": cfg.heartbeat_interval_ms,
+            "stall_failopen_ms": cfg.stall_failopen_ms,
+        }
+        if self.context.config.topology.mode == "two_node":
+            # §8 flujo: el source vive en Nodo A y este writer en Nodo B; no
+            # hay canal para los contadores en v1 (extensión §11.6).
+            block["counters_available"] = False
+            block["reason"] = "two_node_v1"
+            return block
+        stats = self.context.prefilter_stats
+        block["counters_available"] = stats is not None
+        if stats is not None:
+            block["counters"] = stats
+            age = self.context.prefilter_stats_age_s
+            block["stats_stale"] = bool(age is not None and age > 10.0)
+        return block
+
     def write_summary(self, tracker: Any | None = None) -> None:
         """Genera y guarda el resumen final summary.json."""
         finished_at_str = (
@@ -178,6 +205,17 @@ class RunArtifactWriter:
             applicability_state=g2a_state,
             causes=g2a_causes,
         )
+
+        cth_samples = sorted(self.context.capture_to_host_samples)
+        capture_to_host = None
+        if cth_samples:
+            def _pct(p: float) -> float:
+                return cth_samples[min(int(len(cth_samples) * p), len(cth_samples) - 1)]
+            capture_to_host = {
+                "p50_ms": round(_pct(0.50), 2),
+                "p95_ms": round(_pct(0.95), 2),
+                "samples": len(cth_samples),
+            }
 
         descriptor = RunDescriptor(
             scenario=config.run.scenario,
@@ -237,6 +275,8 @@ class RunArtifactWriter:
             run_descriptor=descriptor,
             source_clock=self.context.source_clock,
             g2a=g2a_summary,
+            capture_to_host=capture_to_host,
+            prefilter=self._build_prefilter_block(),
         )
 
         summary_sink = SummarySink(self.run_dir / "summary.json")

@@ -1,4 +1,4 @@
-.PHONY: install lint test download-models serve smoke compare-runs docker-build docker-run-mock
+.PHONY: install lint test download-models download-prefilter-blob serve smoke compare-runs docker-build docker-run-mock
 
 install:
 	python -m pip install --upgrade pip setuptools wheel
@@ -12,6 +12,9 @@ test:
 
 download-models:
 	./scripts/download_models.sh
+
+download-prefilter-blob:
+	python scripts/download_prefilter_blob.py
 
 serve:
 	EOVRT_MODEL_REF=$${EOVRT_MODEL_REF:-mock} \

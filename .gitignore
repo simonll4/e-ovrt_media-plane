@@ -18,6 +18,7 @@ models/**/*.pt
 models/**/*.pth
 models/**/*.safetensors
 models/**/*.bin
+models/**/*.blob
 models/**/blobs/
 models/**/snapshots/
 models/**/refs/

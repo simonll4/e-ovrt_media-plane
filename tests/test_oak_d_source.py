@@ -1,13 +1,17 @@
 """OakDSource — fuente viva OAK-D Pro PoE, testeada con un SDK DepthAI falso."""
 from __future__ import annotations
 
+import json as _json
 import threading
 import time
+from collections import defaultdict
+from datetime import timedelta
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
+from eovrt_media.config.schemas import OakDPrefilterConfig
 from eovrt_media.sources.oak_d_source import OakDSource
 
 
@@ -17,11 +21,17 @@ from eovrt_media.sources.oak_d_source import OakDSource
 # ---------------------------------------------------------------------------
 
 class _FakeMsg:
-    def __init__(self, frame: np.ndarray) -> None:
+    def __init__(self, frame: np.ndarray, ts: timedelta | None = None) -> None:
         self._frame = frame
+        self._ts = ts
 
     def getCvFrame(self) -> np.ndarray:
         return self._frame
+
+    def getTimestamp(self) -> timedelta:
+        if self._ts is None:
+            raise RuntimeError("sin timestamp")  # firmwares/fakes viejos
+        return self._ts
 
 
 class _FakeQueue:
@@ -40,21 +50,40 @@ class _FakeQueue:
         frame = np.zeros((720, 1280, 3), dtype=np.uint8)
         frame[0, 0] = self._served  # marca para distinguir frames
         self._served += 1
-        return _FakeMsg(frame)
+        return _FakeMsg(frame, ts=timedelta(seconds=100.0) - timedelta(milliseconds=42))
+
+
+class _FakeStatsQueue:
+    """Cola prefilter_stats: entrega los payloads dados y después None."""
+
+    def __init__(self, payloads: list[bytes]) -> None:
+        self._payloads = list(payloads)
+
+    def tryGet(self):
+        if not self._payloads:
+            return None
+        data = self._payloads.pop(0)
+        return SimpleNamespace(getData=lambda: data)
 
 
 class _FakeDevice:
-    def __init__(self, queue: _FakeQueue, queue_fails: bool = False) -> None:
+    def __init__(self, queue: _FakeQueue, queue_fails: bool = False,
+                 stats_queue: "_FakeStatsQueue | None" = None) -> None:
         self.queue = queue
+        self.stats_queue = stats_queue or _FakeStatsQueue([])
         self.closed = False
         self._queue_fails = queue_fails
 
-    def getOutputQueue(self, name: str, maxSize: int, blocking: bool) -> _FakeQueue:
-        assert name == "rgb"
-        assert maxSize == 1  # fuente viva: solo el frame más fresco (staleness real)
+    def getOutputQueue(self, name: str, maxSize: int, blocking: bool):
         if self._queue_fails:
             raise RuntimeError("X_LINK: no se pudo abrir la cola")
-        return self.queue
+        if name == "rgb":
+            assert maxSize == 1
+            return self.queue
+        if name == "prefilter_stats":
+            assert maxSize == 4 and blocking is False
+            return self.stats_queue
+        raise AssertionError(f"stream inesperado: {name}")
 
     def close(self) -> None:
         self.closed = True
@@ -65,7 +94,15 @@ class _FakeNode:
 
     def __init__(self, calls: dict) -> None:
         self.video = SimpleNamespace(link=lambda _inp: None)
-        self.input = object()
+        _sink = lambda: SimpleNamespace(  # noqa: E731
+            setBlocking=lambda *_: None, setQueueSize=lambda *_: None,
+            link=lambda *_: None,
+        )
+        self.input = _sink()
+        self.preview = SimpleNamespace(link=lambda _inp: None)
+        self.out = SimpleNamespace(link=lambda _inp: None)
+        self.inputs = defaultdict(_sink)
+        self.outputs = defaultdict(_sink)
         self._calls = calls
 
     def __getattr__(self, name: str):
@@ -81,6 +118,9 @@ class _FakePipeline:
     def create(self, node_cls):
         return _FakeNode(self._calls)
 
+    def setXLinkChunkSize(self, size: int) -> None:
+        self._calls["setXLinkChunkSize"] = size
+
 
 def _fake_dai(calls: dict | None = None) -> SimpleNamespace:
     """Módulo depthai falso con los símbolos que usa _build_pipeline.
@@ -91,7 +131,10 @@ def _fake_dai(calls: dict | None = None) -> SimpleNamespace:
     calls = calls if calls is not None else {}
     return SimpleNamespace(
         Pipeline=lambda: _FakePipeline(calls),
-        node=SimpleNamespace(ColorCamera=object, XLinkOut=object),
+        node=SimpleNamespace(
+            ColorCamera=object, XLinkOut=object,
+            MobileNetDetectionNetwork=object, Script=object,
+        ),
         ColorCameraProperties=SimpleNamespace(
             SensorResolution=SimpleNamespace(
                 THE_720_P="720p", THE_1080_P="1080p", THE_4_K="4k"
@@ -105,6 +148,7 @@ def _fake_dai(calls: dict | None = None) -> SimpleNamespace:
         ),
         CameraBoardSocket=SimpleNamespace(CAM_A="cam_a"),
         DeviceInfo=lambda ip: SimpleNamespace(ip=ip),
+        Clock=SimpleNamespace(now=lambda: timedelta(seconds=100.0)),
     )
 
 
@@ -361,3 +405,144 @@ def test_fallo_de_lectura_reconecta(monkeypatch):
     units = list(source)
     assert len(units) == 5
     assert dev1.closed and dev2.closed
+
+
+# ---------------------------------------------------------------------------
+# Latency knobs (xlink_chunk_size, isp_scale)
+# ---------------------------------------------------------------------------
+
+
+def test_build_pipeline_disables_xlink_chunking_by_default():
+    calls: dict = {}
+    source = OakDSource(url="192.168.1.50")
+    source._build_pipeline(_fake_dai(calls))
+    assert calls["setXLinkChunkSize"] == 0
+
+
+def test_build_pipeline_respects_device_default_chunking():
+    calls: dict = {}
+    source = OakDSource(url="192.168.1.50", xlink_chunk_size=-1)
+    source._build_pipeline(_fake_dai(calls))
+    assert "setXLinkChunkSize" not in calls  # -1 = no tocar el default del device
+
+
+def test_build_pipeline_applies_isp_scale():
+    calls: dict = {}
+    source = OakDSource(url="192.168.1.50", isp_scale=(3, 4))
+    source._build_pipeline(_fake_dai(calls))
+    assert calls["setIspScale"] == (3, 4)
+
+
+def test_build_pipeline_without_isp_scale_does_not_touch_scaler():
+    calls: dict = {}
+    OakDSource(url="192.168.1.50")._build_pipeline(_fake_dai(calls))
+    assert "setIspScale" not in calls
+
+
+# ---------------------------------------------------------------------------
+# capture_to_host_ms (spec 2026-07-15 §7.3)
+# ---------------------------------------------------------------------------
+
+
+def test_capture_to_host_ms_measured_from_device_timestamp(monkeypatch):
+    source = _make_source(monkeypatch, [_FakeDevice(_FakeQueue(n_frames=1))], max_units=1)
+    unit = next(iter(source))
+    assert unit.capture_to_host_ms == pytest.approx(42.0, abs=0.5)
+
+
+def test_capture_to_host_ms_none_when_timestamp_unavailable(monkeypatch):
+    class _NoTsQueue(_FakeQueue):
+        def tryGet(self):
+            msg = super().tryGet()
+            if msg is not None:
+                msg._ts = None  # getTimestamp lanzará
+            return msg
+
+    source = _make_source(monkeypatch, [_FakeDevice(_NoTsQueue(n_frames=1))], max_units=1)
+    unit = next(iter(source))
+    assert unit.capture_to_host_ms is None
+
+
+# ---------------------------------------------------------------------------
+# Prefiltrado on-device EN-2 (spec 2026-07-15 §5/§6)
+# ---------------------------------------------------------------------------
+
+
+def test_prefilter_requires_existing_blob(tmp_path):
+    with pytest.raises(FileNotFoundError, match="blob"):
+        OakDSource(url="192.168.1.50",
+                   prefilter=OakDPrefilterConfig(enabled=True,
+                                                 model_blob=str(tmp_path / "no.blob")))
+
+
+def test_prefilter_disabled_builds_plain_pipeline():
+    calls: dict = {}
+    source = OakDSource(url="192.168.1.50",
+                        prefilter=OakDPrefilterConfig(enabled=False))
+    source._build_pipeline(_fake_dai(calls))
+    assert "setPreviewSize" not in calls  # EN-0 exacto con enabled: false
+
+
+def test_prefilter_pipeline_configures_nn_branch(tmp_path):
+    blob = tmp_path / "person.blob"
+    blob.write_bytes(b"\x00")
+    calls: dict = {}
+    source = OakDSource(
+        url="192.168.1.50",
+        prefilter=OakDPrefilterConfig(enabled=True, model_blob=str(blob), confidence=0.3),
+    )
+    source._build_pipeline(_fake_dai(calls))
+    assert calls["setPreviewSize"] == (544, 320)
+    assert calls["setPreviewKeepAspectRatio"] is False
+    assert calls["setBlobPath"] == str(blob)
+    assert calls["setConfidenceThreshold"] == 0.3
+    assert "setScript" in calls and "node.io" in calls["setScript"]
+
+
+def test_iter_drains_prefilter_stats(monkeypatch, tmp_path):
+    blob = tmp_path / "person.blob"
+    blob.write_bytes(b"\x00")
+    payload = _json.dumps({"seen": 10, "forwarded": 4, "dropped_no_person": 6,
+                           "forwarded_by_reason": {"person": 3, "heartbeat": 1,
+                                                    "failopen": 0, "warmup": 0},
+                           "nn_results": 9}).encode()
+    device = _FakeDevice(_FakeQueue(n_frames=2), stats_queue=_FakeStatsQueue([payload]))
+    source = _make_source(monkeypatch, [device], max_units=2,
+                          prefilter=OakDPrefilterConfig(enabled=True, model_blob=str(blob)))
+    list(source)
+    assert source.prefilter_stats == _json.loads(payload)
+    assert source.prefilter_stats_at is not None
+
+
+def test_iter_survives_corrupt_stats(monkeypatch, tmp_path):
+    blob = tmp_path / "person.blob"
+    blob.write_bytes(b"\x00")
+    device = _FakeDevice(_FakeQueue(n_frames=1),
+                         stats_queue=_FakeStatsQueue([b"not-json"]))
+    source = _make_source(monkeypatch, [device], max_units=1,
+                          prefilter=OakDPrefilterConfig(enabled=True, model_blob=str(blob)))
+    units = list(source)
+    assert len(units) == 1 and source.prefilter_stats is None
+
+
+def test_iter_survives_stats_getdata_raising_unexpected_exception(monkeypatch, tmp_path):
+    """bytes(stats_msg.getData()) puede lanzar algo distinto de ValueError/
+    UnicodeDecodeError (p. ej. TypeError si getData() no es bytes-able); la cola
+    prefilter_stats no debe poder tumbar la corrida (spec §9)."""
+    blob = tmp_path / "person.blob"
+    blob.write_bytes(b"\x00")
+    device = _FakeDevice(_FakeQueue(n_frames=1),
+                         stats_queue=_FakeStatsQueue([object()]))
+    source = _make_source(monkeypatch, [device], max_units=1,
+                          prefilter=OakDPrefilterConfig(enabled=True, model_blob=str(blob)))
+    units = list(source)
+    assert len(units) == 1 and source.prefilter_stats is None
+
+
+def test_watchdog_scales_with_heartbeat():
+    # heartbeat 5 s -> timeout efectivo max(10, 3*5) = 15 s (spec §6).
+    src = OakDSource(url="192.168.1.50", _skip_blob_check=True,
+                     prefilter=OakDPrefilterConfig(enabled=True, heartbeat_interval_ms=5000,
+                                                    stall_failopen_ms=5000))
+    assert src._no_frame_timeout_s() == 15.0
+    assert OakDSource(url="192.168.1.50")._no_frame_timeout_s() == 10.0

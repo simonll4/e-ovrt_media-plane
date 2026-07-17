@@ -78,6 +78,39 @@ def test_serialization_roundtrip_preserves_the_capture_stamps() -> None:
     assert restored.source_clock == "wallclock"
 
 
+def test_serialization_roundtrip_preserves_capture_to_host_ms() -> None:
+    """Two-node: capture_to_host_ms (latencia de red del prefilter OAK-D) debe
+    sobrevivir el viaje por el wire, igual que los demas timestamps de captura."""
+    unit = _normalized_unit(capture_to_host_ms=12.5)
+
+    restored = deserialize_unit(serialize_unit(unit, codec="raw"))
+
+    assert restored.capture_to_host_ms == 12.5
+
+
+def test_deserialize_unit_defaults_capture_to_host_ms_to_none_when_absent() -> None:
+    """Compatibilidad hacia atras: un Nodo A viejo que no declara este campo no
+    debe romper la deserializacion ni inventar un valor."""
+    unit = _normalized_unit()
+
+    header = serialize_unit(unit, codec="raw")
+    # Simula un payload viejo removiendo la clave del meta ya empaquetado.
+    import struct as _struct
+
+    import msgpack as _msgpack
+
+    (header_len,) = _struct.unpack(">I", header[:4])
+    meta = _msgpack.unpackb(header[4 : 4 + header_len], raw=False)
+    assert "capture_to_host_ms" in meta
+    del meta["capture_to_host_ms"]
+    new_header = _msgpack.packb(meta, use_bin_type=True)
+    rebuilt = _struct.pack(">I", len(new_header)) + new_header + header[4 + header_len :]
+
+    restored = deserialize_unit(rebuilt)
+
+    assert restored.capture_to_host_ms is None
+
+
 @pytest.mark.parametrize(
     ("module", "cls_name", "expected"),
     [

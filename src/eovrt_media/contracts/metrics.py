@@ -21,6 +21,8 @@ class MetricSample(BaseModel):
     # None = no medible (p.ej. topologia two_node: relojes monotonicos de hosts
     # distintos no son comparables). Distinto de 0.0, que seria un valor legitimo.
     g2a_ms: float | None = None
+    # Tramo sensor->host (solo oak_d; None = fuente sin timestamps de device).
+    capture_to_host_ms: float | None = None
     fps_effective: float = 0.0
     latency_total_ms: float = 0.0
     latency_inference_ms: float = 0.0

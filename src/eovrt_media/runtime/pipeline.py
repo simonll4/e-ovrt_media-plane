@@ -345,6 +345,7 @@ def run_consumer_loop(
                     source_path=item.source_id,
                     capture_monotonic_ns=item.capture_monotonic_ns,
                     capture_wallclock_ms=item.capture_wallclock_ms,
+                    capture_to_host_ms=item.capture_to_host_ms,
                     g2a_ms=g2a_ms_for_metric,
                     fps_effective=(
                         round(1000.0 / granular.total_ms, 2)
@@ -361,6 +362,8 @@ def run_consumer_loop(
             )
             timer.end_write()
             tracker.finish_unit(timer, detection_count=len(detections))
+            if item.capture_to_host_ms is not None:
+                run_context.capture_to_host_samples.append(item.capture_to_host_ms)
             run_context.units_processed += 1
             run_context.total_detections += len(detections)
             run_context.record_detections(detections)
@@ -560,6 +563,14 @@ def execute_run(
             _drain_producer_errors(run_context._errors_queue, artifact_writer, run_context)
             run_context.units_dropped = getattr(transport, "units_dropped", 0)
             run_context.backpressure_wait_ms = timings["backpressure_wait_ms"]
+
+            # Telemetría EN-2 (spec §6): solo OakDSource expone estos atributos;
+            # getattr con default mantiene a las demás fuentes fuera del asunto (§8.1).
+            run_context.prefilter_stats = getattr(source, "prefilter_stats", None)
+            stats_at = getattr(source, "prefilter_stats_at", None)
+            run_context.prefilter_stats_age_s = (
+                (time.monotonic() - stats_at) if stats_at is not None else None
+            )
         finally:
             if producer is not None:
                 join_timeout = (

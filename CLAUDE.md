@@ -71,7 +71,7 @@ Python pipeline for open-vocabulary object detection (OVD). All behavior is conf
 
 **Key abstractions**:
 - `BaseDetectorAdapter` (`models/base.py`) — plugin interface for inference; register new adapters in `models/__init__.py:create_adapter()`
-- `BaseSource` (`sources/base.py`) — yields `VisualUnit` objects; implementations: `ImageFolderSource`, `VideoFileSource`, `RtspSource` (live RTSP with wall-clock timestamps and reconnect), `OakDSource` (OAK-D Pro PoE via DepthAI, live RGB por IP fija — ver `docs/contexto/oak-d-integration.md`)
+- `BaseSource` (`sources/base.py`) — yields `VisualUnit` objects; implementations: `ImageFolderSource`, `VideoFileSource`, `RtspSource` (live RTSP with wall-clock timestamps and reconnect), `OakDSource` (OAK-D Pro PoE via DepthAI, live RGB por IP fija — ver `docs/contexto/oak-d-integration.md`; opcional: prefilter EN-2 on-device y knobs de latencia, spec 2026-07-15, default off)
 - `RunContext` (`runtime/run_context.py`) — stateful execution context (run_id, unit counts, timing); owns the output directory
 - `RunArtifactWriter` (`sinks/run_artifact_writer.py`) — persists to `runs/<run_id>/`: `detections.jsonl`, `metrics.jsonl`, `errors.jsonl`, `summary.json`, `previews/`
 

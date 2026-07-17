@@ -119,3 +119,8 @@ class RunSummary(BaseModel):
     # aguas abajo (spec 40 SS5.2.3). None = corridas previas a esta task.
     source_clock: str | None = None
     g2a: G2ASummary | None = None
+    # p50/p95 del tramo sensor->host (solo corridas oak_d). None = sin muestras.
+    capture_to_host: dict | None = None
+    # Bloque EN-2 (spec 2026-07-15 §6): siempre presente; {"enabled": false}
+    # cuando la corrida no usa el prefilter.
+    prefilter: dict = Field(default_factory=lambda: {"enabled": False})
