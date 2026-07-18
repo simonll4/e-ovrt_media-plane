@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 
 from eovrt_media.evaluation.runner import run_evaluation
 from eovrt_media.evaluation.schemas import ClassResult
+from eovrt_media.service.activity_slot import SlotBusyError
 from eovrt_media.service.run_ids import require_valid_run_id as _require_valid_run_id
 from eovrt_media.service.run_manager import RunBusyError, RunManager, UnknownRunError
 from eovrt_media.service.run_request import RunRequest
@@ -31,8 +32,20 @@ def create_run(body: RunRequest, request: Request):
     except RunBusyError as exc:
         return JSONResponse(
             status_code=409,
-            content={"detail": str(exc), "active_run_id": exc.active_run_id},
+            content={
+                "detail": str(exc),
+                "active_run_id": exc.active_run_id,
+                "reason": "run_active",
+            },
         )
+    except SlotBusyError as exc:
+        content: dict[str, object] = {
+            "detail": str(exc),
+            "reason": "preview_active" if exc.owner_kind == "preview" else "run_active",
+        }
+        if exc.owner_kind == "run":
+            content["active_run_id"] = exc.owner_id
+        return JSONResponse(status_code=409, content=content)
     except (ValueError, FileNotFoundError) as exc:
         # errores del loader/registro (config inválida, ref inexistente, plugin no disponible)
         raise HTTPException(status_code=422, detail=str(exc)) from exc

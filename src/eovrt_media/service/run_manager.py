@@ -14,6 +14,7 @@ from typing import Any
 from eovrt_media.config.loader import find_plane_catalog_root, load_run_config_data
 from eovrt_media.config.schemas import ModelSection
 from eovrt_media.runtime.pipeline import RunControl, execute_run
+from eovrt_media.service.activity_slot import ActivitySlot
 from eovrt_media.service.events import EventBroadcaster, Subscriber
 from eovrt_media.service.retention import gc_runs_dir
 from eovrt_media.service.run_request import RunRequest, to_raw_run_config
@@ -80,11 +81,16 @@ class ActiveRun:
 
 class RunManager:
     def __init__(
-        self, adapter: Any, model_section: ModelSection, settings: ServiceSettings
+        self,
+        adapter: Any,
+        model_section: ModelSection,
+        settings: ServiceSettings,
+        slot: ActivitySlot | None = None,
     ) -> None:
         self._adapter = adapter
         self._model_section = model_section
         self._settings = settings
+        self._slot = slot if slot is not None else ActivitySlot()
         self._lock = threading.Lock()
         self._active: ActiveRun | None = None
         self._closing = threading.Event()
@@ -109,6 +115,7 @@ class RunManager:
                 datasets_root=self._settings.datasets_root,
             )
             config.run.id = self._new_run_id(config)
+            self._slot.acquire("run", config.run.id)  # SlotBusyError si preview activa
             active = ActiveRun(
                 run_id=config.run.id,
                 config=config,
@@ -117,11 +124,17 @@ class RunManager:
                 started_at=datetime.now(timezone.utc),
             )
             self._active = active
-        thread = threading.Thread(
-            target=self._execute, args=(active,), daemon=True, name="run-executor"
-        )
-        active.thread = thread
-        thread.start()
+        try:
+            thread = threading.Thread(
+                target=self._execute, args=(active,), daemon=True, name="run-executor"
+            )
+            active.thread = thread
+            thread.start()
+        except Exception:
+            with self._lock:
+                self._active = None
+                self._slot.release("run")
+            raise
         return active.run_id
 
     def stop(self, run_id: str, cause: str = "stop") -> None:
@@ -280,30 +293,33 @@ class RunManager:
         self._finalize(active, status, error)
 
     def _finalize(self, active: ActiveRun, status: str, error: str | None) -> None:
-        run_dir = self._settings.runs_dir / active.run_id
-        run_dir.mkdir(parents=True, exist_ok=True)
-        summary_path = run_dir / "summary.json"
-        summary: dict[str, Any] = {}
-        if summary_path.exists():
-            try:
-                summary = json.loads(summary_path.read_text())
-            except (json.JSONDecodeError, OSError) as exc:
-                logger.warning(
-                    "summary ilegible al finalizar run_id=%s, se reconstruye desde cero: %s",
-                    active.run_id,
-                    exc,
-                )
-        summary.setdefault("run_id", active.run_id)
-        summary["status"] = status
-        summary["stop_cause"] = active.stop_cause
-        summary["error"] = error
-        atomic_write_json(summary_path, summary)
-        active.status = status
-        active.error = error
-        active.broadcaster.emit({"type": "state", "status": status, "error": error})
-        active.finished.set()
-        with self._lock:
-            self._active = None
+        try:
+            run_dir = self._settings.runs_dir / active.run_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            summary_path = run_dir / "summary.json"
+            summary: dict[str, Any] = {}
+            if summary_path.exists():
+                try:
+                    summary = json.loads(summary_path.read_text())
+                except (json.JSONDecodeError, OSError) as exc:
+                    logger.warning(
+                        "summary ilegible al finalizar run_id=%s, se reconstruye desde cero: %s",
+                        active.run_id,
+                        exc,
+                    )
+            summary.setdefault("run_id", active.run_id)
+            summary["status"] = status
+            summary["stop_cause"] = active.stop_cause
+            summary["error"] = error
+            atomic_write_json(summary_path, summary)
+            active.status = status
+            active.error = error
+            active.broadcaster.emit({"type": "state", "status": status, "error": error})
+            active.finished.set()
+        finally:
+            with self._lock:
+                self._active = None
+                self._slot.release("run")
 
     def _watchdog_loop(self) -> None:
         while not self._closing.wait(timeout=5.0):

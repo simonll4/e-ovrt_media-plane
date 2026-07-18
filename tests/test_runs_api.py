@@ -316,3 +316,75 @@ def test_dropped_run_id_con_path_traversal_es_404(client):
     assert r.status_code == 404
     r2 = client.get("/api/runs/bad..id/dropped")
     assert r2.status_code == 404
+
+
+def test_run_409_si_preview_activa(client, tmp_path):
+    folder = _images(tmp_path)
+    app_state = client.app.state
+    app_state.manager._slot.acquire("preview", "pv_1")
+    try:
+        r = client.post("/api/runs", json=_body(folder))
+        assert r.status_code == 409
+        assert r.json()["reason"] == "preview_active"
+    finally:
+        app_state.manager._slot.release("preview")
+
+
+def test_finalize_falla_io_libera_slot_y_permite_otro_run(client, tmp_path, monkeypatch):
+    # Regresión: si el I/O de `_finalize` (atomic_write_json) lanza, el slot y
+    # `_active` deben liberarse igual (finally), o si no un run/preview nuevo
+    # queda bloqueado para siempre.
+    import eovrt_media.service.run_manager as run_manager_module
+
+    def _raise(*args, **kwargs):
+        raise OSError("disco lleno (simulado)")
+
+    monkeypatch.setattr(run_manager_module, "atomic_write_json", _raise)
+
+    manager = client.app.state.manager
+    client.post("/api/runs", json=_body(_images(tmp_path)))
+
+    deadline = time.monotonic() + 15.0
+    while time.monotonic() < deadline and manager._slot.owner is not None:
+        time.sleep(0.05)
+    assert manager._slot.owner is None
+    assert manager._active is None
+
+    # Restaurar antes de disparar el siguiente run para que su propio
+    # _finalize sí pueda persistir el summary.
+    monkeypatch.undo()
+
+    r2 = client.post("/api/runs", json=_body(_images(tmp_path, n=1)))
+    assert r2.status_code == 201
+    assert _wait_final(client, r2.json()["run_id"]) == "succeeded"
+
+
+def test_start_run_thread_start_falla_libera_slot(client, tmp_path, monkeypatch):
+    # Regresión: si `threading.Thread(...)`/`.start()` lanza en `start_run`
+    # después de que el slot ya fue adquirido, el slot y `_active` deben
+    # liberarse (en vez de quedar runs/previews bloqueados para siempre).
+    import eovrt_media.service.run_manager as run_manager_module
+    from eovrt_media.service.run_request import RunRequest
+
+    class _BoomThread:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            raise RuntimeError("no se pudo arrancar el hilo (simulado)")
+
+    monkeypatch.setattr(run_manager_module.threading, "Thread", _BoomThread)
+
+    manager = client.app.state.manager
+    request = RunRequest(**_body(_images(tmp_path)))
+    with pytest.raises(RuntimeError):
+        manager.start_run(request)
+
+    assert manager._slot.owner is None
+    assert manager._active is None
+
+    monkeypatch.undo()
+
+    r2 = client.post("/api/runs", json=_body(_images(tmp_path, n=1)))
+    assert r2.status_code == 201
+    assert _wait_final(client, r2.json()["run_id"]) == "succeeded"
