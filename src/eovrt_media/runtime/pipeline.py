@@ -254,9 +254,9 @@ def run_consumer_loop(
             g2a_ms_for_metric = round(g2a_ms, 3)
         run_context.source_clock = item.source_clock
 
-        if (
-            config.outputs.save_previews
-            and preview_attempts < config.outputs.preview_max
+        if config.outputs.save_previews and (
+            config.outputs.preview_max is None
+            or preview_attempts < config.outputs.preview_max
         ):
             preview_path = run_context.run_dir / "previews" / f"{item.unit_id}.preview.jpg"
             preview_attempts += 1

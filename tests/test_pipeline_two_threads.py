@@ -192,6 +192,26 @@ class TestProducerConsumerPipeline:
         assert summary["units_failed"] == 0
         assert any(error["stage"] == "preview" and error["recoverable"] for error in errors)
 
+    def test_preview_max_none_writes_a_preview_per_frame(self, tmp_path: Path, monkeypatch):
+        """preview_max=None (default nuevo) = sin tope: una preview por frame procesado."""
+        from eovrt_media.config.schemas import OutputsConfig
+
+        # El default del contrato es sin límite.
+        assert OutputsConfig().preview_max is None
+
+        def fixed_forward(self, unit, prompts):
+            return [RawDetection(label="person", score=0.9, box_xyxy=[1.0, 1.0, 6.0, 6.0])]
+
+        monkeypatch.setattr(MockDetectorAdapter, "forward", fixed_forward)
+        config = _mock_config(tmp_path)  # 5 imágenes -> 5 unidades
+        config.outputs.save_previews = True
+        config.outputs.preview_max = None
+
+        run_id = run_pipeline(config)
+
+        previews = list((Path(config.outputs.base_dir) / run_id / "previews").glob("*.preview.jpg"))
+        assert len(previews) == 5  # una por frame, sin cap
+
     def test_preview_max_counts_attempts_even_when_write_fails(
         self, tmp_path: Path, monkeypatch
     ):

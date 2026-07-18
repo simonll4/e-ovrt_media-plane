@@ -415,7 +415,10 @@ class OutputsConfig(BaseModel):
     save_metrics_jsonl: bool = True
     save_errors_jsonl: bool = True
     save_previews: bool = True
-    preview_max: int = 20
+    # None = sin límite (default): un preview por frame procesado. Un entero lo capea
+    # (útil para runs RTSP largos donde miles de jpg pesarían). Los previews se escriben
+    # DESPUÉS de cerrar la métrica G2A, así que no afectan la latencia de detección.
+    preview_max: int | None = None
     save_annotated_video: bool = False
     video_fps: float | None = None
 
