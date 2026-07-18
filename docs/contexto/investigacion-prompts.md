@@ -4,7 +4,7 @@
 > partida**; *no es autoritario*. A continuación se marca, sección por sección, qué se
 > incorpora al diseño de la capa de prompts del media-plane, qué se descarta (con
 > justificación) y qué corresponde a **otro módulo** de la plataforma. Referencias:
-> spec `docs/superpowers/specs/2026-06-25-prompt-layer-design.md` y el alcance fijado en
+> spec `docs/_archive/superpowers/specs/2026-06-25-prompt-layer-design.md` y el alcance fijado en
 > `CLAUDE.md` (el media-plane **no** implementa reglas de riesgo, alertas, tracking, zonas
 > ni plano de control). El proyecto ya migró a `canonical_v2` (person/helmet/vest/bare_head);
 > el framing CR-01…CR-06 del informe se conserva solo como trazabilidad opcional.

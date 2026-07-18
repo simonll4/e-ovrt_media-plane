@@ -16,7 +16,7 @@ CLI `eovrt-media` (Typer) fue eliminado; los utilitarios ex-subcomandos viven en
 descrito abajo (productor/consumidor, transporte, normalización, adaptadores) **no cambió**: el
 servicio lo envuelve. `execute_run()` recibe el adapter ya cargado y un run se dispara con
 `POST /api/runs`. Contrato completo y endpoints en [usage.md](usage.md); diseño en
-[docs/superpowers/specs/2026-07-01-media-plane-service-design.md](superpowers/specs/2026-07-01-media-plane-service-design.md).
+[docs/_archive/superpowers/specs/2026-07-01-media-plane-service-design.md](superpowers/specs/2026-07-01-media-plane-service-design.md).
 
 El servicio ya tiene un **cliente real externo**: la **webconsole**
 (`../e-ovrt_experimental-setup/webconsole/`, BFF FastAPI + SPA React) dispara y observa

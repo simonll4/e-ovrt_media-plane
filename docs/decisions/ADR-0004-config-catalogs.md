@@ -12,8 +12,8 @@
 > Lo que sigue vigente de esta ADR: los **catálogos de capacidades**
 > `configs/models/<familia>/<variante>.yaml` y `configs/datasets/<nombre>.yaml`, y la
 > organización de pesos por linaje (`models/<familia>/{original,finetuned}/`). Ver
-> `docs/superpowers/specs/2026-06-27-experimental-setup-config-design.md` y
-> `docs/superpowers/specs/2026-07-01-media-plane-service-design.md` para el diseño
+> `docs/_archive/superpowers/specs/2026-06-27-experimental-setup-config-design.md` y
+> `docs/_archive/superpowers/specs/2026-07-01-media-plane-service-design.md` para el diseño
 > vigente.
 
 ## Contexto

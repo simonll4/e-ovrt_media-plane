@@ -92,7 +92,7 @@ disponibles en este entorno.
 
 ## Visibilidad en la consola web (2026-07-06, rebuild post-fixes)
 
-Tras implementar la spec `e-ovrt_experimental-setup/docs/superpowers/specs/2026-07-06-webconsole-twonode-visibility-design.md`
+Tras implementar la spec `e-ovrt_experimental-setup/docs/_archive/superpowers/specs/2026-07-06-webconsole-twonode-visibility-design.md`
 (finalización garantizada de `run_node_b`, `status: running`+`live` en el disk-scan
 del servicio, ownership two-node en `reconcile_orphan_runs`), se reconstruyeron
 ambas imágenes (`docker compose build`, invalida la capa de `pip install` porque

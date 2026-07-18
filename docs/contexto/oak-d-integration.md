@@ -1,7 +1,7 @@
 # OAK-D Pro PoE: integración como fuente viva (`oak_d`)
 
 Estado: **implementado y verificado con hardware real** (2026-07-13).
-Spec: `docs/superpowers/specs/2026-07-13-oak-d-source-design.md`.
+Spec: `docs/_archive/superpowers/specs/2026-07-13-oak-d-source-design.md`.
 
 Cámara del laboratorio: `DeviceId 194430105168741300`, MAC `44:a9:2c:3f:9c:1e`,
 IP `192.168.1.50` (DHCP con reserva), bootloader `0.0.28`, sensores
@@ -96,7 +96,7 @@ sin frames con conexión viva ⇒ reconexión); backoff de reconexión interrump
 
 ## Prefilter EN-2 y latencia
 
-Spec: `docs/superpowers/specs/2026-07-15-oak-d-prefilter-en2-design.md`.
+Spec: `docs/_archive/superpowers/specs/2026-07-15-oak-d-prefilter-en2-design.md`.
 Estado: **implementado, default off**. Paridad exacta con EN-0 mientras
 `prefilter.enabled` no se declara.
 
@@ -204,7 +204,7 @@ usarse en experimentos que alimenten métricas de tesis. El procedimiento
 manual E2E (misma escena, `prefilter.enabled` true/false, verificando tasa de
 paso con y sin persona y consistencia de los contadores del summary) está
 detallado en el spec §10 y se ejecuta como Task 11 del plan de implementación
-(`docs/superpowers/specs/2026-07-15-oak-d-prefilter-en2-design.md`).
+(`docs/_archive/superpowers/specs/2026-07-15-oak-d-prefilter-en2-design.md`).
 
 #### Resultados A/B (ejecutada 2026-07-15) — evidencia Tabla 57
 

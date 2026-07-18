@@ -41,11 +41,10 @@ curl -X POST http://localhost:8080/api/runs \
 python -m eovrt_media.tools.evaluate --run runs/<run_id> [--bench-coco ...] [--person-gt ...]
 python -m eovrt_media.tools.inspect_runs inspect runs/<run_id>
 python -m eovrt_media.tools.inspect_runs compare runs/          # tabla comparativa
-python -m eovrt_media.tools.debug_run --source bench-val [...]  # campaña de debug
-# CAVEAT: la ruta de dos-nodos-local de debug_run (run_two_node_local) NO funciona
-# post-eliminación-del-CLI (spawnea el `eovrt_media.cli` borrado); ahora falla con un
-# RuntimeError explícito. Su reemplazo es infra/twonode/ (Fase 2, ya completada); la
-# ruta local queda deshabilitada permanentemente, sin puente hacia el despliegue Docker.
+# La campaña de debug two-node-local (tools/debug_run.py + debugging/session.py +
+# runtime/two_node_local.py) se ELIMINÓ el 2026-07-18: había quedado muerta tras la
+# eliminación del CLI. Su reemplazo es el split dockerizado de infra/twonode/ (Fase 2).
+# Las utilidades de diagnóstico de runs siguen: debugging/{analyzer,reporter}.py.
 
 # Test
 make test                                       # pytest -q
@@ -64,7 +63,7 @@ cd infra && EOVRT_MODEL_REF=mock docker compose up -d   # imagen: infra/docker/D
 
 Python pipeline for open-vocabulary object detection (OVD). All behavior is config-driven via YAML; no hardcoded paths or thresholds.
 
-**Config catalogs (dos raíces)**: los **manifiestos de corrida** y los **prompt sets** viven en el repo hermano `e-ovrt_experimental-setup` (`experiments/` y `prompts/`). El media-plane conserva los **catálogos de capacidades** `configs/models/` y `configs/datasets/`. Un manifiesto compone por referencia: `model.ref`/`source.ref` → catálogo del plano (autodescubierto repo-relative; override `EOVRT_MEDIA_CATALOG_ROOT`); `prompts.ref` → `experimental-setup/prompts/<name>.yaml` (raíz del experimento, descubierta subiendo hasta el dir con `prompts/`). Inline fields override catalog values; resolución en `config/loader.py` (`find_plane_catalog_root` + `find_experiment_root`). Los tests usan `tests/fixtures/{runs,prompts}/`. Schemas/PromptPlan/adaptadores y el binding por construcción siguen en el media-plane. Ver `docs/superpowers/specs/2026-06-27-experimental-setup-config-design.md`.
+**Config catalogs (dos raíces)**: los **manifiestos de corrida** y los **prompt sets** viven en el repo hermano `e-ovrt_experimental-setup` (`experiments/` y `prompts/`). El media-plane conserva los **catálogos de capacidades** `configs/models/` y `configs/datasets/`. Un manifiesto compone por referencia: `model.ref`/`source.ref` → catálogo del plano (autodescubierto repo-relative; override `EOVRT_MEDIA_CATALOG_ROOT`); `prompts.ref` → `experimental-setup/prompts/<name>.yaml` (raíz del experimento, descubierta subiendo hasta el dir con `prompts/`). Inline fields override catalog values; resolución en `config/loader.py` (`find_plane_catalog_root` + `find_experiment_root`). Los tests usan `tests/fixtures/{runs,prompts}/`. Schemas/PromptPlan/adaptadores y el binding por construcción siguen en el media-plane. Ver `docs/_archive/superpowers/specs/2026-06-27-experimental-setup-config-design.md`.
 
 **Execution path (single-host)**: `POST /api/runs` (`service/routers/runs.py`) → `RunManager` → `runtime/pipeline.py:execute_run()` → producer thread (read → rate-gate → normalize) + consumer thread (inference → postprocess → write), coupled via `MemoryTransportAdapter`. The model is loaded once at service startup (`EOVRT_MODEL_REF`), not per run. The `eovrt-media` CLI no longer exists.
 
