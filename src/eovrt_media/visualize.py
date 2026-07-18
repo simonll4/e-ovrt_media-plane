@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 
 from eovrt_media.contracts import Detection, RawDetection
+
+if TYPE_CHECKING:
+    from eovrt_media.contracts.normalized_unit import ResizeTransform
 
 logger = logging.getLogger(__name__)
 
@@ -108,11 +112,55 @@ def annotate_payload_bgr(
     return image_bgr
 
 
+def deletterbox_bgr(
+    image_bgr: np.ndarray,
+    transform: "ResizeTransform",
+    orig_width: int,
+    orig_height: int,
+    max_long_side: int = 960,
+) -> np.ndarray:
+    """Recorta el padding de letterbox y devuelve la imagen en el aspecto del
+    frame ORIGINAL.
+
+    El payload normalizado vive en espacio model-input (letterboxed cuadrado o
+    stretch), pero `bbox_norm_xyxy` está normalizado al frame original. Al
+    des-letterboxear, la preview pasa a compartir el sistema de coordenadas del
+    frame original y `norm * ancho/alto` mapea linealmente. Model-agnóstico:
+    sirve para letterbox (pad>0, escala uniforme) y stretch (pad=0, escalas
+    distintas). El lado largo se limita a `max_long_side` para acotar el JPG.
+    """
+    new_w = max(1, round(orig_width * transform.scale_x))
+    new_h = max(1, round(orig_height * transform.scale_y))
+    px = max(0, int(round(transform.pad_x)))
+    py = max(0, int(round(transform.pad_y)))
+    content = image_bgr[py : py + new_h, px : px + new_w]
+    if content.size == 0:
+        return image_bgr
+    if orig_width >= orig_height:
+        out_w = min(int(orig_width), max_long_side)
+        out_h = max(1, round(out_w * orig_height / orig_width))
+    else:
+        out_h = min(int(orig_height), max_long_side)
+        out_w = max(1, round(out_h * orig_width / orig_height))
+    return cv2.resize(content, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
+
+
 def draw_detections_rgb(
     image_rgb: np.ndarray,
     detections: list[Detection | RawDetection],
     output_path: str | Path,
+    *,
+    transform: "ResizeTransform | None" = None,
+    orig_size: tuple[int, int] | None = None,
 ) -> None:
-    """Anota y guarda un payload RGB uint8 o de punto flotante normalizado."""
+    """Anota y guarda un payload RGB uint8 o de punto flotante normalizado.
+
+    Si se pasan `transform` y `orig_size` (ancho, alto del frame original), la
+    preview se des-letterboxea al aspecto del frame original (ver
+    `deletterbox_bgr`), de modo que un overlay que use `bbox_norm_xyxy` calce
+    sobre la imagen y no queden barras negras.
+    """
     image_bgr = annotate_payload_bgr(image_rgb, detections)
+    if transform is not None and orig_size is not None:
+        image_bgr = deletterbox_bgr(image_bgr, transform, orig_size[0], orig_size[1])
     _write_preview(image_bgr, output_path)

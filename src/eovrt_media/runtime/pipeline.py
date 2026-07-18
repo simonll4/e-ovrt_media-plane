@@ -261,7 +261,13 @@ def run_consumer_loop(
             preview_path = run_context.run_dir / "previews" / f"{item.unit_id}.preview.jpg"
             preview_attempts += 1
             try:
-                draw_detections_rgb(item.payload, raw_detections, preview_path)
+                draw_detections_rgb(
+                    item.payload,
+                    raw_detections,
+                    preview_path,
+                    transform=item.transform,
+                    orig_size=(item.orig_width, item.orig_height),
+                )
             except Exception as exc:
                 artifact_writer.write_error(
                     ErrorEvent(

@@ -227,9 +227,9 @@ class TestProducerConsumerPipeline:
                 )
             ]
 
-        def capture_preview(payload, detections, output_path):
+        def capture_preview(payload, detections, output_path, **kwargs):
             previewed_units.append(output_path.name)
-            draw_preview(payload, detections, output_path)
+            draw_preview(payload, detections, output_path, **kwargs)
 
         def fail_detection_write(self, event):
             raise OSError("detections sink unavailable")
@@ -278,9 +278,9 @@ class TestProducerConsumerPipeline:
         captured_boxes = []
         draw_preview = pipeline_module.draw_detections_rgb
 
-        def capture_preview(payload, detections, output_path):
+        def capture_preview(payload, detections, output_path, **kwargs):
             captured_boxes.extend(detection.box_xyxy for detection in detections)
-            draw_preview(payload, detections, output_path)
+            draw_preview(payload, detections, output_path, **kwargs)
 
         def fixed_forward(self, unit, prompts):
             return [RawDetection(label="person", score=0.9, box_xyxy=raw_box)]
