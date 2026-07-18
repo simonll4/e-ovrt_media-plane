@@ -147,6 +147,7 @@ class OakDSource(BaseSource):
         max_units: int | None = None,
         source_id: str | None = None,
         prefilter: OakDPrefilterConfig | None = None,
+        warmup_frames: int = 0,
         _skip_blob_check: bool = False,
     ) -> None:
         if not url:
@@ -178,6 +179,7 @@ class OakDSource(BaseSource):
         self.reconnect_delay_ms = reconnect_delay_ms
         self.max_units = max_units
         self.source_id = source_id
+        self.warmup_frames = warmup_frames  # el schema valida ge=0
         self.prefilter = prefilter
         self.prefilter_stats: dict | None = None
         self.prefilter_stats_at: float | None = None
@@ -323,6 +325,7 @@ class OakDSource(BaseSource):
     def __iter__(self) -> Iterator[VisualUnit]:
         dai = self._load_sdk()
         emitted = 0
+        warmed = 0
         failures = 0
         device: Any = None
         queue: Any = None
@@ -360,6 +363,11 @@ class OakDSource(BaseSource):
                             raise
                         device = candidate
                         last_frame_t = time.monotonic()
+                        # Warm-up por device, no por corrida: (re)abrir el device
+                        # reinicia el pipeline dentro de la cámara y el sensor
+                        # vuelve a asentar exposición/enfoque, así que cada
+                        # reapertura re-descarta warmup_frames.
+                        warmed = 0
                     except Exception as exc:
                         failures = self._register_failure(failures, exc)
                         continue
@@ -404,6 +412,19 @@ class OakDSource(BaseSource):
                     if self._stop_event.wait(_POLL_INTERVAL_S):
                         return
                     continue
+                failures = 0
+                last_frame_t = time.monotonic()
+                if warmed < self.warmup_frames:
+                    # Warm-up del lente: descartar los primeros frames mientras el
+                    # sensor asienta exposición/enfoque, ANTES de emitir — y antes
+                    # de getCvFrame()/timesync: un frame descartado no paga la
+                    # conversión BGR (~6 MB en 1080p) ni la consulta de reloj. No
+                    # cuentan para emitted/max_units ni entran al pipeline;
+                    # frame_index=0 es el primer frame ya asentado. failures y
+                    # last_frame_t ya se resetearon: el watchdog no se dispara
+                    # durante el warm-up.
+                    warmed += 1
+                    continue
                 frame = msg.getCvFrame()  # BGR (mismo convenio que cv2/RTSP)
                 try:
                     # Timestamp de device ya traducido al steady_clock del host
@@ -412,8 +433,6 @@ class OakDSource(BaseSource):
                     capture_to_host_ms = round(max(delta.total_seconds() * 1000.0, 0.0), 2)
                 except Exception:
                     capture_to_host_ms = None
-                failures = 0
-                last_frame_t = time.monotonic()
                 height, width = frame.shape[:2]
                 timestamp_ms = time.time() * 1000.0
                 yield VisualUnit(

@@ -138,6 +138,12 @@ class RunSection(BaseModel):
 # no tienen path.
 _PATH_SOURCE_TYPES = {"image_folder", "video", "video_frame", "video_file"}
 
+# Tipos de fuente viva (cámaras). Única fuente de verdad para los knobs que solo
+# tienen sentido en vivo (warmup_frames); sources/registry.py verifica en
+# import-time que coincida con los plugins declarados kind="live" (mismo patrón
+# que OAK_D_RESOLUTIONS con OakDSource).
+LIVE_SOURCE_TYPES = ("rtsp", "oak_d")
+
 # Valores válidos de los knobs de oak_d. El schema es la única fuente de verdad
 # (falla con 422 en el POST); OakDSource solo mapea estos valores a la API
 # DepthAI y verifica en import-time que ambos conjuntos coincidan.
@@ -202,6 +208,15 @@ class SourceSection(BaseModel):
     reconnect_retries: int = 5
     reconnect_delay_ms: int = 1000
 
+    # Frames iniciales a descartar mientras la cámara asienta exposición/enfoque
+    # (warm-up del lente al arrancar la corrida). Se descartan EN LA FUENTE:
+    # nunca entran al pipeline, no cuentan para max_units ni aparecen en el
+    # ledger de descartes, y frame_index=0 corresponde al primer frame YA
+    # asentado. Distinto de run.warmup_units (que SÍ procesa esas unidades y solo
+    # las excluye de los percentiles G2A). Solo fuentes vivas (rtsp, oak_d);
+    # 0 = sin warm-up (comportamiento actual).
+    warmup_frames: int = Field(default=0, ge=0)
+
     # Fuente viva OAK-D (DepthAI). `url` = IP fija de la cámara.
     # `resolution`/`fps`/`orientation` solo aplican a source.type=oak_d.
     # orientation: normal | rotate_180 | mirror | flip. La rota el ISP de la
@@ -221,6 +236,14 @@ class SourceSection(BaseModel):
     @model_validator(mode="after")
     def _check_locator(self) -> SourceSection:
         source_type = self.type.lower().strip()
+        if self.warmup_frames > 0 and source_type not in LIVE_SOURCE_TYPES:
+            # El warm-up del lente solo tiene sentido en fuentes vivas: en
+            # archivos/carpetas los "frames" ya están asentados. Setearlo en otro
+            # tipo es error explícito, no silencio (paridad con los knobs oak_d).
+            raise ValueError(
+                "source.warmup_frames solo aplica a fuentes vivas "
+                f"({', '.join(LIVE_SOURCE_TYPES)})"
+            )
         if source_type != "oak_d":
             # §8.2: setear knobs de oak_d en otra fuente es error explícito, no
             # silencio. Para xlink_chunk_size (default 0, indistinguible por
@@ -267,6 +290,25 @@ class SourceSection(BaseModel):
                 )
         elif source_type in _PATH_SOURCE_TYPES and not self.path:
             raise ValueError(f"source.path es requerido para source.type={source_type!r}")
+        return self
+
+    @model_validator(mode="after")
+    def _apply_oak_d_reconnect_defaults(self) -> SourceSection:
+        """Sube los defaults de reconexión para oak_d (cold-boot PoE).
+
+        La OAK-D tarda ~8-40s en bootear tras energizarla (verificado en
+        hardware: ~8s hasta el primer XLink). Los defaults compartidos con RTSP
+        (5×1000ms = 5s) no alcanzan y el run falla con ConnectionError si se
+        dispara apenas se conecta la cámara. Se suben SOLO para oak_d y SOLO si
+        el usuario no los fijó (config explícita gana); RTSP conserva sus
+        defaults (conecta en ~2s). Se separa de _check_locator para que ese
+        valide y este normalice (responsabilidad única).
+        """
+        if self.type.lower().strip() == "oak_d":
+            if "reconnect_retries" not in self.model_fields_set:
+                self.reconnect_retries = 12
+            if "reconnect_delay_ms" not in self.model_fields_set:
+                self.reconnect_delay_ms = 4000
         return self
 
 

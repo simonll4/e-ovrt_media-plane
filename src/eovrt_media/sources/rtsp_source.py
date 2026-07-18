@@ -32,12 +32,14 @@ class RtspSource(BaseSource):
         reconnect_delay_ms: int = 1000,
         max_units: int | None = None,
         source_id: str | None = None,
+        warmup_frames: int = 0,
     ) -> None:
         self.url = url
         self.reconnect_retries = reconnect_retries
         self.reconnect_delay_ms = reconnect_delay_ms
         self.max_units = max_units
         self.source_id = source_id
+        self.warmup_frames = warmup_frames  # el schema valida ge=0
         self._stop_event = threading.Event()
 
     def _open_capture(self, url: str) -> cv2.VideoCapture:
@@ -73,6 +75,15 @@ class RtspSource(BaseSource):
     def __iter__(self) -> Iterator[VisualUnit]:
         cap = self._connect()
         emitted = 0
+        # Warm-up del lente: los primeros warmup_frames leídos se descartan sin
+        # emitir, mientras la cámara asienta exposición/enfoque. Van por el mismo
+        # camino stop/reconexión/fin-de-stream que el resto (un solo bucle: nada
+        # que divergir), no cuentan para emitted/max_units, no entran al pipeline
+        # ni al ledger de descartes, y frame_index=0 es el primer frame ya
+        # asentado. No se reaplica en reconexiones: la cámara RTSP corre
+        # independiente de nuestra conexión, así que un rejoin trae un stream
+        # ya caliente.
+        warmed = 0
         try:
             while True:
                 if self._stop_event.is_set():
@@ -86,6 +97,9 @@ class RtspSource(BaseSource):
                     ok, frame = cap.read()
                     if not ok:
                         return  # fin de stream tras reconexión
+                if warmed < self.warmup_frames:
+                    warmed += 1
+                    continue
                 height, width = frame.shape[:2]
                 timestamp_ms = time.time() * 1000.0
                 yield VisualUnit(

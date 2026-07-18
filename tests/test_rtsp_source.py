@@ -61,6 +61,67 @@ class TestRtspSource:
         source = RtspSource(url="rtsp://fake/stream", max_units=3)
         assert len(list(source)) == 3
 
+    def test_warmup_frames_descarta_los_primeros(self, fake_stream, monkeypatch):
+        # fake_stream tiene 5 frames de brillo creciente. warmup_frames=2 descarta
+        # los dos primeros ANTES de emitir: el primer VisualUnit emitido debe ser
+        # el TERCER frame del stream, con frame_index=0 (el contador arranca en el
+        # primer frame ya asentado). Se compara contra el baseline sin warm-up
+        # para no depender de los valores exactos que produce la compresión mp4.
+        _patch_capture(monkeypatch, fake_stream)
+        baseline = [
+            u.pixel_data[0, 0, 0]
+            for u in RtspSource(url="rtsp://fake/stream", max_units=4)
+        ]
+
+        _patch_capture(monkeypatch, fake_stream)
+        units = list(RtspSource(url="rtsp://fake/stream", warmup_frames=2, max_units=2))
+        assert len(units) == 2
+        assert units[0].frame_index == 0 and units[0].unit_id == "frame_000000"
+        assert units[1].frame_index == 1
+        # Los emitidos son el tercer y cuarto frame del stream original.
+        assert units[0].pixel_data[0, 0, 0] == baseline[2]
+        assert units[1].pixel_data[0, 0, 0] == baseline[3]
+
+    def test_warmup_frames_cero_no_descarta_nada(self, fake_stream, monkeypatch):
+        # Default (0): comportamiento inalterado, el primer frame es el 0 del stream.
+        _patch_capture(monkeypatch, fake_stream)
+        baseline = [
+            u.pixel_data[0, 0, 0]
+            for u in RtspSource(url="rtsp://fake/stream", max_units=1)
+        ]
+        _patch_capture(monkeypatch, fake_stream)
+        units = list(RtspSource(url="rtsp://fake/stream", warmup_frames=0, max_units=1))
+        assert units[0].pixel_data[0, 0, 0] == baseline[0]
+
+    def test_warmup_frames_respeta_stop(self, fake_stream, monkeypatch):
+        # stop() durante el warm-up corta sin emitir nada ni colgarse.
+        _patch_capture(monkeypatch, fake_stream)
+        source = RtspSource(url="rtsp://fake/stream", warmup_frames=10**9)
+        source.stop()
+        assert list(source) == []
+
+    def test_warmup_frames_stream_mudo_no_cuelga(self, monkeypatch):
+        # Stream que abre (isOpened=True) pero nunca entrega frames: el warm-up
+        # comparte el camino de fin-de-stream del bucle principal, así que la
+        # iteración termina (read falla → reconecta → read falla → return) en
+        # vez de reconectar para siempre sin agotar ningún presupuesto.
+        class _MuteCap:
+            def isOpened(self):
+                return True
+            def read(self):
+                return False, None
+            def release(self):
+                pass
+
+        monkeypatch.setattr(
+            RtspSource, "_open_capture", lambda self, url: _MuteCap()
+        )
+        source = RtspSource(
+            url="rtsp://fake/stream", warmup_frames=5,
+            reconnect_retries=2, reconnect_delay_ms=0,
+        )
+        assert list(source) == []  # termina; sin warm-up hacía lo mismo
+
     def test_reconnects_before_giving_up(self, fake_stream, monkeypatch):
         attempts = {"count": 0}
 

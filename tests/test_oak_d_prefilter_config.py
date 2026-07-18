@@ -62,6 +62,54 @@ def test_non_oak_d_without_new_fields_still_valid():
     assert s.xlink_chunk_size == 0
 
 
+def test_warmup_frames_default_es_cero():
+    assert SourceSection(type="rtsp", url="rtsp://cam/1").warmup_frames == 0
+    assert SourceSection(type="image_folder", path="/tmp/imgs").warmup_frames == 0
+
+
+@pytest.mark.parametrize("source_type,extra", [
+    ("rtsp", {"url": "rtsp://cam/1"}),
+    ("oak_d", {"url": "192.168.1.50"}),
+])
+def test_warmup_frames_aceptado_en_fuentes_vivas(source_type, extra):
+    assert SourceSection(type=source_type, **extra, warmup_frames=15).warmup_frames == 15
+
+
+@pytest.mark.parametrize("source_type,extra", [
+    ("image_folder", {"path": "/tmp/imgs"}),
+    ("video_file", {"path": "/tmp/v.mp4"}),
+])
+def test_warmup_frames_rechazado_en_fuentes_no_vivas(source_type, extra):
+    with pytest.raises(ValidationError, match="warmup_frames"):
+        SourceSection(type=source_type, **extra, warmup_frames=10)
+
+
+def test_warmup_frames_negativo_rechazado():
+    with pytest.raises(ValidationError):
+        SourceSection(type="rtsp", url="rtsp://cam/1", warmup_frames=-1)
+
+
+def test_oak_d_reconnect_defaults_toleran_cold_boot():
+    # Sin fijarlos, oak_d usa defaults pacientes para el cold-boot PoE (~8-40s).
+    s = SourceSection(**OAK)
+    assert s.reconnect_retries == 12
+    assert s.reconnect_delay_ms == 4000
+
+
+def test_oak_d_reconnect_explicitos_ganan():
+    # Config explícita sobrescribe el bump.
+    s = SourceSection(**OAK, reconnect_retries=2, reconnect_delay_ms=500)
+    assert s.reconnect_retries == 2
+    assert s.reconnect_delay_ms == 500
+
+
+def test_rtsp_reconnect_defaults_inalterados():
+    # RTSP conserva sus defaults (conecta en ~2s; no se toca).
+    s = SourceSection(type="rtsp", url="rtsp://cam/1")
+    assert s.reconnect_retries == 5
+    assert s.reconnect_delay_ms == 1000
+
+
 def test_isp_scale_shape_validated():
     assert SourceSection(**OAK, isp_scale=(3, 4)).isp_scale == (3, 4)
     assert SourceSection(**OAK, isp_scale=(2, 4)).isp_scale == (2, 4)  # simplifica a 1/2: ok

@@ -82,4 +82,5 @@ def test_create_source_oak_d(tmp_path):
     assert source.url == "192.168.1.50"
     assert source.fps == 5
     assert source.resolution == "720p"
-    assert source.reconnect_retries == 5
+    # Default de oak_d sin fijar: bump de cold-boot PoE (ver SourceSection).
+    assert source.reconnect_retries == 12

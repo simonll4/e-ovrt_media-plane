@@ -64,8 +64,13 @@ source:
   fps: 10                   # default 10
   resolution: 1080p         # 720p | 1080p | 4k (default 1080p)
   orientation: rotate_180   # normal | rotate_180 | mirror | flip (default normal)
-  reconnect_retries: 3
-  reconnect_delay_ms: 1000
+  # warmup_frames: 20       # descarta los primeros N frames (asentamiento de
+                            # exposición/enfoque al arrancar; a 10 fps, 20 ≈ 2 s)
+  # reconnect_retries / reconnect_delay_ms: NO fijarlos salvo necesidad. Sin
+  # fijar, oak_d usa defaults tolerantes al cold-boot PoE (12 × 4000 ms ≈ 48 s:
+  # la cámara tarda ~8-40 s en bootear tras energizarse). Fijarlos explícitos
+  # sobrescribe ese bump (p. ej. 3 × 1000 ms falla si el run se dispara recién
+  # conectada la cámara).
 ```
 
 **`orientation` no es cosmético.** Si la cámara está montada invertida, el modelo

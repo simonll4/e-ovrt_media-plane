@@ -5,6 +5,7 @@ import importlib.util
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING
 
+from eovrt_media.config.schemas import LIVE_SOURCE_TYPES
 from eovrt_media.sources import BaseSource, ImageFolderSource, VideoFileSource
 
 if TYPE_CHECKING:
@@ -44,6 +45,12 @@ PLUGINS: dict[str, IngestPlugin] = {
 }
 
 _VIDEO_ALIASES = {"video", "video_frame", "video_file"}
+
+# El schema valida warmup_frames contra LIVE_SOURCE_TYPES; este registro declara
+# kind="live" por plugin. Si divergen, un plugin vivo nuevo validaría 422 (o al
+# revés: aceptaría el knob y lo ignoraría en silencio). Verificación import-time,
+# mismo patrón que OAK_D_RESOLUTIONS en OakDSource.
+assert {p.id for p in PLUGINS.values() if p.kind == "live"} == set(LIVE_SOURCE_TYPES)
 
 
 def list_plugins() -> list[dict]:
@@ -89,6 +96,7 @@ def create_source(config: "RunConfig") -> BaseSource:
             reconnect_delay_ms=config.source.reconnect_delay_ms,
             max_units=config.run.max_units,
             source_id=config.source.source_id,
+            warmup_frames=config.source.warmup_frames,
         )
     if plugin_id == "oak_d":
         from eovrt_media.sources import OakDSource
@@ -105,6 +113,7 @@ def create_source(config: "RunConfig") -> BaseSource:
             max_units=config.run.max_units,
             source_id=config.source.source_id,
             prefilter=config.source.prefilter,
+            warmup_frames=config.source.warmup_frames,
         )
     # Inalcanzable con PLUGINS actual; protege al próximo plugin que se agregue
     # al registro sin su rama correspondiente acá.

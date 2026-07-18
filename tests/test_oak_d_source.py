@@ -270,6 +270,46 @@ def test_max_units_corta_la_iteracion(monkeypatch):
     assert len(list(source)) == 5
 
 
+def test_warmup_frames_descarta_los_primeros(monkeypatch):
+    # _FakeQueue marca frame[0,0]=served (0,1,2,...). warmup_frames=2 descarta los
+    # dos primeros ANTES de emitir: el primer VisualUnit es el 3er frame (served=2)
+    # y lleva frame_index=0 (contador arranca en el primer frame asentado).
+    device = _FakeDevice(_FakeQueue(n_frames=10))
+    source = _make_source(monkeypatch, [device], max_units=2, warmup_frames=2)
+    units = list(source)
+    assert len(units) == 2
+    assert units[0].unit_id == "frame_000000" and units[0].frame_index == 0
+    assert units[1].frame_index == 1
+    assert units[0].pixel_data[0, 0, 0] == 2  # se saltearon served 0 y 1
+    assert units[1].pixel_data[0, 0, 0] == 3
+
+
+def test_warmup_frames_cero_no_descarta_nada(monkeypatch):
+    device = _FakeDevice(_FakeQueue(n_frames=10))
+    source = _make_source(monkeypatch, [device], max_units=1, warmup_frames=0)
+    units = list(source)
+    assert units[0].pixel_data[0, 0, 0] == 0
+
+
+def test_warmup_se_reaplica_al_reabrir_el_device(monkeypatch):
+    # Reabrir el device reinicia el pipeline dentro de la cámara: el sensor
+    # vuelve a asentar exposición/enfoque, así que el warm-up es POR DEVICE.
+    # dev1 sirve served=0 (descartado), served=1 (emitido) y falla la lectura;
+    # dev2 debe volver a descartar su primer frame (served=0) antes de emitir.
+    dev1 = _FakeDevice(_FakeQueue(n_frames=10, fail_after=2))
+    dev2 = _FakeDevice(_FakeQueue(n_frames=3))
+    source = _make_source(
+        monkeypatch, [dev1, dev2], max_units=3, warmup_frames=1,
+        reconnect_retries=2, reconnect_delay_ms=0,
+    )
+    units = list(source)
+    assert len(units) == 3
+    # dev1 emitió served=1; dev2 re-descartó served=0 y emitió served=1,2.
+    assert [u.pixel_data[0, 0, 0] for u in units] == [1, 1, 2]
+    # El contador de emisión no se ve afectado por los descartes.
+    assert [u.frame_index for u in units] == [0, 1, 2]
+
+
 # ---------------------------------------------------------------------------
 # Parada cooperativa
 # ---------------------------------------------------------------------------

@@ -237,8 +237,10 @@ class TestRtspSourceConfig:
         )
         assert cfg.source.resolution == "1080p"
         assert cfg.source.fps == 10
-        assert cfg.source.reconnect_retries == 5
-        assert cfg.source.reconnect_delay_ms == 1000
+        # Defaults de reconexión de oak_d sin fijar: bump de cold-boot PoE
+        # (la cámara tarda ~8-40s en bootear; ver SourceSection._check_locator).
+        assert cfg.source.reconnect_retries == 12
+        assert cfg.source.reconnect_delay_ms == 4000
 
     def test_oak_d_requires_url(self, tmp_path: Path):
         with pytest.raises(ValueError, match="url.*oak_d"):
