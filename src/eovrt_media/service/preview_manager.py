@@ -26,6 +26,47 @@ _MAX_WIDTH = 960
 _JPEG_QUALITY = 80
 
 
+class _LatestUnitBox:
+    """Entrega solo el último ``VisualUnit`` leído; nunca se acumula un backlog.
+
+    Desacopla la velocidad de captura (gobernada por la fuente: una cámara RTSP
+    entrega frames a su propio ritmo, sin esperar a nadie) de la velocidad de
+    procesamiento (resize + detección + encode). Con un solo lector serial
+    ("for unit in source"), un consumidor más lento que la fuente hace que
+    ``cv2.VideoCapture`` acumule su propio buffer interno y cada lectura
+    devuelva el frame más VIEJO no consumido — el preview se ve cada vez más
+    atrasado, nunca al día (bug real: RTSP mucho más lento que OAK-D, que ya
+    trae maxSize=1/blocking=False a nivel de driver). Con esta caja, un hilo
+    lector separado drena la fuente todo lo rápido que puede y solo conserva
+    el último ``unit``; el consumidor siempre ve el más reciente disponible.
+    """
+
+    def __init__(self) -> None:
+        self._condition = threading.Condition()
+        self._unit: Any = None
+        self._done = False
+        self._error: BaseException | None = None
+
+    def push(self, unit: Any) -> None:
+        with self._condition:
+            self._unit = unit
+            self._condition.notify()
+
+    def close(self, error: BaseException | None = None) -> None:
+        with self._condition:
+            self._done = True
+            self._error = error
+            self._condition.notify()
+
+    def pop_latest(self, timeout: float) -> tuple[Any, bool, BaseException | None]:
+        with self._condition:
+            self._condition.wait_for(
+                lambda: self._unit is not None or self._done, timeout=timeout
+            )
+            unit, self._unit = self._unit, None
+            return unit, self._done, self._error
+
+
 @dataclass
 class _Session:
     preview_id: str
@@ -138,26 +179,44 @@ class PreviewManager:
     # -- Loop de captura -------------------------------------------------
 
     def _loop(self, session: _Session, plan) -> None:
+        box = _LatestUnitBox()
+        reader = threading.Thread(
+            target=self._read_source, args=(session, box), daemon=True, name="preview-reader"
+        )
+        reader.start()
         try:
-            for unit in session.source:
+            while True:
+                unit, done, error = box.pop_latest(timeout=1.0)
                 if session.stop_event.is_set():
                     break
-                frame = unit.pixel_data
-                if frame is None and unit.path:
-                    frame = cv2.imread(unit.path)
-                if frame is None:
-                    continue
-                frame = self._resize(frame)
-                detections = self._detect(frame, plan, session.score_threshold) if plan else []
-                message = self._build_message(session.seq + 1, session.mode, frame, detections, unit)
-                with self._frame_lock:
-                    session.seq += 1
-                    session.latest = message
+                if error is not None:
+                    raise error
+                if unit is not None:
+                    frame = unit.pixel_data
+                    if frame is None and unit.path:
+                        frame = cv2.imread(unit.path)
+                    if frame is not None:
+                        frame = self._resize(frame)
+                        detections = (
+                            self._detect(frame, plan, session.score_threshold) if plan else []
+                        )
+                        message = self._build_message(
+                            session.seq + 1, session.mode, frame, detections, unit
+                        )
+                        with self._frame_lock:
+                            session.seq += 1
+                            session.latest = message
+                if unit is None and done:
+                    break
         except Exception as exc:  # noqa: BLE001
             logger.exception("Preview %s falló", session.preview_id)
             session.status = "error"
             session.error = str(exc)
         finally:
+            session.stop_event.set()
+            if session.source is not None:
+                session.source.stop()  # cooperativo (mismo patrón que RunControl.request_stop)
+            reader.join(timeout=10.0)
             with self._lock, self._frame_lock:
                 if session.status == "error":
                     self._last_error = session.error
@@ -166,6 +225,18 @@ class PreviewManager:
                 if self._active is session:
                     self._active = None
             self._slot.release("preview")
+
+    def _read_source(self, session: _Session, box: _LatestUnitBox) -> None:
+        """Drena la fuente todo lo rápido que puede; nunca encola, solo conserva la última."""
+        try:
+            for unit in session.source:
+                if session.stop_event.is_set():
+                    return
+                box.push(unit)
+        except Exception as exc:  # noqa: BLE001
+            box.close(error=exc)
+            return
+        box.close()
 
     def _resize(self, frame: np.ndarray) -> np.ndarray:
         h, w = frame.shape[:2]
@@ -210,6 +281,7 @@ class PreviewManager:
                 "height": h,
                 "mode": mode,
                 "detections": detections,
+                "unit_id": unit.unit_id,
             }
         ).encode("utf-8")
         return struct.pack(">I", len(header)) + header + jpeg.tobytes()

@@ -125,3 +125,36 @@ def test_fuente_agotada_termina_en_idle(manager, tmp_path):
         time.sleep(0.05)
     assert manager.status()["status"] == "idle"
     assert manager._slot.owner is None
+
+
+def test_backlog_no_se_acumula_bajo_procesamiento_lento(manager, tmp_path, monkeypatch):
+    """Reproduce el bug real: una fuente rápida (RTSP en la práctica) con un
+    consumidor lento no debe hacer que el preview procese en orden desde el
+    frame más viejo (eso es exactamente el "cada vez más lento" que se ve con
+    cv2.VideoCapture + RTSP sin drenar su buffer). Debe saltar al más reciente.
+    """
+    n = 300
+    folder = _images(tmp_path, n=n)
+    original = type(manager)._build_message
+
+    def slow_build_message(self, *args, **kwargs):
+        time.sleep(0.02)  # simula un ciclo de proceso lento (resize+encode+detección)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(type(manager), "_build_message", slow_build_message)
+
+    manager.start(_req(folder))
+    time.sleep(0.4)
+    manager.stop()
+
+    _, seq, latest, error = manager.snapshot()
+    assert error is None
+    assert latest is not None
+    assert 0 < seq < n  # no le dio tiempo a procesar todo el backlog: perfectamente esperado
+    header, _ = _parse(latest)
+    # unit_id de ImageFolderSource: "img_{index:06d}". Si el consumo fuera serial
+    # (el bug), el último frame publicado en 0.4s a ~20ms/frame rondaría el índice
+    # ~20, muy lejos de la cola de 300. Con el fix, el reader ya drenó el backlog
+    # y el último publicado está cerca del final.
+    last_index = int(header["unit_id"].rsplit("_", 1)[-1])
+    assert last_index >= n - 5
