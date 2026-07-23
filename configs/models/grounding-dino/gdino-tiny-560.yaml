@@ -1,0 +1,21 @@
+# Catálogo de modelos — Grounding DINO tiny en 560x560 (carril live de baja latencia)
+# Variante del gdino-tiny para corridas EBE live: mismo checkpoint, inferencia en
+# letterbox 560 en vez de 800 (~-40% de forward medido en la RTX 4060, docs/operacion/61
+# del repo docs). Catálogo separado a propósito: gdino-tiny (800) queda intacto para
+# mantener comparabilidad con el BENCH v2 de Sprint 2. La calidad de detección a 560
+# sobre el vocabulario EPP completo debe validarse contra el BENCH antes de usarla
+# fuera de person-only.
+family: grounding-dino
+variant: gdino-tiny-560
+lineage: original
+description: "Grounding DINO tiny, inferencia 560x560 letterbox (~-40% latencia vs 800)."
+source: https://huggingface.co/IDEA-Research/grounding-dino-tiny
+license: Apache-2.0
+
+adapter: grounding_dino
+model_id: IDEA-Research/grounding-dino-tiny
+local_dir: models/grounding-dino/original/grounding-dino-tiny
+device: auto
+box_threshold: 0.30
+text_threshold: 0.25
+image_size: 560

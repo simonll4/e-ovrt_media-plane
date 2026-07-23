@@ -42,6 +42,7 @@ def create_adapter(model_config: ModelSection) -> BaseDetectorAdapter:
             local_dir=model_config.local_dir,
             half_precision=model_config.runtime.half_precision,
             warmup=model_config.runtime.warmup,
+            image_size=model_config.image_size if isinstance(model_config.image_size, int) else None,
         )
 
     elif adapter_name in ("yoloe", "yoloe_ultralytics"):

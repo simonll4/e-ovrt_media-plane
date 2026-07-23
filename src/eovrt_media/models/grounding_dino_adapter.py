@@ -66,6 +66,7 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
         local_dir: str | None = None,
         half_precision: bool = False,
         warmup: bool = False,
+        image_size: int | None = None,
     ) -> None:
         self.model_id = model_id
         self.device = device
@@ -75,6 +76,7 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
         self.local_dir = local_dir
         self.half_precision = half_precision
         self.warmup = warmup
+        self.image_size = image_size
         self.processor = None
         self.model = None
 
@@ -118,7 +120,15 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
         # Construir caption para Grounding DINO: "prompt1. prompt2. prompt3."
         text = ". ".join(plan.texts()) + "."
 
-        inputs = self.processor(images=image, text=text, return_tensors="pt").to(self.device)
+        processor_kwargs: dict = {"images": image, "text": text, "return_tensors": "pt"}
+        if self.image_size is not None:
+            # Mismo tamaño que el camino del pipeline (forward/input_spec): la
+            # variante de catálogo debe inferir igual por predict que por forward.
+            processor_kwargs["size"] = {
+                "shortest_edge": self.image_size,
+                "longest_edge": self.image_size,
+            }
+        inputs = self.processor(**processor_kwargs).to(self.device)
 
         return self._run_inference(
             inputs,
@@ -227,9 +237,10 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
 
     @property
     def input_spec(self) -> ModelInputSpec:
-        """Especificación de preprocesamiento de Grounding DINO (800x800 letterbox)."""
+        """Especificación de preprocesamiento de Grounding DINO (letterbox, default 800x800)."""
+        size = self.image_size or 800
         return ModelInputSpec(
-            target_size=(800, 800),
+            target_size=(size, size),
             resize_mode="letterbox",
             mean=(0.485, 0.456, 0.406),
             std=(0.229, 0.224, 0.225),

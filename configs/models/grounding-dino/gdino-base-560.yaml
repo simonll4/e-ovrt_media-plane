@@ -1,0 +1,18 @@
+# Catálogo de modelos — Grounding DINO base en 560x560 (matriz S1, doc 62 del repo docs)
+# Mismo checkpoint que gdino-base, inferencia en letterbox 560: la dimensión resolución
+# entró a la matriz de selección tras el hallazgo gdino-tiny-560 (doc 61: mAP igual o
+# mejor con −24% de latencia). gdino-base (800) queda intacto por comparabilidad.
+family: grounding-dino
+variant: gdino-base-560
+lineage: original
+description: "Grounding DINO base, inferencia 560x560 letterbox (matriz de selección S1)."
+source: https://huggingface.co/IDEA-Research/grounding-dino-base
+license: Apache-2.0
+
+adapter: grounding_dino
+model_id: IDEA-Research/grounding-dino-base
+local_dir: models/grounding-dino/original/grounding-dino-base
+device: auto
+box_threshold: 0.30
+text_threshold: 0.25
+image_size: 560
