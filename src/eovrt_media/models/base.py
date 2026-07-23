@@ -69,5 +69,20 @@ class BaseDetectorAdapter(ABC):
     def input_spec(self) -> ModelInputSpec:
         """Especificación de preprocesamiento requerida por el modelo."""
 
+    def prepare_run(self, plan: PromptPlan) -> None:
+        """Pre-flight por corrida: una inferencia dummy con el plan REAL.
+
+        Mueve los costos lazy del primer frame (set_classes de YOLOE ~1.1 s,
+        autotune de kernels CUDA ~3 s en el primer run del proceso) a ANTES de
+        que la fuente empiece a producir; sin esto, una fuente viva dropea
+        decenas de frames por queue_full durante la primera inferencia
+        (docs/operacion/61 del repo docs). El warmup de load() no alcanza:
+        corre con un plan dummy, y el binding es por-plan.
+        """
+        from eovrt_media.models.runtime_utils import make_warmup_image
+
+        dummy = Image.fromarray(make_warmup_image(self.input_spec.target_size))
+        self.predict(dummy, plan)
+
     def close(self) -> None:
         """Liberar recursos del modelo (opcional)."""

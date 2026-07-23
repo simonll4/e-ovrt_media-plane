@@ -496,6 +496,14 @@ def execute_run(
                 normalize_boxes=config.postprocess.normalize_boxes,
             )
             plan = config.build_prompt_plan(adapter.PROMPT_BACKEND)
+            # Pre-flight ANTES de arrancar el productor: la fuente todavía no
+            # produce, así que el costo de binding/warmup no dropea frames.
+            prepare_started = time.perf_counter()
+            adapter.prepare_run(plan)
+            logger.info(
+                "prepare_run: pre-flight del adaptador en %.0f ms",
+                (time.perf_counter() - prepare_started) * 1000.0,
+            )
             prompt_set_id = (
                 config.prompts_file.resolved_set_id() if config.prompts_file else "unknown"
             )
