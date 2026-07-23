@@ -31,6 +31,10 @@ def evaluate(
             bench_coco=bench_coco,
             person_gt=person_gt,
             iou_threshold=iou_threshold,
+            # Igual que el servicio: sin esto, un run de un solo split se evalúa
+            # contra el person_gt de AMBOS splits y el recall CR-01 sale
+            # deflactado ~2x en silencio (docs/operacion/64 del repo docs).
+            restrict_gt_to_detections=True,
         )
     except FileNotFoundError as error:
         console.print(f"[red]✗ No se pudo evaluar la corrida:[/red] {error}")

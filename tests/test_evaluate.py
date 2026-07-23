@@ -434,3 +434,28 @@ def test_persist_false_no_escribe_eval_json(
 
     assert result.type == "perception"
     assert not (run_dir / "eval_perception.json").exists()
+
+
+def test_cli_evaluate_restringe_gt_al_run_por_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Footgun cazado en la re-puntuación bench_obra (docs/operacion/64, repo docs):
+    # sin restrict, un run de UN split se evalúa contra los violadores de AMBOS
+    # splits del person_gt y el recall CR-01 sale deflactado ~2x en silencio.
+    # El CLI debe restringir por default, igual que el endpoint del servicio.
+    from eovrt_media.tools import evaluate as evaluate_tool
+
+    captured: dict = {}
+
+    def fake_run_evaluation(**kwargs):  # noqa: ANN003
+        captured.update(kwargs)
+        raise SystemExit(0)
+
+    monkeypatch.setattr(
+        "eovrt_media.evaluation.runner.run_evaluation", fake_run_evaluation
+    )
+    try:
+        evaluate_tool.evaluate(tmp_path / "run_x")
+    except SystemExit:
+        pass
+    assert captured.get("restrict_gt_to_detections") is True
