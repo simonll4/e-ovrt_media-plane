@@ -38,7 +38,13 @@ curl -X POST http://localhost:8080/api/runs \
 # runtime/two_node.py:run_node_a() / run_node_b(); ver tests/test_two_node.py.
 
 # Utilidades standalone (ex-subcomandos CLI), invocables como módulos:
+# evaluate restringe el person_gt/bench-coco a las imágenes que el run realmente
+# procesó por default (restrict_gt_to_detections=True, mismo default que el
+# endpoint del servicio) — evita evaluar contra el denominador de otro split/fuente.
 python -m eovrt_media.tools.evaluate --run runs/<run_id> [--bench-coco ...] [--person-gt ...]
+# bench de referencia: ../e-ovrt_datasets/datasets/processed/coco/bench/curated/bench_v3.json
+# (6.477 imgs estratificadas; ver docs/operacion/64 y 66 del repo docs, y
+# e-ovrt_datasets/datasets/registry/bench_v3.md)
 python -m eovrt_media.tools.inspect_runs inspect runs/<run_id>
 python -m eovrt_media.tools.inspect_runs compare runs/          # tabla comparativa
 # La campaña de debug two-node-local (tools/debug_run.py + debugging/session.py +
@@ -69,8 +75,16 @@ Python pipeline for open-vocabulary object detection (OVD). All behavior is conf
 
 **Execution path (two-node)**: invoked in-process (no CLI) — `runtime/two_node.py:run_node_a()` (ingesta + ZeroMQ REP server) and `run_node_b()` (ZeroMQ REQ client + inference + artifacts); the run config must set `topology.mode: two_node` (loader derives `transport.backend: network`). Transport: `NetworkTransportAdapter` (ZeroMQ REQ/REP, msgpack serialization, heartbeat PUSH/PULL dedicado). Docker packaging of the two-node split lives in `infra/twonode/` (Fase 2, see its README).
 
+**Pre-flight de la corrida (`prepare_run`)**: `execute_run` llama `adapter.prepare_run(plan)`
+**antes** de arrancar el thread productor (el binding lazy de prompts —p.ej. `set_classes` de
+YOLOE, ~1,1 s— y el autotune CUDA de la primera inferencia del proceso, ~3 s— pagaban su
+costo con la fuente ya produciendo, dropeando hasta 50 frames por `queue_full`). La base
+(`models/base.py`) implementa el default (inferencia dummy con el plan real, tamaño
+`input_spec.target_size`); un adapter solo necesita overridearlo si su binding no pasa por
+`predict()`. Ver `docs/operacion/61` del repo `docs` (adenda) para la medición en hardware.
+
 **Key abstractions**:
-- `BaseDetectorAdapter` (`models/base.py`) — plugin interface for inference; register new adapters in `models/__init__.py:create_adapter()`
+- `BaseDetectorAdapter` (`models/base.py`) — plugin interface for inference; register new adapters in `models/__init__.py:create_adapter()`; `image_size` (int, opcional en `ModelSection`) ajusta la resolución de letterbox del adapter GDINO (`input_spec` y `predict` consistentes — ver catálogos `configs/models/grounding-dino/gdino-{tiny,base}-560.yaml`, el campeón de selección S1/S2 es `gdino-tiny-560`, doc 64 del repo `docs`)
 - `BaseSource` (`sources/base.py`) — yields `VisualUnit` objects; implementations: `ImageFolderSource`, `VideoFileSource`, `RtspSource` (live RTSP with wall-clock timestamps and reconnect), `OakDSource` (OAK-D Pro PoE via DepthAI, live RGB por IP fija — ver `docs/contexto/oak-d-integration.md`; opcional: prefilter EN-2 on-device y knobs de latencia, spec 2026-07-15, default off)
 - `RunContext` (`runtime/run_context.py`) — stateful execution context (run_id, unit counts, timing); owns the output directory
 - `RunArtifactWriter` (`sinks/run_artifact_writer.py`) — persists to `runs/<run_id>/`: `detections.jsonl`, `metrics.jsonl`, `errors.jsonl`, `summary.json`, `previews/`
