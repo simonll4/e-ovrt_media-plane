@@ -308,6 +308,22 @@ class RunManager:
                         exc,
                     )
             summary.setdefault("run_id", active.run_id)
+            if status == "succeeded" and not summary.get("units_processed", 0):
+                # Una fuente que nunca entregó una unidad retorna limpio y nada
+                # lanza: la RTSP agota sus reintentos ("No route to host" ×5),
+                # la carpeta vacía sólo loguea un warning. El run salía
+                # "succeeded" con error=None y stop_cause=None — falla
+                # silenciosa. Para un sistema cuyo trabajo es capturar
+                # evidencia irrepetible, cero unidades nunca es un éxito: en
+                # una corrida live equivale a tildar el checklist sin datos.
+                status = "failed"
+                error = error or (
+                    "la corrida no procesó ninguna unidad: la fuente no entregó "
+                    "datos (¿cámara inalcanzable, ruta vacía o sin permisos?)"
+                )
+                logger.error(
+                    "Run %s terminó sin procesar unidades; se marca failed", active.run_id
+                )
             summary["status"] = status
             summary["stop_cause"] = active.stop_cause
             summary["error"] = error

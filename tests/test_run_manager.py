@@ -84,6 +84,30 @@ def test_fallo_en_setup_escribe_summary_failed(manager, tmp_path):
     assert summary["status"] == "failed" and summary["error"]
 
 
+def test_run_sin_unidades_procesadas_no_es_exitoso(manager, tmp_path):
+    """F-DR10 (dry-run 2026-07-22): una corrida live cuya cámara nunca conectó
+    salía `succeeded` con units_processed=0, stop_cause=None y error=None.
+
+    La fuente RTSP agota sus reintentos ("No route to host" ×5) y retorna
+    limpio, así que nada lanza y el status queda en el "succeeded" inicial de
+    `_execute`. En el rodaje eso significa disparar la corrida EBE con el cable
+    flojo, ver "succeeded" y tildar el checklist con cero datos.
+
+    Se reproduce determinísticamente con una carpeta vacía: misma semántica
+    (fuente que no entrega ninguna unidad), sin depender del hardware.
+    """
+    vacia = tmp_path / "vacia"
+    vacia.mkdir()
+    run_id = manager.start_run(_request(vacia))
+
+    assert _wait_final(manager, run_id) == "failed"
+    summary = json.loads((tmp_path / "runs" / run_id / "summary.json").read_text())
+    assert summary["units_processed"] == 0
+    # El motivo tiene que quedar registrado: error=None es justamente lo que
+    # hacía la falla silenciosa.
+    assert summary["error"], "una corrida sin unidades no puede salir con error=None"
+
+
 def test_get_desconocido(manager):
     with pytest.raises(UnknownRunError):
         manager.get("nope")
