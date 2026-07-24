@@ -90,6 +90,7 @@ class RunSummary(BaseModel):
 
     schema_version: str = "media.summary.v2"
     run_id: str
+    name: str | None = None
     scenario: str
     model_name: str | None = None
     prompt_set_id: str | None = None

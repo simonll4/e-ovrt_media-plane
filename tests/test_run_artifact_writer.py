@@ -92,6 +92,54 @@ class TestSummaryBreakdowns:
         assert "gpu_memory_peak_mb" in summary
         assert summary["gpu_memory_peak_mb"] >= 0.0
 
+    def test_name_field_reflects_config(self, completed_run):
+        # El nombre es opcional (run.name de la config, "dbe_mock_demo_v2" en
+        # el fixture de este test); el campo viaja tal cual al summary.
+        _, summary = completed_run
+        assert summary["name"] == "dbe_mock_demo_v2"
+
+
+def test_name_field_none_when_not_set(tmp_path):
+    images_dir = tmp_path / "images"
+    _create_test_images(images_dir, count=3)
+
+    config = load_run_config(CONFIGS_DIR / "runs" / "mock.yaml")
+    config.model.adapter = "mock"
+    config.model.name = "mock"
+    config.source.path = str(images_dir)
+    config.outputs.base_dir = str(tmp_path / "runs")
+    config.outputs.run_dir = str(tmp_path / "runs")
+    config.run.name = None  # opcional: sin nombre no debe romper nada
+
+    run_id = run_pipeline(config)
+    run_dir = Path(config.outputs.run_dir) / run_id
+    with open(run_dir / "summary.json") as f:
+        summary = json.load(f)
+
+    # SummarySink serializa con exclude_none=True (igual que el resto de campos
+    # opcionales del contrato): sin nombre, la clave no aparece en absoluto.
+    assert "name" not in summary
+
+
+def test_name_field_persisted_when_set(tmp_path):
+    images_dir = tmp_path / "images"
+    _create_test_images(images_dir, count=3)
+
+    config = load_run_config(CONFIGS_DIR / "runs" / "mock.yaml")
+    config.model.adapter = "mock"
+    config.model.name = "mock"
+    config.source.path = str(images_dir)
+    config.outputs.base_dir = str(tmp_path / "runs")
+    config.outputs.run_dir = str(tmp_path / "runs")
+    config.run.name = "corrida de prueba"
+
+    run_id = run_pipeline(config)
+    run_dir = Path(config.outputs.run_dir) / run_id
+    with open(run_dir / "summary.json") as f:
+        summary = json.load(f)
+
+    assert summary["name"] == "corrida de prueba"
+
 
 class TestCompareRuns:
     def test_collect_summaries_from_root(self, completed_run):

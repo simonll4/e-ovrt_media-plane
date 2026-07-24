@@ -240,6 +240,7 @@ class RunArtifactWriter:
 
         summary = RunSummary(
             run_id=self.context.run_id,
+            name=self.context.config.run.name,
             scenario=self.context.config.run.scenario,
             model_name=self.context.config.model.name or self.context.config.model.adapter,
             prompt_set_id=(

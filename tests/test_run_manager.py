@@ -76,6 +76,40 @@ def test_busy_mientras_corre(manager, tmp_path):
     assert _wait_final(manager, run_id) == "stopped"
 
 
+def test_name_opcional_visible_en_vivo_y_en_summary(manager, tmp_path):
+    # El nombre puesto por el operador debe verse YA mientras el run está
+    # corriendo (get() lee la config en memoria del ActiveRun, no espera al
+    # summary.json final).
+    folder = _images(tmp_path, n=400)
+    run_id = manager.start_run(_request(folder, name="mi corrida"))
+    live_status = manager.get(run_id)
+    assert live_status["status"] == "running"
+    assert live_status["name"] == "mi corrida"
+    # Tambien visible en el LISTADO mientras corre (el frontend lista runs cada
+    # pocos segundos; el nombre debe estar sin esperar al summary final).
+    listed_live = next(r for r in manager.list_runs() if r["run_id"] == run_id)
+    assert listed_live["name"] == "mi corrida"
+    manager.stop(run_id)
+    assert _wait_final(manager, run_id) == "stopped"
+    summary = json.loads((tmp_path / "runs" / run_id / "summary.json").read_text())
+    assert summary["name"] == "mi corrida"
+    # Contrato uniforme: name top-level tambien con el run terminado (get lee
+    # el summary persistido), no solo en la ventana live.
+    assert manager.get(run_id)["name"] == "mi corrida"
+    # Y en el listado una vez terminado (leido del summary.json persistido).
+    listed_done = next(r for r in manager.list_runs() if r["run_id"] == run_id)
+    assert listed_done["name"] == "mi corrida"
+
+
+def test_name_ausente_no_rompe_nada(manager, tmp_path):
+    run_id = manager.start_run(_request(_images(tmp_path)))
+    assert manager.get(run_id)["name"] is None
+    assert _wait_final(manager, run_id) == "succeeded"
+    # Sin nombre, el listado expone name=None (clave presente, no ausente).
+    listed = next(r for r in manager.list_runs() if r["run_id"] == run_id)
+    assert listed["name"] is None
+
+
 def test_fallo_en_setup_escribe_summary_failed(manager, tmp_path):
     run_id = manager.start_run(_request(tmp_path / "no_existe"))
     status = _wait_final(manager, run_id)

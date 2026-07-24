@@ -164,6 +164,7 @@ class RunManager:
         if active is not None and active.run_id == run_id:
             return {
                 "run_id": run_id,
+                "name": active.config.run.name,
                 "status": active.status,
                 "started_at": active.started_at.isoformat(),
                 "model": self._model_section.ref,
@@ -177,6 +178,7 @@ class RunManager:
             if (self._settings.runs_dir / run_id / "effective_config.yaml").exists():
                 return {
                     "run_id": run_id,
+                    "name": None,
                     "status": "running",
                     "live": False,
                     **bench_metadata(self._settings.runs_dir / run_id),
@@ -192,6 +194,7 @@ class RunManager:
             raise UnknownRunError(run_id) from exc
         return {
             "run_id": run_id,
+            "name": summary.get("name"),
             "status": summary.get("status", "unknown"),
             "summary": summary,
             "live": False,
@@ -206,6 +209,7 @@ class RunManager:
             runs.append(
                 {
                     "run_id": active.run_id,
+                    "name": active.config.run.name,
                     "status": active.status,
                     "live": True,
                     **bench_metadata(self._settings.runs_dir / active.run_id),
@@ -236,6 +240,7 @@ class RunManager:
                     runs.append(
                         {
                             "run_id": d.name,
+                            "name": summary.get("name"),
                             "status": summary.get("status", "unknown"),
                             "live": False,
                             **bench_metadata(d),
@@ -245,6 +250,7 @@ class RunManager:
                     runs.append(
                         {
                             "run_id": d.name,
+                            "name": None,
                             "status": "running",
                             "live": False,
                             **bench_metadata(d),
