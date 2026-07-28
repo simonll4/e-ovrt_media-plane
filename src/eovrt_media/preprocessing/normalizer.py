@@ -10,7 +10,7 @@ from eovrt_media.contracts.normalized_unit import (
     NormalizedUnit, PayloadFormat, ResizeTransform
 )
 from eovrt_media.models.base import ModelInputSpec
-from eovrt_media.preprocessing.image_loader import load_image
+from eovrt_media.preprocessing.image_loader import load_image_array
 
 
 def _letterbox(
@@ -45,8 +45,10 @@ def normalize_spatial(
     Returns:
         NormalizedUnit con el payload redimensionado y el transform aplicado.
     """
-    # ``load_image`` centraliza tanto imágenes como extracción de frames de vídeo.
-    img_rgb = np.asarray(load_image(unit))
+    # ``load_image_array`` centraliza imágenes y extracción de frames de vídeo,
+    # y entrega el ndarray RGB directo: envolver en PIL para desenvolver acto
+    # seguido costaba dos copias del frame con el GIL tomado (doc 73 §9.2).
+    img_rgb = load_image_array(unit)
 
     target_h, target_w = spec.target_size
 
