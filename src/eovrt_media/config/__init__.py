@@ -2,6 +2,7 @@
 
 from eovrt_media.config.prompt_plan import PromptPhrase, PromptPlan
 from eovrt_media.config.schemas import (
+    FixedVocabularyEntry,
     PromptClass,
     PromptSet,
     PromptsFile,
@@ -18,6 +19,7 @@ from eovrt_media.config.schemas import (
 from eovrt_media.config.loader import load_prompts_file, load_run_config
 
 __all__ = [
+    "FixedVocabularyEntry",
     "PromptClass",
     "PromptSet",
     "PromptsFile",

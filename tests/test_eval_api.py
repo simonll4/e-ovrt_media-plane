@@ -136,7 +136,7 @@ def test_post_evaluate_gt_ausente_422_accionable(client, tmp_path, monkeypatch):
 
 def test_mean_ap50():
     from eovrt_media.evaluation.schemas import ClassResult
-    from eovrt_media.service.routers.runs import _mean_ap50
+    from eovrt_media.evaluation.runner import _mean_ap50
 
     rows = [
         ClassResult(class_name="person", AP50=0.8, n_gt=2, n_det=2),

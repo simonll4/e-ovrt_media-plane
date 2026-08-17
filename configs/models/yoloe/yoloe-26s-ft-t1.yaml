@@ -1,0 +1,30 @@
+# Catálogo de modelos — YOLOE 26s fine-tuneado T1 (linear probing, jornada E-04)
+#
+# Entrada preparada por T-FT-031 (2026-08-15), ANTES de que exista el checkpoint:
+# los pesos aterrizan acá recién en la promoción T-FT-050 (copia por hash desde
+# e-ovrt_experimental-setup/finetuning/weights/finetuned/, sólo si el T1 full pasa
+# integridad y serving). Hasta entonces, usar este ref falla con "peso ausente" —
+# ese fallo es correcto y deliberado.
+#
+# Contrato de serving D-FT-08 (aprobado por el usuario el 2026-08-15, doc 117):
+# vocabulario FIJO y ORDENADO; el schema de config rechaza cualquier diferencia de
+# ids, nombres u orden (CANONICAL_V2_FIXED_VOCABULARY en config/schemas.py) y el
+# adapter nunca invoca set_classes() sobre este checkpoint.
+family: yoloe
+variant: yoloe-26s
+lineage: finetuned
+description: "YOLOE-26s + head T1 fusionado (linear probing 12 tensores/3.096 params, finetuning_v1). Vocabulario fijo canónico v2 — D-FT-08."
+source: "entrenado en Mendieta (T-FT-043) desde yoloe-26s-seg.pt sha256 48f24206…0654; ver finetuning/manifests/ en e-ovrt_experimental-setup"
+license: AGPL-3.0  # heredada del peso base y el trainer; posición firmada 2026-08-15 (license_registry.md): uso local/académico, sin redistribución
+
+adapter: yoloe
+weights: models/yoloe/finetuned/t1/best.pt
+device: auto
+confidence_threshold: 0.25
+iou_threshold: 0.50
+image_size: 640
+fixed_vocabulary:
+  - { id: person, text: person }
+  - { id: helmet, text: helmet }
+  - { id: vest, text: vest }
+  - { id: bare_head, text: bare head }

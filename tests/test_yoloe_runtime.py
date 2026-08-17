@@ -2,6 +2,7 @@
 from unittest.mock import MagicMock
 
 import numpy as np
+import pytest
 import torch
 from PIL import Image
 
@@ -13,6 +14,14 @@ from eovrt_media.contracts.normalized_unit import (
 import eovrt_media.models.yoloe_adapter as yoloe_module
 from eovrt_media.config.prompt_plan import PromptPlan
 from eovrt_media.models.yoloe_adapter import YOLOEUltralyticsAdapter
+
+
+FIXED_VOCABULARY = (
+    ("person", "person"),
+    ("helmet", "helmet"),
+    ("vest", "vest"),
+    ("bare_head", "bare head"),
+)
 
 
 def _yoloe_plan():
@@ -65,3 +74,38 @@ def test_yoloe_forward_uses_shared_tensor_without_pil_conversion(monkeypatch):
 
     assert adapter.forward(unit, _yoloe_plan()) == []
     assert adapter.model.predict.call_args.kwargs["source"] is sentinel
+
+
+def test_fixed_vocabulary_load_validates_names_and_warms_up_without_rebinding(monkeypatch):
+    fake = _fake_model()
+    fake.names = {index: text for index, (_id, text) in enumerate(FIXED_VOCABULARY)}
+    monkeypatch.setattr("ultralytics.YOLOE", lambda _weights: fake)
+    adapter = YOLOEUltralyticsAdapter(
+        weights="smoke.pt",
+        device="cpu",
+        warmup=True,
+        fixed_vocabulary=FIXED_VOCABULARY,
+    )
+
+    adapter.load()
+
+    fake.set_classes.assert_not_called()
+    fake.predict.assert_called_once()
+
+
+def test_fixed_vocabulary_load_rejects_checkpoint_before_warmup(monkeypatch):
+    fake = _fake_model()
+    fake.names = {0: "helmet", 1: "person", 2: "vest", 3: "bare head"}
+    monkeypatch.setattr("ultralytics.YOLOE", lambda _weights: fake)
+    adapter = YOLOEUltralyticsAdapter(
+        weights="wrong.pt",
+        device="cpu",
+        warmup=True,
+        fixed_vocabulary=FIXED_VOCABULARY,
+    )
+
+    with pytest.raises(ValueError, match="Vocabulario del checkpoint YOLOE incompatible"):
+        adapter.load()
+
+    fake.predict.assert_not_called()
+    fake.set_classes.assert_not_called()

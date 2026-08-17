@@ -33,6 +33,22 @@ def configs_root(tmp_path: Path) -> Path:
         """,
     )
     _write(
+        configs / "models" / "yoloe" / "yoloe-26s-ft-t1.yaml",
+        """
+        family: yoloe
+        variant: yoloe-26s
+        lineage: finetuned
+        adapter: yoloe
+        weights: models/yoloe/finetuned/t1/best.pt
+        device: cpu
+        fixed_vocabulary:
+          - {id: person, text: person}
+          - {id: helmet, text: helmet}
+          - {id: vest, text: vest}
+          - {id: bare_head, text: bare head}
+        """,
+    )
+    _write(
         configs / "datasets" / "dataset_v1.yaml",
         """
         type: image_folder
@@ -92,6 +108,19 @@ class TestRefResolution:
         assert config.model.confidence_threshold == 0.15
         # Lo no pisado conserva el valor de catálogo
         assert config.model.iou_threshold == 0.50
+
+    def test_finetuned_model_ref_preserves_fixed_vocabulary_order(self, configs_root: Path):
+        body = BASE_RUN.replace("yoloe/yoloe-26s", "yoloe/yoloe-26s-ft-t1")
+
+        config = load_run_config(_write_run_config(configs_root, body))
+
+        assert config.model.lineage == "finetuned"
+        assert [(entry.id, entry.text) for entry in config.model.fixed_vocabulary or []] == [
+            ("person", "person"),
+            ("helmet", "helmet"),
+            ("vest", "vest"),
+            ("bare_head", "bare head"),
+        ]
 
     def test_source_ref_resolves_dataset(self, configs_root: Path):
         config = load_run_config(_write_run_config(configs_root, BASE_RUN))

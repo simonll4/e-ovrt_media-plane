@@ -56,6 +56,11 @@ def create_adapter(model_config: ModelSection) -> BaseDetectorAdapter:
             image_size=model_config.image_size,
             half_precision=model_config.runtime.half_precision,
             warmup=model_config.runtime.warmup,
+            fixed_vocabulary=(
+                [(entry.id, entry.text) for entry in model_config.fixed_vocabulary]
+                if model_config.fixed_vocabulary is not None
+                else None
+            ),
         )
 
     else:

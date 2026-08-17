@@ -376,6 +376,36 @@ class ModelRuntimeConfig(BaseModel):
     warmup: bool = True  # inferencia dummy al cargar
 
 
+# Contrato de serving D-FT-08 (aprobado por el usuario el 2026-08-15, doc 117 del
+# repo docs): el único vocabulario fijo admisible es el canónico v2, en este orden
+# exacto, con estos nombres exactos de checkpoint. Cualquier diferencia de ids,
+# nombres u orden se rechaza en config — antes de llegar al adapter.
+CANONICAL_V2_FIXED_VOCABULARY: tuple[tuple[str, str], ...] = (
+    ("person", "person"),
+    ("helmet", "helmet"),
+    ("vest", "vest"),
+    ("bare_head", "bare head"),
+)
+
+
+class FixedVocabularyEntry(BaseModel):
+    """Una posición inmutable del vocabulario de un checkpoint con head fusionado."""
+
+    id: str
+    text: str
+
+    @model_validator(mode="after")
+    def require_exact_non_blank_values(self) -> FixedVocabularyEntry:
+        for field_name in ("id", "text"):
+            value = getattr(self, field_name)
+            if not value or value != value.strip():
+                raise ValueError(
+                    f"fixed_vocabulary.{field_name} debe ser no vacío y no tener "
+                    "espacios periféricos"
+                )
+        return self
+
+
 class ModelSection(BaseModel):
     """Sección 'model' de la configuración.
 
@@ -408,6 +438,10 @@ class ModelSection(BaseModel):
     confidence_threshold: float = 0.25
     iou_threshold: float = 0.50
     image_size: int | list[int] | None = None
+    # Presencia = checkpoint con head fusionado. La lista expresa el class_id
+    # por posición; ``id`` es la identidad canónica y ``text`` el nombre exacto
+    # almacenado en model.names. None conserva el binding dinámico histórico.
+    fixed_vocabulary: list[FixedVocabularyEntry] | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -418,6 +452,35 @@ class ModelSection(BaseModel):
             elif "adapter" in data and "name" not in data:
                 data["name"] = data["adapter"]
         return data
+
+    @model_validator(mode="after")
+    def validate_fixed_vocabulary(self) -> ModelSection:
+        vocabulary = self.fixed_vocabulary
+        if vocabulary is None:
+            return self
+        if not vocabulary:
+            raise ValueError("fixed_vocabulary debe contener al menos una clase")
+
+        adapter = (self.adapter or self.name or "").lower().strip()
+        if adapter not in {"yoloe", "yoloe_ultralytics"}:
+            raise ValueError("fixed_vocabulary sólo es válido para el adapter YOLOE")
+
+        ids = [entry.id for entry in vocabulary]
+        texts = [entry.text for entry in vocabulary]
+        if len(set(ids)) != len(ids):
+            raise ValueError("fixed_vocabulary contiene ids duplicados")
+        if len(set(texts)) != len(texts):
+            raise ValueError("fixed_vocabulary contiene texts duplicados")
+
+        declared = tuple((entry.id, entry.text) for entry in vocabulary)
+        if declared != CANONICAL_V2_FIXED_VOCABULARY:
+            raise ValueError(
+                "fixed_vocabulary viola el contrato de serving D-FT-08: el único "
+                "vocabulario fijo admisible es el canónico v2 "
+                f"{list(CANONICAL_V2_FIXED_VOCABULARY)!r}, en ese orden exacto; "
+                f"se recibió {list(declared)!r}"
+            )
+        return self
 
 
 class PromptsSection(BaseModel):

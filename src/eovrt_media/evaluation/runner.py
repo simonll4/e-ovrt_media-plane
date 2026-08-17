@@ -22,6 +22,11 @@ _EVALUATE_BENCH_MODULE_PREFIX = "eovrt_media._evaluate_bench_sibling"
 _EVALUATE_BENCH_CACHE: dict[Path, ModuleType] = {}
 
 
+def _mean_ap50(per_class: list[ClassResult]) -> float | None:
+    values = [item.AP50 for item in per_class if item.AP50 is not None]
+    return round(sum(values) / len(values), 4) if values else None
+
+
 def _resolve_evaluate_bench_script() -> Path:
     script_path = EVALUATE_BENCH_SCRIPT.resolve()
     if not script_path.is_file():
@@ -153,6 +158,7 @@ def run_evaluation(
         benchmark=bench_coco_path.stem,
         iou_threshold=iou_threshold,
         per_class=per_class,
+        mAP50=_mean_ap50(per_class),
         cr01_detection_recall=cr01_raw.get("cr01_recall"),
         evaluated_at=datetime.now(timezone.utc).isoformat(),
     )

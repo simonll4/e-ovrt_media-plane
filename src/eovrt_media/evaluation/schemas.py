@@ -18,5 +18,6 @@ class EvalPerceptionResults(BaseModel):
     benchmark: str
     iou_threshold: float
     per_class: list[ClassResult]
+    mAP50: float | None = None
     cr01_detection_recall: float | None
     evaluated_at: str

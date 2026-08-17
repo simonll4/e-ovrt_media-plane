@@ -8,7 +8,6 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from eovrt_media.evaluation.runner import run_evaluation
-from eovrt_media.evaluation.schemas import ClassResult
 from eovrt_media.service.activity_slot import SlotBusyError
 from eovrt_media.service.run_ids import require_valid_run_id as _require_valid_run_id
 from eovrt_media.service.run_manager import RunBusyError, RunManager, UnknownRunError
@@ -170,13 +169,6 @@ def get_artifact(run_id: str, artifact_path: str, request: Request):
     return FileResponse(target)  # Starlette >=0.36 maneja Range (206) para video
 
 
-def _mean_ap50(per_class: list[ClassResult]) -> float | None:
-    """mAP@0.5 = media de los AP50 no-nulos (incluye 0.0 de clases con GT y
-    0 matches; excluye clases sin GT). None si ninguna clase tiene GT."""
-    values = [item.AP50 for item in per_class if item.AP50 is not None]
-    return round(sum(values) / len(values), 4) if values else None
-
-
 @router.post("/runs/{run_id}/evaluate")
 def evaluate_run(run_id: str, request: Request):
     _require_valid_run_id(run_id)
@@ -210,7 +202,6 @@ def evaluate_run(run_id: str, request: Request):
             ),
         ) from exc
     payload = result.model_dump(mode="json")
-    payload["mAP50"] = _mean_ap50(result.per_class)
     payload["model"] = (info.get("summary") or {}).get("model_name")
     payload["bench_split"] = info["bench_split"]
     # El endpoint es dueño de la persistencia enriquecida y atómica (una sola

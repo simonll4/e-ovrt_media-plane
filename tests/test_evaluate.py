@@ -144,8 +144,8 @@ def _synthetic_evaluator() -> SimpleNamespace:
         _iou_threshold: float,
     ) -> dict[str, str | float | int]:
         results = {
-            "person": {"class": "person", "AP50": 1.0, "n_gt": 2, "n_det": 2},
-            "helmet": {"class": "helmet", "AP50": 1.0, "n_gt": 1, "n_det": 1},
+            "person": {"class": "person", "AP50": 0.8, "n_gt": 2, "n_det": 2},
+            "helmet": {"class": "helmet", "AP50": 0.6, "n_gt": 1, "n_det": 1},
         }
         return results[class_name]
 
@@ -180,6 +180,7 @@ def test_run_evaluation_returns_perception_results(
         ("person", 2, 2),
         ("helmet", 1, 1),
     ]
+    assert result.mAP50 == 0.7
     assert result.cr01_detection_recall == 0.5
 
 
@@ -200,6 +201,7 @@ def test_run_evaluation_writes_json(
         ("person", 2, 2),
         ("helmet", 1, 1),
     ]
+    assert payload["mAP50"] == 0.7
     assert payload["cr01_detection_recall"] == 0.5
 
 

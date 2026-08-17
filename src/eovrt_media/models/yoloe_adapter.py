@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Sequence
 
 from PIL import Image
 
 from eovrt_media.contracts.detection import RawDetection
 from eovrt_media.contracts.normalized_unit import NormalizedUnit
 from eovrt_media.models.base import BaseDetectorAdapter, ModelInputSpec
-from eovrt_media.config.prompt_plan import PromptPlan
+from eovrt_media.config.prompt_plan import PromptPhrase, PromptPlan
 from eovrt_media.models.runtime_utils import (
     make_warmup_image,
     resolve_device,
@@ -39,6 +39,7 @@ class YOLOEUltralyticsAdapter(BaseDetectorAdapter):
         image_size: int | list[int] | None = None,
         half_precision: bool = False,
         warmup: bool = False,
+        fixed_vocabulary: Sequence[tuple[str, str]] | None = None,
     ) -> None:
         self.weights = weights
         self.device = device
@@ -47,8 +48,86 @@ class YOLOEUltralyticsAdapter(BaseDetectorAdapter):
         self.image_size = image_size
         self.half_precision = half_precision
         self.warmup = warmup
+        self.fixed_vocabulary = self._normalize_fixed_vocabulary(fixed_vocabulary)
         self.model = None
         self._prompts_set: list[str] | None = None
+
+    @staticmethod
+    def _normalize_fixed_vocabulary(
+        vocabulary: Sequence[tuple[str, str]] | None,
+    ) -> tuple[tuple[str, str], ...] | None:
+        if vocabulary is None:
+            return None
+        normalized = tuple(vocabulary)
+        if not normalized:
+            raise ValueError("fixed_vocabulary debe contener al menos una clase")
+        if any(
+            not isinstance(entry, tuple)
+            or len(entry) != 2
+            or not all(isinstance(value, str) and value and value == value.strip() for value in entry)
+            for entry in normalized
+        ):
+            raise ValueError(
+                "fixed_vocabulary debe ser una secuencia de pares (id, text) no vacíos"
+            )
+        ids = [entry[0] for entry in normalized]
+        texts = [entry[1] for entry in normalized]
+        if len(set(ids)) != len(ids) or len(set(texts)) != len(texts):
+            raise ValueError("fixed_vocabulary no admite ids ni texts duplicados")
+        return normalized
+
+    def _fixed_prompt_plan(self) -> PromptPlan:
+        if self.fixed_vocabulary is None:
+            raise RuntimeError("El adapter no tiene vocabulario fijo")
+        phrases = tuple(
+            PromptPhrase(index=index, text=text, prompt_id=prompt_id, canonical=prompt_id)
+            for index, (prompt_id, text) in enumerate(self.fixed_vocabulary)
+        )
+        return PromptPlan(set_id="checkpoint_fixed_vocabulary", backend="yoloe", phrases=phrases)
+
+    def _validate_fixed_checkpoint_names(self) -> None:
+        if self.fixed_vocabulary is None:
+            return
+        names_value = self.model.names
+        if isinstance(names_value, dict):
+            try:
+                actual = {int(key): value for key, value in names_value.items()}
+            except (TypeError, ValueError) as error:
+                raise ValueError(
+                    f"Checkpoint YOLOE con model.names inválido: {names_value!r}"
+                ) from error
+        elif isinstance(names_value, (list, tuple)):
+            actual = dict(enumerate(names_value))
+        else:
+            raise ValueError(
+                "Checkpoint YOLOE con vocabulario fijo requiere model.names como mapping o lista; "
+                f"se recibió {type(names_value).__name__}"
+            )
+
+        expected = {
+            index: text for index, (_prompt_id, text) in enumerate(self.fixed_vocabulary)
+        }
+        if actual != expected:
+            raise ValueError(
+                "Vocabulario del checkpoint YOLOE incompatible: "
+                f"model.names={actual!r}, esperado={expected!r}"
+            )
+
+    def _validate_fixed_plan(self, plan: PromptPlan) -> None:
+        if self.fixed_vocabulary is None:
+            return
+        expected = tuple(
+            (prompt_id, prompt_id, text) for prompt_id, text in self.fixed_vocabulary
+        )
+        actual = tuple(
+            (phrase.prompt_id, phrase.canonical, phrase.text) for phrase in plan.phrases
+        )
+        if plan.backend != self.PROMPT_BACKEND or actual != expected:
+            raise ValueError(
+                "PromptPlan incompatible con el vocabulario fijo del checkpoint YOLOE: "
+                f"backend={plan.backend!r}, clases={actual!r}, "
+                f"esperado_backend={self.PROMPT_BACKEND!r}, esperado={expected!r}"
+            )
 
     def load(self) -> None:
         """Carga el modelo YOLOE desde el checkpoint."""
@@ -57,13 +136,19 @@ class YOLOEUltralyticsAdapter(BaseDetectorAdapter):
         self.device = resolve_device(self.device)
         logger.info(f"Cargando YOLOE desde: {self.weights} → {self.device}")
         self.model = YOLOE(self.weights)
+        self._validate_fixed_checkpoint_names()
 
         if should_use_half(self.device, self.half_precision):
             self._patch_process_mask_for_fp16()
 
         if self.warmup:
-            dummy = Image.fromarray(make_warmup_image((640, 640)))
-            self.predict(dummy, PromptPlan.from_texts(["object"], "yoloe"))
+            dummy = Image.fromarray(make_warmup_image(self.input_spec.target_size))
+            warmup_plan = (
+                self._fixed_prompt_plan()
+                if self.fixed_vocabulary is not None
+                else PromptPlan.from_texts(["object"], "yoloe")
+            )
+            self.predict(dummy, warmup_plan)
 
         logger.info("YOLOE cargado correctamente.")
 
@@ -83,6 +168,11 @@ class YOLOEUltralyticsAdapter(BaseDetectorAdapter):
 
     def _ensure_classes(self, plan: PromptPlan) -> None:
         """Configura las clases del modelo si las frases del plan cambiaron."""
+        if self.fixed_vocabulary is not None:
+            self._validate_fixed_checkpoint_names()
+            self._validate_fixed_plan(plan)
+            return
+
         texts = plan.texts()
         if self._prompts_set != texts:
             logger.info(f"Configurando clases YOLOE: {texts}")
@@ -107,7 +197,8 @@ class YOLOEUltralyticsAdapter(BaseDetectorAdapter):
 
         Args:
             image: Imagen PIL o ruta a archivo.
-            plan: PromptPlan resuelto; ``set_classes(plan.texts())`` fija el orden.
+            plan: PromptPlan resuelto. En modo dinámico configura ``set_classes``;
+                en modo fijo debe coincidir exactamente con el head del checkpoint.
 
         Returns:
             Lista de RawDetection ligadas al plan, con boxes en píxeles.
