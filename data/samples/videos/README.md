@@ -2,7 +2,10 @@
 
 Colocar aquí los videos locales de prueba.
 
-La config de video por defecto (`configs/runs/yoloe_video.yaml`) espera `sample.mp4` en este directorio; para otro nombre, ajustar la entrada del catálogo `configs/datasets/video_sample.yaml`.
+Las corridas sobre video se disparan vía `POST /api/runs` con
+`ingest: {plugin: video_file, config: {path: <ruta al .mp4>}}` (ver `docs/usage.md`).
+La antigua entrada de catálogo `video_sample.yaml` fue archivada en
+`configs/_archive/video_sample.yaml` (2026-08-19).
 
 Recomendaciones:
 

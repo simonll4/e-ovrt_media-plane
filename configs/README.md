@@ -10,9 +10,11 @@ estos catálogos por referencia y solo declara lo que cambia.
 configs/
 ├── models/      # catálogo de modelos: un YAML por variante de pesos
 │   ├── mock.yaml
-│   ├── yoloe/yoloe-26s.yaml
-│   └── grounding-dino/{gdino-tiny,gdino-base}.yaml
-└── datasets/    # catálogo de fuentes: imágenes o video
+│   ├── yoloe/{yoloe-26s,yoloe-26m,yoloe-26l,yoloe-26x,yoloe-26s-ft-t1}.yaml
+│   └── grounding-dino/{gdino-tiny,gdino-base,gdino-tiny-560,gdino-base-560}.yaml
+│                # gdino-tiny-560 es el modelo CAMPEÓN (selección S1/S2, doc 64)
+├── datasets/    # catálogo de fuentes: imágenes o video
+└── _archive/    # catálogos archivados (mm-grounding-dino, chv, video_sample — ver su README)
 ```
 
 ## Anatomía de un request de corrida
@@ -32,8 +34,13 @@ model:
 
 prompts:
   ref: cr01_cr02_v2_short      # → e-ovrt_experimental-setup/prompts/cr01_cr02_v2_short.yaml
-  # o inline, sin repo hermano:
-  # set_inline: {person: person, helmet: helmet, vest: vest}
+  # o inline, sin repo hermano (mismo esquema que un prompt set versionado):
+  # set_inline:
+  #   id: demo
+  #   classes:
+  #     - {id: person, phrasings: {default: [person]}}
+  #     - {id: helmet, phrasings: {default: [helmet]}}
+  #     - {id: vest,   phrasings: {default: [vest]}}
   active_ids: [person, helmet, vest]
 
 postprocess:                   # secciones opcionales: defaults razonables

@@ -11,23 +11,20 @@ cd "$PROJECT_DIR"
 
 echo "=== Descarga de modelos ==="
 
-mkdir -p models/grounding-dino/original models/mm-grounding-dino/original models/yoloe/original
+mkdir -p models/grounding-dino/original models/yoloe/original
 
-printf "\n[1/4] Grounding DINO tiny desde Hugging Face...\n"
+printf "\n[1/3] Grounding DINO tiny desde Hugging Face...\n"
 hf download IDEA-Research/grounding-dino-tiny \
   --local-dir models/grounding-dino/original/grounding-dino-tiny
 
-printf "\n[2/4] Grounding DINO base desde Hugging Face...\n"
+printf "\n[2/3] Grounding DINO base desde Hugging Face...\n"
 hf download IDEA-Research/grounding-dino-base \
   --local-dir models/grounding-dino/original/grounding-dino-base
 
-printf "\n[3/4] MM-Grounding-DINO (tiny/base/large) desde Hugging Face...\n"
-for repo in mm_grounding_dino_tiny_o365v1_goldg_v3det mm_grounding_dino_base_all mm_grounding_dino_large_all; do
-  hf download "openmmlab-community/$repo" \
-    --local-dir "models/mm-grounding-dino/original/$repo"
-done
+# MM-Grounding-DINO (tiny/base/large) se descargaba acá; la familia se archivó
+# el 2026-08-19 (catálogos en configs/_archive/mm-grounding-dino/, ver su README).
 
-printf "\n[4/4] YOLOE-26 (s/m/l/x) desde Ultralytics release assets...\n"
+printf "\n[3/3] YOLOE-26 (s/m/l/x) desde Ultralytics release assets...\n"
 python - <<'PY'
 from pathlib import Path
 from ultralytics.utils.downloads import attempt_download_asset

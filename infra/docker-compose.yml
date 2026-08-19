@@ -8,13 +8,23 @@ services:
       context: ..
       dockerfile: infra/docker/Dockerfile
     image: eovrt/media-plane:latest
+    restart: unless-stopped
+    stop_grace_period: 30s   # el servicio drena con EOVRT_SHUTDOWN_GRACE_SECONDS=20 por default
+    env_file:
+      - path: ../.env
+        required: false
     environment:
       EOVRT_MODEL_REF: ${EOVRT_MODEL_REF:-mock}
       EOVRT_DATASETS_ROOT: /e-ovrt_datasets
-    ports: ["8080:8080"]
+      # GC de arranque: poda /data/runs con estos límites (sin setear = nunca poda)
+      EOVRT_RUNS_MAX_AGE_DAYS: ${EOVRT_RUNS_MAX_AGE_DAYS:-30}
+      EOVRT_RUNS_MAX_TOTAL_GB: ${EOVRT_RUNS_MAX_TOTAL_GB:-20}
+    ports:
+      - "8080:8080"
+      - "5557:5557"   # bus ZeroMQ XPUB de detecciones (default tcp://0.0.0.0:5557; solo se usa si el run setea bus.enabled)
     volumes:
       - ../models:/app/models:ro                      # pesos locales (catálogos usan paths CWD-relativos)
-      - ../mobileclip2_b.ts:/app/mobileclip2_b.ts:ro  # cache del text-encoder de YOLOE (evita descarga)
+      - ../models/yoloe/original/mobileclip2_b.ts:/app/mobileclip2_b.ts:ro  # cache del text-encoder de YOLOE (evita descarga)
       - ../runs:/data/runs                            # artefactos compartidos con el host
       - ../../e-ovrt_datasets:/e-ovrt_datasets:ro     # GT/datasets: ../e-ovrt_datasets resuelve desde /app
       - weights-cache:/data/weights                   # HF_HOME (fallback si falta un local_dir)

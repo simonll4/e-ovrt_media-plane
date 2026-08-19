@@ -17,6 +17,14 @@ Requisitos: pesos descargados en `../models/` (`make download-models`), repo
 runtime NVIDIA (`nvidia-container-toolkit`). En host sin GPU, comentar el bloque
 `deploy.resources` (solo `mock` tiene sentido ahí; `device: auto` cae a cpu solo).
 
+**Text-encoder de YOLOE**: `models/yoloe/original/mobileclip2_b.ts` **no lo
+descarga** `download_models.sh` (no es un release asset de Ultralytics); la
+librería lo baja sola en la primera corrida YOLOE con prompts de texto, y hay
+que colocarlo manualmente en `models/yoloe/original/`. El compose lo monta
+desde ahí como cache (`/app/mobileclip2_b.ts:ro`) para que el contenedor no
+intente re-descargarlo. Si falta el archivo, comentar ese volumen (con modelos
+GDINO/mock no se usa).
+
 ## Smoke
 
 ```bash

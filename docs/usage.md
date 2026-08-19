@@ -13,7 +13,7 @@ git clone <url> eovrt-media-plane
 cd eovrt-media-plane
 
 # Crear entorno virtual
-python3.11 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 
 # Instalar
@@ -33,10 +33,15 @@ O usar el script de bootstrap:
 make download-models
 ```
 
-Esto descarga la matriz completa de pesos originales:
+Esto descarga la matriz de pesos originales vigente:
 1. **Grounding DINO tiny y base** desde Hugging Face → `models/grounding-dino/original/`
-2. **MM-Grounding-DINO tiny/base/large** (OpenMMLab) desde Hugging Face → `models/mm-grounding-dino/original/`
-3. **YOLOE-26 s/m/l/x** desde Ultralytics release assets → `models/yoloe/original/`
+2. **YOLOE-26 s/m/l/x** desde Ultralytics release assets → `models/yoloe/original/`
+
+La familia **MM-Grounding-DINO** fue archivada el 2026-08-19 (catálogos en
+`configs/_archive/mm-grounding-dino/`) y el script ya no descarga sus pesos.
+El text-encoder de YOLOE (`models/yoloe/original/mobileclip2_b.ts`) no se descarga
+con el script: ultralytics lo baja solo en la primera corrida con prompts de texto,
+y el compose lo monta como cache (ver `infra/README.md`).
 
 La fuente oficial y licencia de cada checkpoint están documentadas en la tabla
 de `models/README.md` y en el campo `source` de cada entrada de `configs/models/`.
@@ -172,7 +177,37 @@ curl -s "http://localhost:8080/api/runs/<run_id>/detections?page=1&page_size=100
 curl -s http://localhost:8080/api/runs/<run_id>/artifacts/summary.json
 curl -s http://localhost:8080/api/runs/<run_id>/artifacts/errors.jsonl
 curl -s http://localhost:8080/api/runs/<run_id>/artifacts/previews/<archivo>.jpg
+
+# Ledger de descartes por-frame (paginado; run sin descartes → 200 vacío)
+curl -s "http://localhost:8080/api/runs/<run_id>/dropped?page=1&page_size=100"
 ```
+
+## Endpoints y capacidades del servicio (referencia rápida)
+
+Superficie implementada además de lo ya descrito arriba (detalle en `CLAUDE.md` y
+[docs/implementation-status.md](implementation-status.md)):
+
+- **Preview de fuente** (sin correr inferencia): `POST /api/preview` (201) abre una
+  sesión de preview sobre una fuente de ingesta, `GET /api/preview` la consulta,
+  `DELETE /api/preview` (204) la cierra, y `WS /api/preview/stream` transmite los
+  frames. Útil para encuadrar cámaras (RTSP/OAK-D) antes de disparar un run.
+- **Metadata del modelo**: `GET /api/model` — ref, adaptador y device del modelo
+  cargado al startup.
+- **Catálogos**: `GET /api/catalog/ingest-plugins` y `GET /api/catalog/datasets`.
+- **Ledger de descartes**: `GET /api/runs/{run_id}/dropped` pagina el artefacto
+  `dropped_units.jsonl` (descartes por-frame con `reason`; solo single-host — en
+  two-node responde vacío = "no instrumentado", no "cero descartes").
+- **Bus media→control** (ADR-003): apagado por default; con `bus.enabled: true` en el
+  body del run, cada detección persistida se publica por ZeroMQ XPUB en `:5557`
+  (envelope `bus.envelope.v1`, cierre con `run.lifecycle.v1/run_finished`). El JSONL
+  sigue siendo la fuente de verdad. Ver `CLAUDE.md` y `docs/operacion/37` (repo docs).
+- **Prefilter EN-2 (fuente `oak_d`)**: filtro on-device opcional, **default off**;
+  se habilita en el `ingest.config` de la corrida. Ver
+  [docs/contexto/oak-d-integration.md](contexto/oak-d-integration.md).
+- **`image_size` (catálogo de modelo)**: ajusta la resolución de letterbox del
+  adaptador GDINO. Las variantes a 560 px (`gdino-tiny-560.yaml`,
+  `gdino-base-560.yaml`) reducen ~24% la latencia con igual o mejor mAP;
+  **`grounding-dino/gdino-tiny-560` es el modelo campeón** (selección S1/S2).
 
 ## Topología dos nodos (Nodo A edge + Nodo B GPU)
 
@@ -182,12 +217,6 @@ inferencia + artefactos + ZeroMQ REQ) se invoca **en proceso** vía
 `topology.mode: two_node` (el loader deriva `transport.backend: network`). Ver
 [docs/deployment/two-node-docker.md](deployment/two-node-docker.md) para el despliegue
 con Docker Compose (Fase 2, `infra/twonode/`, ya completada y verificada).
-
-> **No soportado en Fase 1:** el banco local nativo `run_two_node_local()` y la
-> campaña `debug_run` en modo dos-nodos-local **spawneaban el CLI eliminado** y ahora
-> fallan de forma explícita. Su reemplazo es el split two-node dockerizado de
-> `infra/twonode/` (Fase 2); la ruta local queda deshabilitada permanentemente y no
-> tiene puente hacia ese despliegue Docker.
 
 ## Leer resultados
 
@@ -201,6 +230,7 @@ runs/<run_id>/
 ├── detections.jsonl         # Una línea JSON por unidad procesada
 ├── metrics.jsonl            # Métricas por unidad
 ├── errors.jsonl             # Errores recuperables
+├── dropped_units.jsonl      # Ledger por-frame de descartes (lazy: sin descartes = sin archivo)
 ├── summary.json             # Resumen v2 y descriptor de despliegue
 ├── run_provenance.json      # Dataset, vocabulario y fingerprint de la fuente
 └── previews/                # Previews anotados, cuando save_previews=true

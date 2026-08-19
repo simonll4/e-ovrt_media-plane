@@ -58,3 +58,5 @@ build/
 
 # Ajustes locales de Claude Code (no son del proyecto)
 .claude/
+.agents/
+.codex/

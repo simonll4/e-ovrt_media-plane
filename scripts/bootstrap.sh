@@ -11,7 +11,7 @@ echo "=== E-OVRT Media Plane — Bootstrap ==="
 # Crear entorno virtual si no existe
 if [ ! -d ".venv" ]; then
     echo "[1/3] Creando entorno virtual..."
-    python3.11 -m venv .venv
+    python3.12 -m venv .venv
 else
     echo "[1/3] Entorno virtual ya existe."
 fi

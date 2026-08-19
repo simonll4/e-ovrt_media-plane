@@ -2,7 +2,14 @@
 venv/
 runs/
 models/
+mobileclip*.ts
+# Configs operativas locales con credenciales (p.ej. rtsp_camera.env) —
+# nunca deben quedar copiadas dentro de la imagen vía `COPY configs`
+configs/runs/local/
 .git/
+.agents/
+.codex/
+.claude/
 **/__pycache__/
 *.py[cod]
 .pytest_cache/

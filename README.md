@@ -25,7 +25,7 @@ verificable está en [docs/implementation-status.md](docs/implementation-status.
 ### Instalación
 
 ```bash
-python3.11 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip setuptools wheel
 pip install -e ".[dev]"
@@ -99,7 +99,7 @@ make test
 ```
 src/eovrt_media/        # Paquete principal
 ├── service/            # Servicio FastAPI: app+lifespan, settings, RunManager, events, routers/
-├── tools/              # Utilitarios ex-CLI (evaluate, inspect_runs, debug_run) — python -m
+├── tools/              # Utilitarios ex-CLI (evaluate, inspect_runs, preannotate_video, run_node, videogt) — python -m
 ├── config/             # Esquemas Pydantic + loader (dict-based, resolve_model_ref, set_inline)
 ├── contracts/          # Contratos Pydantic (VisualUnit, NormalizedUnit, eventos)
 ├── sources/            # Fuentes + registry de plugins de ingesta (image_folder, video_file, rtsp, oak_d)
@@ -109,16 +109,14 @@ src/eovrt_media/        # Paquete principal
 ├── runtime/            # Productor/consumidor, execute_run + RunControl, two-node
 ├── transport/          # Canal productor/consumidor (memory y network/ZeroMQ)
 ├── metrics/            # Timers y agregación de métricas (p95/p99, FPS)
+├── debugging/          # Diagnóstico de runs (analyzer, reporter)
+├── evaluation/         # Evaluación perceptual contra el bench (AP@0.5, CR-01)
 ├── sinks/              # Persistencia de artefactos en runs/<run_id>/
 └── visualize.py        # Utilidad de renderizado de detecciones
 ```
 
-> **Caveat `debug_run`:** la ruta de dos-nodos-local de `python -m eovrt_media.tools.debug_run`
-> (`run_two_node_local`) no funciona tras la eliminación del CLI — spawnea el
-> `eovrt_media.cli` borrado y falla con un `RuntimeError` explícito. Su reemplazo es el
-> split two-node dockerizado de `infra/twonode/` (Fase 2, ya completada y verificada); el
-> banco de debug local queda permanentemente deshabilitado y no tiene puente hacia ese
-> despliegue Docker. `evaluate` e `inspect_runs` no están afectados.
+> La ruta de debug two-node-local (`tools/debug_run.py`) se eliminó el 2026-07-18;
+> su reemplazo es el split two-node dockerizado de `infra/twonode/` (Fase 2).
 
 ```
 configs/                # Catálogos de capacidades (ver configs/README.md)
@@ -130,7 +128,7 @@ configs/                # Catálogos de capacidades (ver configs/README.md)
 models/                 # Pesos por familia y linaje (ver models/README.md)
 ├── yoloe/{original,finetuned}/
 ├── grounding-dino/{original,finetuned}/
-└── mm-grounding-dino/{original,finetuned}/
+└── mm-grounding-dino/   # familia ARCHIVADA 2026-08-19 (catálogos en configs/_archive/)
 ```
 
 ---
