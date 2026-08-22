@@ -1,0 +1,26 @@
+# Catálogo de modelos — YOLOE 26s fine-tuneado T2 (full FT, jornada E-04)
+#
+# Checkpoint del tier T2 (D-FT-14/15/16): full fine-tuning de 390 tensores /
+# 10.350.308 parámetros con `model.23.reprta.*` y `model.23.savpe.*` CONGELADOS,
+# job Slurm 1167982 (Mendieta ivb, 2026-08-20, SGD lr0=0.01 explícito por enmienda
+# D-FT-16). Los pesos aterrizan acá en la promoción por hash desde
+# e-ovrt_experimental-setup/finetuning/weights/finetuned/full-1167982/.
+#
+# Contrato de serving (protocolo t2_yoloe26s_protocol.json §serving): este
+# checkpoint NO hereda D-FT-08 — conserva la interfaz open-vocabulary y se sirve
+# como la baseline, vía set_classes con las frases congeladas del prompt set del
+# protocolo. Por eso NO declara fixed_vocabulary. Evidencia requerida antes de
+# promover: open_vocabulary_check.json del run remoto = open_vocabulary_preserved.
+family: yoloe
+variant: yoloe-26s
+lineage: finetuned
+description: "YOLOE-26s full FT T2 (390 tensores/10,35M params, finetuning_v1, SGD explícito D-FT-16). Serving open-vocabulary vía set_classes, como la baseline."
+source: "entrenado en Mendieta (job 1167982, D-FT-16) desde yoloe-26s-seg.pt sha256 48f24206…0654; ver finetuning/manifests/ en e-ovrt_experimental-setup"
+license: AGPL-3.0  # heredada del peso base y el trainer; posición firmada 2026-08-15 (license_registry.md): uso local/académico, sin redistribución
+
+adapter: yoloe
+weights: models/yoloe/finetuned/t2/best.pt
+device: auto
+confidence_threshold: 0.25
+iou_threshold: 0.50
+image_size: 640
