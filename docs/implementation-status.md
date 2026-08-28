@@ -194,6 +194,8 @@ trazabilidad y evaluación de percepción. La última verificación local fue:
 
 ```bash
 pytest -q                 # 646 pruebas (conteo verificado con --collect-only, 2026-07-29)
+                          # (✎ 2026-08-28: 643 `def test_` por grep al HEAD f439db2; la cifra
+                          #  colectada no se re-midió — docs/operacion/130)
 ruff check src tests
 ```
 

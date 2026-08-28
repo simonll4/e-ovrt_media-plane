@@ -55,6 +55,9 @@ make smoke
 
 El modelo nunca viaja en el request (es fijo por instancia); el body declara la fuente
 de ingesta y los prompts. Un solo run activo a la vez (un segundo POST → 409).
+✎ 2026-08-28: el slot es **de actividad, no sólo de runs** (`service/activity_slot.py`): una
+**preview** abierta también lo ocupa, así que `POST /api/runs` con una preview activa responde
+409 igual que con otro run — y viceversa (`docs/operacion/130`).
 
 ```bash
 curl -X POST http://localhost:8080/api/runs \
@@ -137,9 +140,14 @@ models/                 # Pesos por familia y linaje (ver models/README.md)
 
 | Modelo          | Adaptador                | Backend       |
 |-----------------|--------------------------|---------------|
-| Grounding DINO  | `grounding_dino_hf`      | Transformers  |
-| YOLOE           | `yoloe_ultralytics`      | Ultralytics   |
+| Grounding DINO  | `grounding_dino`         | Transformers  |
+| YOLOE           | `yoloe`                  | Ultralytics   |
 | Mock (testing)  | `mock`                   | —             |
+
+✎ 2026-08-28: la tabla decía `grounding_dino_hf` / `yoloe_ultralytics`; esos son **alias**
+que `models/__init__.py` sigue aceptando, pero los ids canónicos —los que usan los catálogos
+`configs/models/*.yaml` y el mensaje de error del registro ("Opciones: mock, grounding_dino,
+yoloe")— son `grounding_dino` y `yoloe` (`docs/operacion/130`).
 
 ---
 
