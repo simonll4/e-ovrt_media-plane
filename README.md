@@ -153,4 +153,12 @@ yoloe")— son `grounding_dino` y `yoloe` (`docs/operacion/130`).
 
 ## Licencia
 
-Uso interno — E-OVRT-VDP.
+El código y la documentación de este repositorio se distribuyen bajo licencia MIT
+(ver [`LICENSE`](LICENSE)).
+
+**Los modelos y sus bibliotecas de inferencia conservan la suya, y no todas son permisivas.**
+Grounding DINO se distribuye bajo Apache-2.0, y la biblioteca de inferencia de YOLOE bajo
+**AGPL-3.0**: un despliegue derivado que la utilice exige publicar el código bajo la misma
+licencia o adquirir una licencia comercial. Los pesos no se versionan en este repositorio; se
+descargan de su origen con `make download-models`, y cada uno queda sujeto a los términos de
+quien los publica.
