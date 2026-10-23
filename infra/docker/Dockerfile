@@ -19,6 +19,12 @@ COPY src ./src
 COPY configs ./configs
 RUN python3.11 -m pip install --no-cache-dir -c constraints.txt ".[gpu]"
 
+# YOLOE necesita CLIP para el encoder de texto; su autoinstalacion exige git
+# en runtime. Instalar el fork oficial desde una revision fija durante el build.
+RUN python3.11 -m pip install --no-cache-dir -c constraints.txt \
+        "https://github.com/ultralytics/CLIP/archive/7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40.zip" \
+    && python3.11 -c "from ultralytics.nn.text_model import build_text_model"
+
 ENV EOVRT_MODEL_REF=mock \
     EOVRT_MEDIA_CATALOG_ROOT=/app/configs \
     EOVRT_RUNS_DIR=/data/runs \
