@@ -17,7 +17,9 @@ WORKDIR /app
 COPY pyproject.toml constraints.txt ./
 COPY src ./src
 COPY configs ./configs
-RUN python3.11 -m pip install --no-cache-dir -c constraints.txt ".[gpu]"
+# `edge` trae el SDK DepthAI v2 de la fuente oak_d (OAK-D PoE por TCP a su IP). Sin
+# él, el plugin se anuncia available:false y la cámara no se puede usar desde acá.
+RUN python3.11 -m pip install --no-cache-dir -c constraints.txt ".[gpu,edge]"
 
 # YOLOE necesita CLIP para el encoder de texto; su autoinstalacion exige git
 # en runtime. Instalar el fork oficial desde una revision fija durante el build.
