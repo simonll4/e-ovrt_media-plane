@@ -106,7 +106,7 @@ class RunArtifactWriter:
         """Guarda la configuración efectiva realmente aplicada."""
         eff_dict = self.context.config.to_effective_dict()
         with open(self.run_dir / "effective_config.yaml", "w", encoding="utf-8") as f:
-            yaml.dump(eff_dict, f, default_flow_style=False, allow_unicode=True)
+            yaml.safe_dump(eff_dict, f, default_flow_style=False, allow_unicode=True)
 
     def write_detection(self, event: DetectionEvent) -> None:
         """Escribe un evento de detección."""

@@ -670,7 +670,10 @@ class RunConfig(BaseModel):
 
     def to_effective_dict(self) -> dict[str, Any]:
         """Devuelve la configuración efectiva como diccionario serializable."""
-        data = self.model_dump(exclude={"prompts_file", "config_path"})
+        # mode="json": tipos planos (tuplas -> listas). Con el dump por default,
+        # source.isp_scale salía como `!!python/tuple` y todo lector con
+        # yaml.safe_load (retention, el reporte de la consola) fallaba.
+        data = self.model_dump(mode="json", exclude={"prompts_file", "config_path"})
 
         # Redact credentials from source URLs
         source_data = data.get("source")

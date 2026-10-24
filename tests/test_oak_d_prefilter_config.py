@@ -121,6 +121,31 @@ def test_isp_scale_shape_validated():
         SourceSection(**OAK, isp_scale=(1, 64))   # den>63 irreducible
 
 
+def test_effective_config_con_isp_scale_es_yaml_seguro(tmp_path):
+    """isp_scale es una tupla: el effective_config.yaml tiene que poder leerse con
+    yaml.safe_load (retention y el reporte de la consola lo leen así). Con el dump por
+    default salía `!!python/tuple` y el reporte del experimento fallaba."""
+    import yaml
+
+    from eovrt_media.config.schemas import RunConfig
+    from eovrt_media.runtime.run_context import RunContext
+    from eovrt_media.sinks import RunArtifactWriter
+
+    config = RunConfig(
+        run={},
+        source={**OAK, "isp_scale": (1, 2)},
+        model={"adapter": "mock"},
+        prompts={"set_inline": {"id": "t", "classes": [{"id": "p", "phrasings": {"default": ["p"]}}]}},
+        outputs={"base_dir": str(tmp_path)},
+    )
+    writer = RunArtifactWriter(RunContext(config))
+    writer.write_effective_config()
+    writer.close()
+
+    loaded = yaml.safe_load((writer.run_dir / "effective_config.yaml").read_text(encoding="utf-8"))
+    assert loaded["source"]["isp_scale"] == [1, 2]
+
+
 def test_xlink_chunk_size_range():
     assert SourceSection(**OAK, xlink_chunk_size=-1).xlink_chunk_size == -1
     assert SourceSection(**OAK, xlink_chunk_size=65536).xlink_chunk_size == 65536
