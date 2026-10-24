@@ -27,6 +27,7 @@ from eovrt_media.preprocessing import normalize_spatial
 from eovrt_media.runtime.run_context import RunContext
 from eovrt_media.sinks import RunArtifactWriter
 from eovrt_media.sinks.dropped_units_sink import DroppedUnitsSink
+from eovrt_media.sinks.preview_writer import AsyncPreviewWriter
 from eovrt_media.sinks.video_annotation_writer import VideoAnnotationWriter
 from eovrt_media.sources import BaseSource
 from eovrt_media.sources.registry import create_source  # noqa: F401  (API pública estable)
@@ -136,6 +137,24 @@ def _drain_producer_errors(
         count += 1
 
 
+def _write_preview_errors(
+    errors: list[tuple[str, str]],
+    artifact_writer: RunArtifactWriter,
+    run_context: RunContext,
+) -> None:
+    """Persiste los errores del hilo de previews (recuperables, no cuentan como fallo)."""
+    for unit_id, message in errors:
+        artifact_writer.write_error(
+            ErrorEvent(
+                run_id=run_context.run_id,
+                unit_id=unit_id,
+                stage="preview",
+                message=message,
+                recoverable=True,
+            )
+        )
+
+
 def run_consumer_loop(
     transport,
     adapter,
@@ -151,6 +170,42 @@ def run_consumer_loop(
     task=None,
     drain_errors: bool = True,
     control: "RunControl | None" = None,
+) -> bool:
+    """Consumidor del run (ver `_consume_units`) con las previews en un hilo aparte.
+
+    El writer se cierra pase lo que pase: drena lo encolado antes de que el run se
+    dé por terminado y no deja un hilo vivo por corrida en el servicio.
+    """
+    preview_writer = (
+        AsyncPreviewWriter(draw=draw_detections_rgb) if config.outputs.save_previews else None
+    )
+    try:
+        return _consume_units(
+            transport, adapter, normalizer, artifact_writer, run_context, tracker,
+            config, plan, prompt_set_id, timings, progress=progress, task=task,
+            drain_errors=drain_errors, control=control, preview_writer=preview_writer,
+        )
+    finally:
+        if preview_writer is not None:
+            _write_preview_errors(preview_writer.close(), artifact_writer, run_context)
+
+
+def _consume_units(
+    transport,
+    adapter,
+    normalizer,
+    artifact_writer,
+    run_context,
+    tracker,
+    config,
+    plan,
+    prompt_set_id,
+    timings: dict[str, float],
+    progress=None,
+    task=None,
+    drain_errors: bool = True,
+    control: "RunControl | None" = None,
+    preview_writer: AsyncPreviewWriter | None = None,
 ) -> bool:
     """Consume del transporte hasta END: inferencia → postproceso → escritura.
 
@@ -254,30 +309,23 @@ def run_consumer_loop(
             g2a_ms_for_metric = round(g2a_ms, 3)
         run_context.source_clock = item.source_clock
 
-        if config.outputs.save_previews and (
+        if preview_writer is not None and (
             config.outputs.preview_max is None
             or preview_attempts < config.outputs.preview_max
         ):
+            # Observación fuera del camino caliente: se encola y el consumidor sigue
+            # al postproceso/bus sin esperar el dibujo ni la escritura del JPEG.
             preview_path = run_context.run_dir / "previews" / f"{item.unit_id}.preview.jpg"
             preview_attempts += 1
-            try:
-                draw_detections_rgb(
-                    item.payload,
-                    raw_detections,
-                    preview_path,
-                    transform=item.transform,
-                    orig_size=(item.orig_width, item.orig_height),
-                )
-            except Exception as exc:
-                artifact_writer.write_error(
-                    ErrorEvent(
-                        run_id=run_context.run_id,
-                        unit_id=item.unit_id,
-                        stage="preview",
-                        message=str(exc),
-                        recoverable=True,
-                    )
-                )
+            preview_writer.submit(
+                item.unit_id,
+                item.payload,
+                raw_detections,
+                preview_path,
+                transform=item.transform,
+                orig_size=(item.orig_width, item.orig_height),
+            )
+            _write_preview_errors(preview_writer.drain_errors(), artifact_writer, run_context)
 
         if video_writer is not None:
             try:
