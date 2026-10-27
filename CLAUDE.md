@@ -10,7 +10,8 @@ python3.12 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
 # Models
-make download-models                            # fetches GDINO tiny+base, YOLOE-26 s/m/l/x (MM-GDINO archivado 2026-08-19, catálogos en configs/_archive/; el text-encoder mobileclip2_b.ts de YOLOE se coloca a mano en models/yoloe/original/ — ver models/README.md)
+make download-models                            # fetches GDINO tiny+base (revisión del Hub fijada), YOLOE-26 s/m/l/x + mobileclip2_b.ts + yolo26n.pt (release v8.4.0 fijado) — los mismos bytes que se midieron, ver models/README.md (MM-GDINO archivado 2026-08-19, catálogos en configs/_archive/)
+make download-prefilter-blob                    # blob de la OAK-D (prefiltro EN-2): blobconverter lo recompila idéntico
 
 # Serve — el media-plane ya NO es un CLI: es un servicio HTTP/WS de un run activo.
 # El CLI `eovrt-media` fue eliminado (Task 17); el pipeline se dispara vía la API.

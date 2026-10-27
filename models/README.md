@@ -40,8 +40,20 @@ en el campo `source` de cada entrada de `configs/models/`):
 | `yoloe/original/yoloe-26m-seg.pt` | 68 MB | [Ultralytics assets v8.4.0](https://github.com/ultralytics/assets/releases/download/v8.4.0/yoloe-26m-seg.pt) | AGPL-3.0 |
 | `yoloe/original/yoloe-26l-seg.pt` | 76 MB | [Ultralytics assets v8.4.0](https://github.com/ultralytics/assets/releases/download/v8.4.0/yoloe-26l-seg.pt) | AGPL-3.0 |
 | `yoloe/original/yoloe-26x-seg.pt` | 164 MB | [Ultralytics assets v8.4.0](https://github.com/ultralytics/assets/releases/download/v8.4.0/yoloe-26x-seg.pt) | AGPL-3.0 |
-| `grounding-dino/original/grounding-dino-tiny/` | 689 MB | [HF: IDEA-Research/grounding-dino-tiny](https://huggingface.co/IDEA-Research/grounding-dino-tiny) | Apache-2.0 |
-| `grounding-dino/original/grounding-dino-base/` | 929 MB | [HF: IDEA-Research/grounding-dino-base](https://huggingface.co/IDEA-Research/grounding-dino-base) | Apache-2.0 |
+| `yoloe/original/mobileclip2_b.ts` | 242 MB | [Ultralytics assets v8.4.0](https://github.com/ultralytics/assets/releases/download/v8.4.0/mobileclip2_b.ts) | AGPL-3.0 |
+| `yoloe/original/yolo26n.pt` | 5 MB | [Ultralytics assets v8.4.0](https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n.pt) | AGPL-3.0 |
+| `grounding-dino/original/grounding-dino-tiny/` | 689 MB | [HF: IDEA-Research/grounding-dino-tiny](https://huggingface.co/IDEA-Research/grounding-dino-tiny), revisión `a2bb814dd30d776dcf7e30523b00659f4f141c71` | Apache-2.0 |
+| `grounding-dino/original/grounding-dino-base/` | 929 MB | [HF: IDEA-Research/grounding-dino-base](https://huggingface.co/IDEA-Research/grounding-dino-base), revisión `12bdfa3120f3e7ec7b434d90674b3396eccf88eb` | Apache-2.0 |
+| `edge/person-detection-retail-0013_6shave.blob` | 2 MB | Open Model Zoo, compilado con `blobconverter` (`make download-prefilter-blob`) | Apache-2.0 |
+| `yoloe/finetuned/t1/best.pt`, `t2/best.pt` | 20 / 28 MB | checkpoints propios (jobs 1167640 y 1167982 del clúster): `4-fine-tuning/checkpoints.zip` del paquete de evidencia, `finetuned/full-<job>/weights/best.pt` | — |
+
+**Versiones fijadas (✎ 2026-10-27).** `download_models.sh` baja cada peso en la versión exacta con
+que se midió: la revisión del Hub de cada Grounding DINO y el release `v8.4.0` de
+`ultralytics/assets` (YOLOE-26, `mobileclip2_b.ts`, `yolo26n.pt`). Verificado el 2026-10-27: las
+dos revisiones del Hub son las que tenía `main`; el digest sha256 que publica GitHub para los seis
+assets de YOLOE coincide con los pesos en uso; y `blobconverter` vuelve a compilar el blob de la
+OAK-D idéntico byte a byte. Los checkpoints del ajuste fino no se descargan de ningún lado: se
+copian del paquete de evidencia (job 1167640 → `t1/`, job 1167982 → `t2/`).
 | `mm-grounding-dino/original/mm_grounding_dino_tiny_o365v1_goldg_v3det/` (archivado) | 692 MB | [HF: openmmlab-community](https://huggingface.co/openmmlab-community/mm_grounding_dino_tiny_o365v1_goldg_v3det) | Apache-2.0 |
 | `mm-grounding-dino/original/mm_grounding_dino_base_all/` (archivado) | 936 MB | [HF: openmmlab-community](https://huggingface.co/openmmlab-community/mm_grounding_dino_base_all) | Apache-2.0 |
 | `mm-grounding-dino/original/mm_grounding_dino_large_all/` (archivado) | 1376 MB | [HF: openmmlab-community](https://huggingface.co/openmmlab-community/mm_grounding_dino_large_all) | Apache-2.0 |
@@ -99,9 +111,9 @@ make download-models
 - Los pesos **no se versionan** en Git (ver `.gitignore`); solo se versionan
   los archivos de configuración livianos (tokenizer, config.json, etc.).
 - **`models/yoloe/original/mobileclip2_b.ts`** es el encoder de texto de los
-  prompts de YOLOE. **No lo descarga `download_models.sh`** (no es un release
-  asset descargable de Ultralytics): la librería lo baja sola al CWD en la
-  primera corrida YOLOE con prompts de texto, y hay que **colocarlo manualmente**
-  en `models/yoloe/original/` para conservarlo con el resto de los pesos. El
-  compose de `infra/` lo monta desde ahí como cache (`/app/mobileclip2_b.ts`)
-  para que el contenedor no lo re-descargue.
+  prompts de YOLOE. ✎ 2026-10-27: **lo descarga `download_models.sh`** (es un
+  release asset de `ultralytics/assets` v8.4.0; la nota anterior decía que no lo
+  era). El compose de `infra/` lo monta desde ahí como cache
+  (`/app/mobileclip2_b.ts`) para que el contenedor no lo re-descargue: **si el
+  archivo no existe en el host, Docker crea una carpeta vacía con ese nombre** y
+  YOLOE falla al cargar. Bajarlo antes del primer `up` de una instancia YOLOE.
