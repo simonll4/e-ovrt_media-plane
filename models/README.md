@@ -43,7 +43,7 @@ en el campo `source` de cada entrada de `configs/models/`):
 | `yoloe/original/mobileclip2_b.ts` | 242 MB | [Ultralytics assets v8.4.0](https://github.com/ultralytics/assets/releases/download/v8.4.0/mobileclip2_b.ts) | AGPL-3.0 |
 | `yoloe/original/yolo26n.pt` | 5 MB | [Ultralytics assets v8.4.0](https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n.pt) | AGPL-3.0 |
 | `grounding-dino/original/grounding-dino-tiny/` | 689 MB | [HF: IDEA-Research/grounding-dino-tiny](https://huggingface.co/IDEA-Research/grounding-dino-tiny), revisión `a2bb814dd30d776dcf7e30523b00659f4f141c71` | Apache-2.0 |
-| `grounding-dino/original/grounding-dino-base/` | 929 MB | [HF: IDEA-Research/grounding-dino-base](https://huggingface.co/IDEA-Research/grounding-dino-base), revisión `12bdfa3120f3e7ec7b434d90674b3396eccf88eb` | Apache-2.0 |
+| `grounding-dino/original/grounding-dino-base/` | 933 MB | [HF: IDEA-Research/grounding-dino-base](https://huggingface.co/IDEA-Research/grounding-dino-base), revisión `12bdfa3120f3e7ec7b434d90674b3396eccf88eb` | Apache-2.0 |
 | `edge/person-detection-retail-0013_6shave.blob` | 2 MB | Open Model Zoo, compilado con `blobconverter` (`make download-prefilter-blob`) | Apache-2.0 |
 | `yoloe/finetuned/t1/best.pt`, `t2/best.pt` | 20 / 28 MB | checkpoints propios (jobs 1167640 y 1167982 del clúster): `4-fine-tuning/checkpoints.zip` del paquete de evidencia, `finetuned/full-<job>/weights/best.pt` | — |
 
@@ -54,6 +54,14 @@ dos revisiones del Hub son las que tenía `main`; el digest sha256 que publica G
 assets de YOLOE coincide con los pesos en uso; y `blobconverter` vuelve a compilar el blob de la
 OAK-D idéntico byte a byte. Los checkpoints del ajuste fino no se descargan de ningún lado: se
 copian del paquete de evidencia (job 1167640 → `t1/`, job 1167982 → `t2/`).
+
+**Cabeza de cajas de `grounding-dino-base` (✎ 2026-10-30).** El checkpoint del Hub guarda la cabeza compartida del
+decoder como `model.decoder.bbox_embed.0.*`; `transformers==5.12.1` (fijado en `constraints.txt`) no mapea ese
+nombre y la deja en valores de inicialización sin avisar (`missing_keys` vacío), así que el decoder no refina las
+cajas. El adaptador la restaura al cargar (`restore_decoder_bbox_head`, con aviso en el log). `tiny` guarda la
+cabeza como `bbox_embed.0.*` y no pasa por ahí. Si `sha256sum -c` de la lista de huellas dice que el
+`model.safetensors` de base no coincide, volver a bajarlo con `make download-models`: un archivo guardado con
+`save_pretrained` desde una carga rota conserva la cabeza sin entrenar.
 | `mm-grounding-dino/original/mm_grounding_dino_tiny_o365v1_goldg_v3det/` (archivado) | 692 MB | [HF: openmmlab-community](https://huggingface.co/openmmlab-community/mm_grounding_dino_tiny_o365v1_goldg_v3det) | Apache-2.0 |
 | `mm-grounding-dino/original/mm_grounding_dino_base_all/` (archivado) | 936 MB | [HF: openmmlab-community](https://huggingface.co/openmmlab-community/mm_grounding_dino_base_all) | Apache-2.0 |
 | `mm-grounding-dino/original/mm_grounding_dino_large_all/` (archivado) | 1376 MB | [HF: openmmlab-community](https://huggingface.co/openmmlab-community/mm_grounding_dino_large_all) | Apache-2.0 |

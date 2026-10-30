@@ -48,6 +48,61 @@ def _nms_per_canonical(
     return [detections[i] for i in sorted(keep)]
 
 
+_DECODER_BBOX_PREFIX = "model.decoder.bbox_embed.0."
+
+
+def _checkpoint_safetensors(source: str) -> Path | None:
+    """Ruta al ``model.safetensors`` que leyó ``from_pretrained`` (carpeta local o caché de HF)."""
+    local = Path(source) / "model.safetensors"
+    if local.is_file():
+        return local
+    try:
+        from huggingface_hub import try_to_load_from_cache
+
+        cached = try_to_load_from_cache(source, "model.safetensors")
+    except Exception:  # noqa: BLE001 — sin caché no hay nada que restaurar
+        return None
+    return Path(cached) if isinstance(cached, str) else None
+
+
+def restore_decoder_bbox_head(model, source: str) -> bool:
+    """Carga la cabeza de cajas del decoder cuando ``from_pretrained`` la deja sin entrenar.
+
+    El checkpoint oficial de ``IDEA-Research/grounding-dino-base`` guarda la cabeza compartida
+    como ``model.decoder.bbox_embed.0.*``. transformers 5.x la ata a ``bbox_embed`` y no mapea
+    ese nombre: la cabeza queda en valores de inicialización (última capa en cero, así que el
+    decoder no refina las cajas) y ``missing_keys`` sale vacío, sin aviso. ``tiny`` guarda la
+    cabeza como ``bbox_embed.0.*`` y no pasa por acá. Devuelve True si copió algo.
+    """
+    path = _checkpoint_safetensors(source)
+    if path is None:
+        return False
+    from safetensors import safe_open
+
+    with safe_open(str(path), "pt") as f:
+        head = {
+            k[len(_DECODER_BBOX_PREFIX):]: f.get_tensor(k)
+            for k in f.keys()
+            if k.startswith(_DECODER_BBOX_PREFIX)
+        }
+    if not head:
+        return False
+    if not getattr(model.config, "decoder_bbox_embed_share", True):
+        logger.warning("Checkpoint con %s* pero sin cabeza compartida: no se restaura.", _DECODER_BBOX_PREFIX)
+        return False
+    target = model.bbox_embed[0]
+    current = target.state_dict()
+    if all(k in current and current[k].equal(v) for k, v in head.items()):
+        return False  # esta versión de transformers ya la cargó bien
+    target.load_state_dict(head)
+    logger.warning(
+        "Cabeza de cajas del decoder restaurada desde %s (%d tensores): transformers no la había cargado.",
+        path,
+        len(head),
+    )
+    return True
+
+
 class GroundingDinoHFAdapter(BaseDetectorAdapter):
     """Adaptador para Grounding DINO via Hugging Face Transformers.
 
@@ -89,7 +144,9 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
         logger.info(f"Cargando Grounding DINO desde: {source} → {self.device}")
 
         self.processor = AutoProcessor.from_pretrained(source)
-        self.model = AutoModelForZeroShotObjectDetection.from_pretrained(source).to(self.device)
+        model = AutoModelForZeroShotObjectDetection.from_pretrained(source)
+        self.decoder_bbox_head_restored = restore_decoder_bbox_head(model, source)
+        self.model = model.to(self.device)
         self.model.eval()
 
         if self.warmup:
