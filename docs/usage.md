@@ -207,7 +207,7 @@ Superficie implementada además de lo ya descrito arriba (detalle en `CLAUDE.md`
 - **`image_size` (catálogo de modelo)**: ajusta la resolución de letterbox del
   adaptador GDINO. Las variantes a 560 px (`gdino-tiny-560.yaml`,
   `gdino-base-560.yaml`) reducen ~24% la latencia con igual o mejor mAP;
-  **`grounding-dino/gdino-tiny-560` es el modelo campeón** (selección S1/S2).
+  **`grounding-dino/gdino-tiny-560` es el perfil operativo**: el que la plataforma usa por defecto, fijado con un criterio escrito en la selección S1/S2. No es un «mejor modelo»: el orden de los perfiles cambia con el escenario, y cambiar de perfil es cambiar `EOVRT_MODEL_REF`.
 
 ## Topología dos nodos (Nodo A edge + Nodo B GPU)
 

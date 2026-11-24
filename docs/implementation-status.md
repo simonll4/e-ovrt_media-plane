@@ -135,8 +135,8 @@ recibe el BCHW como `pixel_values` y YOLOE lo recibe como `source`; `forward()` 
 - `image_size` (opcional en `ModelSection`) ajusta la resolución de letterbox del adapter
   Grounding DINO con `input_spec` y `predict` consistentes. Catálogos
   `configs/models/grounding-dino/gdino-{tiny,base}-560.yaml` (variantes 560 px de los
-  existentes: −24% latencia con igual o mejor mAP que 800 px; `gdino-tiny-560` es el modelo
-  campeón de la selección S1/S2).
+  existentes: −24% latencia con igual o mejor mAP que 800 px; `gdino-tiny-560` es el perfil
+  operativo, fijado en la selección S1/S2).
 - `prepare_run()` es parte del contrato de `BaseDetectorAdapter`: pre-flight por corrida (ver
   "Flujo implementado"); un adapter solo lo overridea si su binding no pasa por `predict()`.
 

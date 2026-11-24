@@ -12,7 +12,7 @@ configs/
 │   ├── mock.yaml
 │   ├── yoloe/{yoloe-26s,yoloe-26m,yoloe-26l,yoloe-26x,yoloe-26s-ft-t1}.yaml
 │   └── grounding-dino/{gdino-tiny,gdino-base,gdino-tiny-560,gdino-base-560}.yaml
-│                # gdino-tiny-560 es el modelo CAMPEÓN (selección S1/S2, doc 64)
+│                # gdino-tiny-560 es el perfil operativo (fijado en la selección S1/S2, doc 64; no un «mejor modelo»)
 ├── datasets/    # catálogo de fuentes: imágenes o video
 └── _archive/    # catálogos archivados (mm-grounding-dino, chv, video_sample — ver su README)
 ```
