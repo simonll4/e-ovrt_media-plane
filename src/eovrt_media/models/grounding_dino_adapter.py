@@ -254,7 +254,18 @@ class GroundingDinoHFAdapter(BaseDetectorAdapter):
         return _nms_per_canonical(detections, self.iou_threshold)
 
     def _bind_span(self, detected, score, box, by_text, texts):
-        """Resuelve un span de GDINO contra el plan; None si no matchea (se descarta)."""
+        """Resuelve un span de GDINO contra el plan; None si no matchea (se descarta).
+
+        Un texto vacío se descarta: no dice a qué frase corresponde la caja, y la
+        cascada lo mandaría a la primera frase del plan (``"" in t`` siempre es
+        verdadero), que en ``edir_v1`` es una clase de infracción. transformers lo
+        produce si ningún token de la caja supera ``text_threshold``; con los
+        umbrales de la campaña (caja 0,30 > texto 0,25) no ocurrió en ninguna de
+        las 322 corridas (docs/operacion/datos/barrido-texto-vacio-2026-11/).
+        """
+        if not detected:
+            logger.warning("GDINO devolvió una caja sin texto (score %.3f); descartada.", score)
+            return None
         phrase = by_text.get(detected)
         if phrase is None:
             dl = detected.lower()

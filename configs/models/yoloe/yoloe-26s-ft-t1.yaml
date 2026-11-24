@@ -20,8 +20,7 @@ license: AGPL-3.0  # heredada del peso base y el trainer; posición firmada 2026
 adapter: yoloe
 weights: models/yoloe/finetuned/t1/best.pt
 device: auto
-confidence_threshold: 0.25
-iou_threshold: 0.50
+confidence_threshold: 0.25  # único umbral que actúa: cabeza end2end (uno a uno), sin NMS; no lleva IoU
 image_size: 640
 fixed_vocabulary:
   - { id: person, text: person }

@@ -40,3 +40,11 @@ def test_unresolved_span_returns_none():
     ad = GroundingDinoHFAdapter()
     plan = _plan()
     assert ad._bind_span("zzz unrelated", 0.9, [0, 0, 10, 10], plan.by_text(), plan.texts()) is None
+
+
+def test_empty_span_is_discarded_not_bound_to_first_phrase():
+    # "" in t es verdadero para toda frase: sin el corte, la caja iría a la
+    # primera del plan ("hard hat" → helmet; en edir_v1, una infracción).
+    ad = GroundingDinoHFAdapter()
+    plan = _plan()
+    assert ad._bind_span("", 0.9, [0, 0, 10, 10], plan.by_text(), plan.texts()) is None
